@@ -73,12 +73,11 @@ interface Props {
 type TemplateState = {
   id: TemplateId;
   name: string;
-  short: string;
   command: string;
   prompt: string;
   /** Why it cannot run here; null when it can. */
   blocked: string | null;
-  /** Shown at all in this chat (the quick prompts bar hides what cannot run). */
+  /** Offered in the + menu (it leaves out what cannot run here). */
   fits: boolean;
 };
 
@@ -177,14 +176,13 @@ export function Composer(props: Props) {
     }
   };
 
-  // One view of the templates for the + menu, the quick prompts and the slash commands.
+  // One view of the templates for the + menu and the slash commands.
   const templates: TemplateState[] = TEMPLATES.map((entry) => {
     const outOfPlace = entry.project && !project;
     const early = entry.conversation && !conversation;
     return {
       id: entry.id,
       name: t(entry.name),
-      short: t(entry.short),
       command: t(entry.command),
       prompt: t(entry.prompt),
       fits: !outOfPlace && !early,
@@ -196,7 +194,6 @@ export function Composer(props: Props) {
     onTemplate(template.id, template.prompt);
     setText("");
   };
-  const quick = templates.filter((template) => template.fits);
 
   // Slash commands: a leading "/" and one word open the list above the input.
   const query = slashQuery(text);
@@ -269,25 +266,6 @@ export function Composer(props: Props) {
 
   return (
     <div className="composer-wrap">
-      {quick.length > 0 && (
-        <div className="quick-bar" role="toolbar" aria-label={t("quick.label")}>
-          <span className="quick-label">{t("quick.label")}</span>
-          <div className="quick-items">
-            {quick.map((template) => (
-              <button
-                key={template.id}
-                type="button"
-                className="quick-item"
-                disabled={Boolean(template.blocked)}
-                title={template.blocked ?? template.name}
-                onClick={() => runTemplate(template)}
-              >
-                {template.short}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
       <div className="composer">
         {slashOpen && (
           <div className="slash-menu" role="listbox" id="slash-menu" aria-label={t("slash.label")}>

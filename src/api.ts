@@ -21,8 +21,6 @@ export type TemplateId = "changelog" | "review" | "tasks";
 export const TEMPLATES: {
   id: TemplateId;
   name: TextKey;
-  /** For the quick prompts bar. */
-  short: TextKey;
   /** The slash command, without the slash. */
   command: TextKey;
   prompt: TextKey;
@@ -33,7 +31,6 @@ export const TEMPLATES: {
   {
     id: "tasks",
     name: "template.tasks",
-    short: "template.tasks",
     command: "slash.tasks",
     prompt: "template.tasksPrompt",
     project: false,
@@ -42,7 +39,6 @@ export const TEMPLATES: {
   {
     id: "review",
     name: "template.review",
-    short: "template.reviewShort",
     command: "slash.review",
     prompt: "template.reviewPrompt",
     project: true,
@@ -51,7 +47,6 @@ export const TEMPLATES: {
   {
     id: "changelog",
     name: "template.changelog",
-    short: "template.changelogShort",
     command: "slash.changelog",
     prompt: "template.changelogPrompt",
     project: true,
