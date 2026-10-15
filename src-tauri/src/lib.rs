@@ -245,6 +245,12 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         "costSoFar": request.cost_so_far,
         "rewind": request.rewind,
         "rewindTo": request.rewind_to,
+        // A branch still waiting for its first message continues this session.
+        "keepReplaced": request.rewind
+            && request
+                .session_id
+                .as_deref()
+                .is_some_and(|session| state.store.session_referenced(session, &request.chat_id)),
         "projectDir": project_dir,
         "mode": request.mode,
         "fork": request.fork,
@@ -420,6 +426,8 @@ struct RevertRequest {
     web: bool,
     project_dir: String,
     mode: String,
+    #[serde(default)]
+    cost_so_far: f64,
 }
 
 /// Undoes the file changes Claude made since a user message (file checkpoints).
@@ -449,6 +457,7 @@ fn chat_revert_files(
         "web": request.web,
         "projectDir": project_dir.display().to_string(),
         "mode": request.mode,
+        "costSoFar": request.cost_so_far,
     })
     .to_string();
     state.engine.send(&app, &state.store, &line).map(|_| ())
@@ -464,10 +473,19 @@ fn project_set_check(id: String, check: String, state: State<AppState>) -> Resul
 fn project_guess_check(path: String) -> Result<String, String> {
     let dir = project::validate(&path)?;
     let has = |name: &str| dir.join(name).is_file();
+    // `npm init` writes a test script that only fails; that is no check.
     let package_test = std::fs::read_to_string(dir.join("package.json"))
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .is_some_and(|package| package.pointer("/scripts/test").is_some());
+        .and_then(|package| {
+            package
+                .pointer("/scripts/test")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .is_some_and(|script| !script.contains("no test specified"));
+    let make_test = std::fs::read_to_string(dir.join("Makefile"))
+        .is_ok_and(|text| text.lines().any(|line| line.starts_with("test:")));
     let guess = if package_test {
         "npm test"
     } else if has("Cargo.toml") {
@@ -476,7 +494,7 @@ fn project_guess_check(path: String) -> Result<String, String> {
         "go test ./..."
     } else if has("pyproject.toml") || has("pytest.ini") {
         "pytest"
-    } else if has("Makefile") {
+    } else if make_test {
         "make test"
     } else {
         ""

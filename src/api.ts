@@ -133,9 +133,14 @@ export interface Message {
   model?: ModelId;
   /** A second model's answer to the same question; not part of the chat's session. */
   lane?: boolean;
-  /** That answer's own session and turn end, to continue it in a branch. */
+  /** That answer's own session, turn end and running cost, to continue it in a branch. */
   laneSession?: string | null;
   laneTurnEnd?: string | null;
+  laneTotal?: number | null;
+  /** The session's running cost after this answer; a fork or redo from here starts there. */
+  sessionTotal?: number | null;
+  /** Written in this chat's own project session, so its file changes can be undone. */
+  checkpoint?: boolean;
   /** A template's answer: its format and the data Claude returned. */
   format?: TemplateId;
   structured?: unknown;
@@ -185,7 +190,9 @@ export interface Chat {
   /** The chat this one branched off. */
   branchOf?: string | null;
   /** Until the branch's first message: the session and answer it continues from. */
-  forkFrom?: { sessionId: string; at: string } | null;
+  forkFrom?: { sessionId: string; at: string; total?: number | null } | null;
+  /** The running cost of the chat's session, as Claude Code last reported it. */
+  sessionTotal?: number | null;
   /** Each question also goes to this model; its answer shows next to the chat's own. */
   compareModel?: ModelId | null;
   /** File changes were undone since the last message; Claude hears about it with the next one. */
@@ -267,6 +274,7 @@ export const api = {
     web: boolean;
     projectDir: string;
     mode: PermissionMode;
+    costSoFar: number;
   }) => invoke<void>("chat_revert_files", { request }),
   projectSetCheck: (id: string, check: string) => invoke<void>("project_set_check", { id, check }),
   projectGuessCheck: (path: string) => invoke<string>("project_guess_check", { path }),

@@ -64,7 +64,7 @@ interface Props {
   onCompare: (model: ModelId | null) => void;
   /** The project's command after changes; `onCheck` is missing outside projects. */
   check: string | null;
-  onCheck?: (command: string) => void;
+  onCheck?: (command: string) => Promise<void>;
   onTemplate: (id: TemplateId, text: string) => void;
   /** The chat has an answer, so templates about the conversation make sense. */
   conversation: boolean;
@@ -78,6 +78,14 @@ type TemplateState = {
   /** Why it cannot run here; null when it can. */
   blocked: string | null;
 };
+
+/**
+ * Enter while an input method composes (Japanese, Chinese, dead keys) confirms
+ * the composition; WebKit reports some of those with keyCode 229 only.
+ */
+export function composing(event: KeyboardEvent<HTMLElement>): boolean {
+  return event.nativeEvent.isComposing || event.keyCode === 229;
+}
 
 /** The text typed after a leading slash, while it is still one word. */
 function slashQuery(text: string): string | null {
@@ -117,10 +125,18 @@ export function Composer(props: Props) {
     if (!draft && project) draft = await api.projectGuessCheck(project).catch(() => "");
     setCheckDraft(draft);
   };
-  const saveCheck = () => {
-    if (checkDraft === null) return;
-    onCheck?.(checkDraft.trim());
+  const closeCheck = () => {
     setCheckDraft(null);
+    area.current?.focus();
+  };
+  const saveCheck = async () => {
+    if (checkDraft === null || !onCheck) return;
+    try {
+      await onCheck(checkDraft.trim());
+      closeCheck();
+    } catch (reason) {
+      setNotice(errorText(reason));
+    }
   };
   const [text, setText] = useState("");
   const [files, setFiles] = useState<OutgoingAttachment[]>([]);
@@ -219,7 +235,7 @@ export function Composer(props: Props) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (slashOpen && !event.nativeEvent.isComposing) {
+    if (slashOpen && !composing(event)) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         const step = event.key === "ArrowDown" ? 1 : -1;
@@ -231,13 +247,15 @@ export function Composer(props: Props) {
         setSlashClosed(true);
         return;
       }
-      if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+      // A command that cannot run here leaves Enter to send the text as typed.
+      const runnable = !matches[active].blocked;
+      if (runnable && ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab")) {
         event.preventDefault();
         runTemplate(matches[active]);
         return;
       }
     }
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === "Enter" && !event.shiftKey && !composing(event)) {
       event.preventDefault();
       submit();
     }
@@ -350,7 +368,7 @@ export function Composer(props: Props) {
                 <button
                   type="button"
                   className="chip-remove"
-                  onClick={() => onCheck("")}
+                  onClick={() => void onCheck("").catch((reason) => setNotice(errorText(reason)))}
                   aria-label={t("check.off")}
                   title={t("check.off")}
                 >
@@ -386,7 +404,7 @@ export function Composer(props: Props) {
             className="check-editor"
             onSubmit={(event) => {
               event.preventDefault();
-              saveCheck();
+              void saveCheck();
             }}
           >
             <label className="check-label">
@@ -395,7 +413,7 @@ export function Composer(props: Props) {
                 className="check-input"
                 value={checkDraft}
                 onChange={(event) => setCheckDraft(event.target.value)}
-                onKeyDown={(event) => event.key === "Escape" && setCheckDraft(null)}
+                onKeyDown={(event) => event.key === "Escape" && closeCheck()}
                 placeholder={t("check.placeholder")}
                 aria-label={t("check.action")}
                 spellCheck={false}
@@ -405,7 +423,7 @@ export function Composer(props: Props) {
             </label>
             <p className="check-hint">{t("check.hint")}</p>
             <div className="check-actions">
-              <button type="button" className="secondary-button" onClick={() => setCheckDraft(null)}>
+              <button type="button" className="secondary-button" onClick={closeCheck}>
                 {t("message.cancel")}
               </button>
               <button type="submit" className="primary-button">

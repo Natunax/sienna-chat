@@ -87,7 +87,9 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
   const { scroller, content, stuck } = useStickToBottom(chat.id);
   // The last answer and a second model's next to it; while the conversation
   // is being compacted, nothing new can be sent either.
-  const streaming = chat.messages.slice(-3).some((message) => message.streaming) || Boolean(chat.compacting);
+  const lastQuestionAt = chat.messages.map((message) => message.role).lastIndexOf("user");
+  const streaming =
+    chat.messages.slice(Math.max(0, lastQuestionAt)).some((message) => message.streaming) || Boolean(chat.compacting);
   const empty = chat.messages.length === 0;
   const language = useLanguage();
   const project = projectFor(chat, useProjects());
@@ -210,7 +212,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
       compareModel={chat.compareModel ?? null}
       onCompare={(model) => setCompareModel(chat.id, model)}
       check={project?.check ?? null}
-      onCheck={project ? (command) => void setProjectCheck(project.id, command) : undefined}
+      onCheck={project ? (command) => setProjectCheck(project.id, command) : undefined}
       conversation={chat.messages.some((message) => message.role === "assistant" && !message.streaming)}
       onTemplate={(id, text) => {
         stuck.current = true;

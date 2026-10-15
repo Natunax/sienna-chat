@@ -209,15 +209,19 @@ export function updateChat(id: string, change: (chat: Chat) => Chat) {
 
 function persist(id: string) {
   const chat = chats.get(id);
-  if (!chat || !chat.messages.length) return;
+  if (!chat || !chat.messages.length || deleting.has(id)) return;
   // Open approvals belong to the running engine, not to the saved chat.
   const messages = chat.messages.map((message) => (message.permissions ? { ...message, permissions: undefined } : message));
   void api.chatSave({ ...chat, messages }).catch(() => {});
 }
 
+/** Chats being deleted; a save still on its way must not bring one back. */
+const deleting = new Set<string>();
+
 export async function deleteChat(id: string) {
-  await api.chatDelete(id);
+  deleting.add(id);
   chats.delete(id);
+  await api.chatDelete(id).finally(() => deleting.delete(id));
   summaries = summaries.filter((entry) => entry.id !== id);
   notifyGlobal();
 }
@@ -253,6 +257,20 @@ function updateMessage(chat: Chat, id: string, change: (message: Message) => Mes
 /** What the chat's own session has cost so far: its answers, not second models' ones. */
 function sessionCost(messages: Message[]): number {
   return messages.reduce((sum, message) => sum + (message.lane ? 0 : (message.costUsd ?? 0)), 0);
+}
+
+/**
+ * The session's running cost at the end of these messages, as Claude Code
+ * reported it; older chats fall back to the sum of their answers. A resumed
+ * or forked session continues from that total, so the next answer's own
+ * cost is what comes on top.
+ */
+function costAt(messages: Message[]): number {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role === "assistant" && !message.lane && typeof message.sessionTotal === "number") return message.sessionTotal;
+  }
+  return sessionCost(messages);
 }
 
 /** Where the chat's session ends after these messages, for a second model to continue from. */
@@ -324,7 +342,6 @@ async function dispatch(
     titleRequested: first ? false : chat.titleRequested,
     updatedAt: Date.now(),
     messages: laneReply ? [...kept, user, reply, laneReply] : [...kept, user, reply],
-    reverted: false,
   };
   putChat(next);
   upsertSummary(next);
@@ -332,9 +349,10 @@ async function dispatch(
   // A branch's first message continues the session it branched off.
   const fork = next.forkFrom ?? null;
   const rewind = rewindTo !== undefined;
-  // What the session behind this chat has cost so far: the answers it still
-  // contains. A dropped answer was paid for but is no longer in the session.
-  const cost = sessionCost(kept);
+  // What the session behind this chat has cost so far, as Claude Code last
+  // reported it: at the fork point, before a redone answer, or its latest total.
+  const cost = fork ? (fork.total ?? sessionCost(kept)) : rewind ? costAt(kept) : (chat.sessionTotal ?? costAt(kept));
+  const laneCost = fork ? cost : costAt(kept);
   const outgoing = attachments.map(({ name, mediaType, data }) => ({ name, mediaType, data }));
   const check = projectFor(next, projects)?.check ?? null;
   if (laneReply && rival) {
@@ -349,7 +367,7 @@ async function dispatch(
         web: next.web,
         text,
         attachments: outgoing,
-        costSoFar: cost,
+        costSoFar: laneCost,
         fork: true,
         lane: true,
         rewindTo: fork?.at ?? lastTurnEnd(kept),
@@ -385,9 +403,10 @@ async function dispatch(
       userUuid: user.id,
       reverted: Boolean(chat.reverted),
     });
+    // The fork point stays until the branch's own session exists (its `session` event).
     updateChat(id, (current) => ({
       ...updateLastAssistant(current, (message) => (message.id === reply.id ? { ...message, engine } : message)),
-      forkFrom: null,
+      reverted: false,
     }));
   } catch (error) {
     updateChat(id, (current) =>
@@ -427,6 +446,7 @@ export function branchChat(id: string, messageId: string): string | null {
   if (!answer || answer.role !== "assistant" || answer.streaming) return null;
   const sessionId = answer.lane ? answer.laneSession : chat.sessionId;
   const at = answer.lane ? answer.laneTurnEnd : answer.turnEnd;
+  const total = answer.lane ? answer.laneTotal : answer.sessionTotal;
   if (!sessionId || !at) return null;
   // Up to the answer; for a second model's answer, without the chat's own one next to it.
   let kept = chat.messages.slice(0, index + 1);
@@ -438,6 +458,9 @@ export function branchChat(id: string, messageId: string): string | null {
     turnEnd: undefined,
     laneSession: undefined,
     laneTurnEnd: undefined,
+    laneTotal: undefined,
+    sessionTotal: undefined,
+    checkpoint: undefined,
     permissions: undefined,
   }));
   const now = Date.now();
@@ -449,7 +472,8 @@ export function branchChat(id: string, messageId: string): string | null {
     updatedAt: now,
     model: answer.lane && answer.model ? answer.model : chat.model,
     sessionId: null,
-    forkFrom: { sessionId, at },
+    sessionTotal: null,
+    forkFrom: { sessionId, at, total },
     branchOf: chat.branchOf ?? chat.id,
     costUsd: 0,
     messages,
@@ -482,6 +506,7 @@ export async function revertChanges(id: string, answerId: string) {
       web: chat.web,
       projectDir: chat.projectDir,
       mode: chat.mode ?? DEFAULT_MODE,
+      costSoFar: chat.sessionTotal ?? costAt(chat.messages),
     });
   } catch (error) {
     updateChat(id, (current) => withNote(current, { id: crypto.randomUUID(), role: "note", text: "", error: errorCode(error) }));
@@ -633,6 +658,7 @@ type EngineEvent =
       sessionId?: string;
       costUsd: number;
       turnEnd?: string | null;
+      total?: number;
       structured?: unknown;
       error: string | null;
     }
@@ -640,7 +666,7 @@ type EngineEvent =
   | { type: "context"; chatId: string; used: number; window: number; categories?: ContextCategory[] }
   | { type: "compacting"; chatId: string }
   | { type: "compacted"; chatId: string; trigger: "manual" | "auto"; before: number | null; after: number | null }
-  | { type: "compactDone"; chatId: string; costUsd: number; error: string | null }
+  | { type: "compactDone"; chatId: string; costUsd: number; total?: number; error: string | null }
   | { type: "fatal"; message: string; generation: number }
   | { type: "exit"; generation: number }
   | { type: "ready" };
@@ -673,7 +699,7 @@ export async function compactChat(id: string) {
       model: chat.model,
       effort: chat.effort,
       web: chat.web,
-      costSoFar: sessionCost(chat.messages),
+      costSoFar: chat.sessionTotal ?? costAt(chat.messages),
       projectDir: chat.projectDir ?? null,
       mode: chat.mode ?? DEFAULT_MODE,
     });
@@ -707,6 +733,7 @@ function onLaneEvent(lane: { chatId: string; messageId: string }, laneId: string
   switch (event.type) {
     case "session":
       change((message) => ({ ...message, laneSession: event.sessionId }));
+      persist(lane.chatId);
       return;
     case "delta":
       change((message) => ({
@@ -725,6 +752,7 @@ function onLaneEvent(lane: { chatId: string; messageId: string }, laneId: string
         streaming: false,
         costUsd: (message.costUsd ?? 0) + event.costUsd,
         laneTurnEnd: event.turnEnd ?? null,
+        laneTotal: typeof event.total === "number" ? event.total : null,
         laneSession: event.sessionId ?? message.laneSession,
         error: event.error,
       }));
@@ -744,7 +772,10 @@ function onEngineEvent(event: EngineEvent) {
   }
   switch (event.type) {
     case "session":
-      updateChat(event.chatId, (chat) => ({ ...chat, sessionId: event.sessionId }));
+      // Saved at once: after a crash mid-answer the chat still knows its session.
+      // A branch's fork point is used up now that its own session exists.
+      updateChat(event.chatId, (chat) => ({ ...chat, sessionId: event.sessionId, forkFrom: null }));
+      persist(event.chatId);
       return;
     case "delta":
       updateChat(event.chatId, (chat) =>
@@ -840,10 +871,14 @@ function onEngineEvent(event: EngineEvent) {
           permissions: undefined,
           costUsd: (message.costUsd ?? 0) + event.costUsd,
           turnEnd: event.turnEnd ?? null,
+          sessionTotal: typeof event.total === "number" ? event.total : message.sessionTotal,
+          // A finished answer in a project session has file checkpoints to undo.
+          checkpoint: Boolean(chat.projectDir && event.turnEnd) || message.checkpoint,
           structured: event.structured ?? message.structured,
           error: event.error,
         })),
         sessionId: event.sessionId ?? chat.sessionId,
+        sessionTotal: typeof event.total === "number" ? event.total : chat.sessionTotal,
         costUsd: chat.costUsd + event.costUsd,
         compacting: false,
         updatedAt: Date.now(),
@@ -876,7 +911,12 @@ function onEngineEvent(event: EngineEvent) {
       return;
     case "compactDone":
       updateChat(event.chatId, (chat) => {
-        const next = { ...chat, compacting: false, costUsd: chat.costUsd + event.costUsd };
+        const next = {
+          ...chat,
+          compacting: false,
+          costUsd: chat.costUsd + event.costUsd,
+          sessionTotal: typeof event.total === "number" ? event.total : chat.sessionTotal,
+        };
         return event.error ? withNote(next, { id: crypto.randomUUID(), role: "note", text: "", error: event.error }) : next;
       });
       persist(event.chatId);

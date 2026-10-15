@@ -491,7 +491,7 @@ class ChatSession {
       this.config.effort === config.effort &&
       this.config.web === config.web &&
       this.config.projectDir === config.projectDir &&
-      this.config.format === config.format &&
+      (this.config.format ?? null) === (config.format ?? null) &&
       // The sandbox is set when the session starts.
       SANDBOXED_MODES.includes(this.config.mode) === SANDBOXED_MODES.includes(config.mode)
     );
@@ -646,6 +646,7 @@ class ChatSession {
             type: "compactDone",
             chatId: this.chatId,
             costUsd: turnCost,
+            total,
             model: this.config.model,
             error: failed ? "error.compactFailed" : null,
           });
@@ -663,6 +664,8 @@ class ChatSession {
           model: this.config.model,
           // Where a later rewind cuts back to, to drop the turns after this one.
           turnEnd: this.lastAssistantUuid,
+          // The session's running cost; resuming or forking it later starts from here.
+          total,
           structured: this.config.format && !failed ? (message.structured_output ?? null) : null,
           error: failed ? describeError(message) : null,
         });
@@ -815,7 +818,8 @@ async function onSend(command) {
     session?.close();
     sessions.delete(command.chatId);
     session = undefined;
-    config.replacesSession = config.sessionId;
+    // A branch may still continue the old session; then it stays.
+    config.replacesSession = command.keepReplaced ? null : config.sessionId;
     config.rewindTo = command.rewindTo ?? null;
     if (!config.rewindTo) config.sessionId = null;
   }
@@ -857,6 +861,8 @@ async function onCompact(command) {
       costSoFar: Number(command.costSoFar) || 0,
       projectDir: typeof command.projectDir === "string" && command.projectDir ? command.projectDir : null,
       mode: validMode(command.mode),
+      check: null,
+      format: null,
       rewindTo: null,
       replacesSession: null,
     });
@@ -877,22 +883,32 @@ async function onRewindFiles(command) {
       effort: command.effort,
       web: Boolean(command.web),
       sessionId: command.sessionId,
-      costSoFar: 0,
+      costSoFar: Number(command.costSoFar) || 0,
       projectDir: command.projectDir,
       mode: validMode(command.mode),
+      check: null,
+      format: null,
       rewindTo: null,
       replacesSession: null,
     });
     sessions.set(command.chatId, session);
   }
-  const result = await session.query.rewindFiles(command.messageId);
-  emit({
-    type: "filesReverted",
-    chatId: command.chatId,
-    messageId: command.messageId,
-    files: (result.filesChanged ?? []).map((file) => session.relative(file)),
-    error: result.canRewind ? null : "error.revertFailed",
-  });
+  // Busy while the files change, so no other chat's message closes it halfway.
+  session.busy = true;
+  clearTimeout(session.idleTimer);
+  try {
+    const result = await session.query.rewindFiles(command.messageId);
+    emit({
+      type: "filesReverted",
+      chatId: command.chatId,
+      messageId: command.messageId,
+      files: (result.filesChanged ?? []).map((file) => session.relative(file)),
+      error: result.canRewind ? null : "error.revertFailed",
+    });
+  } finally {
+    session.busy = false;
+    session.idleTimer = setTimeout(() => session.close(), IDLE_CLOSE_MS);
+  }
 }
 
 /** Makes room for one more live session by closing the oldest idle ones. */

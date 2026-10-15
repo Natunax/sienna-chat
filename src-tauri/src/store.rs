@@ -272,13 +272,34 @@ impl Store {
                 );
             }
         }
+        // A branch that has not sent yet still continues one of these sessions.
         for session in sessions.iter().filter(|session| valid_id(session)) {
-            self.delete_transcript(session);
+            if !self.referenced_unlocked(session, id) {
+                self.delete_transcript(session);
+            }
         }
         let _ = fs::remove_file(self.chat_path(id));
         let mut list = self.read_index();
         list.retain(|entry| entry.id != id);
         self.write_index(&list)
+    }
+
+    /// Whether another chat than `except` names this session, as a branch
+    /// waiting to continue it does.
+    pub fn session_referenced(&self, session: &str, except: &str) -> bool {
+        let _guard = self.guard();
+        self.referenced_unlocked(session, except)
+    }
+
+    fn referenced_unlocked(&self, session: &str, except: &str) -> bool {
+        let Ok(entries) = fs::read_dir(self.root.join("chats")) else {
+            return false;
+        };
+        entries.filter_map(Result::ok).any(|entry| {
+            let path = entry.path();
+            path.file_stem().and_then(|stem| stem.to_str()) != Some(except)
+                && fs::read_to_string(&path).is_ok_and(|text| text.contains(session))
+        })
     }
 
     /// The Agent SDK keeps its own copy of every conversation, attachments

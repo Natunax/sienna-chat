@@ -230,7 +230,7 @@ function EditBox({ text, onSubmit, onCancel }: { text: string; onSubmit: (text: 
   const submit = () => value.trim() && onSubmit(value.trim());
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Escape") onCancel();
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
       event.preventDefault();
       submit();
     }
@@ -363,7 +363,7 @@ function MessageViewImpl({
   const waiting = streaming && (!message.text || Boolean(message.format)) && !message.permissions?.length;
   const branchable = !streaming && onBranch && (message.lane ? message.laneSession && message.laneTurnEnd : message.turnEnd);
   const revertable =
-    !streaming && onRevert && !message.lane && !message.reverted && message.turnEnd && message.tools?.some((tool) => tool.change);
+    !streaming && onRevert && !message.lane && !message.reverted && message.checkpoint && message.tools?.some((tool) => tool.change);
   const modelName = MODELS.find((entry) => entry.id === message.model)?.name;
   return (
     <div className={`msg msg-assistant${message.lane ? " is-lane" : ""}`} aria-busy={streaming}>

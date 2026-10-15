@@ -283,12 +283,13 @@ export function Sidebar(props: Props) {
     }
     return byParent;
   }, [summaries]);
-  const isNested = (chat: ChatSummary) => Boolean(chat.branchOf && branches.get(chat.branchOf)?.includes(chat));
+  // A pinned branch stands on its own under "Pinned".
+  const isNested = (chat: ChatSummary) =>
+    Boolean(!chat.pinned && chat.branchOf && branches.get(chat.branchOf)?.includes(chat));
+  const titleMatches = (chat: ChatSummary) => !needle || chat.title.toLowerCase().includes(needle);
+  const nestedBranches = (chat: ChatSummary) => (branches.get(chat.id) ?? []).filter((branch) => !branch.pinned);
   const matches = (chat: ChatSummary) =>
-    !isNested(chat) &&
-    (!needle ||
-      chat.title.toLowerCase().includes(needle) ||
-      (branches.get(chat.id) ?? []).some((branch) => branch.title.toLowerCase().includes(needle)));
+    !isNested(chat) && (titleMatches(chat) || nestedBranches(chat).some(titleMatches));
 
   const projectChats = useMemo(() => {
     const byProject = new Map<string, ChatSummary[]>();
@@ -333,7 +334,13 @@ export function Sidebar(props: Props) {
       onPin={() => onPin(chat.id)}
     />
   );
-  const row = (chat: ChatSummary) => [single(chat), ...(branches.get(chat.id) ?? []).map((branch) => single(branch, true))];
+  // While searching, only the branches that match show below their chat.
+  const row = (chat: ChatSummary) => [
+    single(chat),
+    ...nestedBranches(chat)
+      .filter((branch) => !needle || titleMatches(branch))
+      .map((branch) => single(branch, true)),
+  ];
 
   const share = usage ? Math.min(1, usage.usd / usage.budget) : 0;
   const monthName = usage
