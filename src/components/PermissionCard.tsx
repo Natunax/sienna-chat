@@ -86,7 +86,7 @@ export function PermissionCard({ request, onAnswer }: Props) {
           {!command && (
             <button
               type="button"
-              className="secondary-button"
+              className="permission-always"
               title={t("permission.alwaysHint")}
               onClick={() => onAnswer(request, "always")}
             >

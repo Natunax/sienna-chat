@@ -469,6 +469,8 @@ export function Composer(props: Props) {
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             aria-label={t("composer.label")}
+            role="combobox"
+            aria-expanded={slashOpen}
             aria-controls={slashOpen ? "slash-menu" : undefined}
             aria-activedescendant={slashOpen ? `slash-${matches[active]?.id}` : undefined}
             aria-autocomplete="list"

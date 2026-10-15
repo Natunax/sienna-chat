@@ -11,8 +11,9 @@
   --surface-raised: #ffffff;
   --sidebar-tint: rgba(250, 248, 245, 0.42);
   --label: rgba(28, 25, 23, 0.92);
-  --label-2: rgba(28, 25, 23, 0.62);
-  --label-3: rgba(28, 25, 23, 0.42);
+  /* label-2 and label-3 stay readable (WCAG AA, 4.5:1) on the surface and on fills. */
+  --label-2: rgba(28, 25, 23, 0.72);
+  --label-3: rgba(28, 25, 23, 0.62);
   --separator: rgba(28, 25, 23, 0.08);
   --separator-strong: rgba(28, 25, 23, 0.14);
   --fill: rgba(28, 25, 23, 0.05);
@@ -20,15 +21,17 @@
   --fill-active: rgba(28, 25, 23, 0.1);
   --bubble: #f1eee9;
   --code-bg: #f5f3ef;
-  --accent: #c15f3c;
+  /* Dark enough for white button text (4.9:1). */
+  --accent: #b5552f;
   --thumb-bg: #ffffff;
-  --accent-hover: #ad5333;
-  --accent-soft: rgba(193, 95, 60, 0.11);
+  --accent-hover: #a24a28;
+  --accent-soft: rgba(181, 85, 47, 0.11);
   --accent-text: #a64c2c;
   --on-accent: #ffffff;
   --danger: #c4372a;
   --danger-soft: rgba(196, 55, 42, 0.1);
-  --focus: rgba(193, 95, 60, 0.45);
+  /* Focus is neutral, so it never reads as the accent or an error (3.3:1). */
+  --focus: rgba(28, 25, 23, 0.5);
   --shadow-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
   --shadow-composer: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 4px 18px rgba(0, 0, 0, 0.06);
 
@@ -54,8 +57,8 @@
     --surface-raised: #262524;
     --sidebar-tint: rgba(28, 27, 26, 0.3);
     --label: rgba(255, 252, 248, 0.93);
-    --label-2: rgba(255, 252, 248, 0.64);
-    --label-3: rgba(255, 252, 248, 0.42);
+    --label-2: rgba(255, 252, 248, 0.68);
+    --label-3: rgba(255, 252, 248, 0.5);
     --separator: rgba(255, 252, 248, 0.08);
     --separator-strong: rgba(255, 252, 248, 0.14);
     --fill: rgba(255, 252, 248, 0.06);
@@ -71,7 +74,7 @@
     --on-accent: #1d1c1b;
     --danger: #ff6b5e;
     --danger-soft: rgba(255, 107, 94, 0.14);
-    --focus: rgba(217, 119, 87, 0.55);
+    --focus: rgba(255, 252, 248, 0.5);
     --shadow-pop: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 14px 36px rgba(0, 0, 0, 0.5);
     --shadow-composer: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 6px 22px rgba(0, 0, 0, 0.35);
 
@@ -123,8 +126,23 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 a:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 1px;
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Browser surfaces in the app's own colors. */
+::selection {
+  background: rgba(181, 85, 47, 0.24);
+}
+
+textarea,
+input {
+  caret-color: var(--accent);
+}
+
+input[type="range"],
+input[type="checkbox"] {
+  accent-color: var(--accent);
 }
 
 /* ───────── Layout ───────── */
@@ -1158,8 +1176,22 @@ button.tool-toggle:hover .tool-name,
 /* The approving buttons stay together on the right, also when they wrap. */
 .permission-grant {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
   margin-left: auto;
+}
+
+/* "Don't ask again" changes the chat's mode, so it stays a quiet second choice. */
+.permission-always {
+  color: var(--label-2);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.permission-always:hover {
+  color: var(--label);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .caret {
@@ -1762,7 +1794,7 @@ button.tool-toggle:hover .tool-name,
 
 /* Focus shows as a slightly stronger edge, not a colored ring. */
 .composer:focus-within {
-  box-shadow: var(--shadow-composer), 0 0 0 1px var(--separator-strong);
+  box-shadow: var(--shadow-composer), 0 0 0 1px var(--focus);
 }
 
 /* One row like Claude Code: +, the text, model, send. Buttons stay at the
@@ -2336,11 +2368,18 @@ button.tool-toggle:hover .tool-name,
 }
 
 /* How far Claude may go without asking. */
-.mode-pill.is-plan {
+/* The mode decides what Claude does unattended, so it reads as a state, not a footnote. */
+.composer-footer .mode-pill {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.composer-footer .mode-pill.is-auto {
+  background: var(--accent-soft);
   color: var(--accent-text);
 }
 
-.mode-pill.is-danger {
+.composer-footer .mode-pill.is-danger {
   background: var(--danger-soft);
   color: var(--danger);
 }
@@ -2370,10 +2409,14 @@ button.tool-toggle:hover .tool-name,
   text-align: left;
 }
 
-.mode-item:hover,
+.mode-item:hover {
+  background: var(--fill-hover);
+}
+
 .mode-item:focus-visible {
   background: var(--fill-hover);
   outline: none;
+  box-shadow: inset 0 0 0 2px var(--focus);
 }
 
 .mode-text {
@@ -2792,13 +2835,26 @@ button.tool-toggle:hover .tool-name,
 
 /* ───────── Accessibility ───────── */
 
+/* Reduced motion: nothing moves, but working states stay visible as still marks. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .pulse,
+  .caret {
+    animation: none !important;
+    opacity: 1;
+  }
+
+  .thinking-chevron,
+  .tool-chevron,
+  .structured-go {
+    transition: none;
   }
 }
 

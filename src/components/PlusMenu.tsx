@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { t } from "../i18n";
+import { useMenuFocus } from "./useMenuFocus";
 import { CheckIcon, CompareIcon, FolderIcon, GlobeIcon, ListIcon, PaperclipIcon, PlusIcon, ShieldCheckIcon } from "./icons";
 
 interface Props {
@@ -20,6 +21,10 @@ interface Props {
 export function PlusMenu({ web, onWeb, onAttach, onProject, comparing, onCompare, onCheck, templates }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+
+  useMenuFocus(open, menu, trigger);
 
   useEffect(() => {
     if (!open) return;
@@ -44,6 +49,7 @@ export function PlusMenu({ web, onWeb, onAttach, onProject, comparing, onCompare
     <div className="menu-anchor" ref={ref}>
       <button
         type="button"
+        ref={trigger}
         className="plus-button"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -54,7 +60,7 @@ export function PlusMenu({ web, onWeb, onAttach, onProject, comparing, onCompare
         <PlusIcon size={18} />
       </button>
       {open && (
-        <div className="menu plus-menu" role="menu">
+        <div ref={menu} className="menu plus-menu" role="menu" aria-label={t("composer.more")}>
           <button type="button" role="menuitem" className="plus-item" onClick={run(onAttach)}>
             <PaperclipIcon size={15} />
             {t("composer.attach")}

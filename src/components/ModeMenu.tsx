@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { DEFAULT_MODE, MODES, type PermissionMode } from "../api";
 import { t } from "../i18n";
 import { CheckIcon } from "./icons";
+import { useMenuFocus } from "./useMenuFocus";
 
 interface Props {
   mode: PermissionMode;
@@ -19,6 +20,9 @@ export function ModeMenu({ mode, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  useMenuFocus(open, menu, trigger);
   const bypass = mode === "bypassPermissions";
 
   const pick = (next: PermissionMode) => {
@@ -55,7 +59,8 @@ export function ModeMenu({ mode, onChange }: Props) {
     <div className="menu-anchor" ref={ref}>
       <button
         type="button"
-        className={`pill mode-pill${bypass ? " is-danger" : mode === "plan" ? " is-plan" : ""}`}
+        ref={trigger}
+        className={`pill mode-pill is-${mode === "bypassPermissions" ? "danger" : mode === "auto" || mode === "acceptEdits" ? "auto" : "quiet"}`}
         aria-haspopup="menu"
         aria-expanded={open}
         title={t("mode.title")}
@@ -64,7 +69,7 @@ export function ModeMenu({ mode, onChange }: Props) {
         {modeName(mode)}
       </button>
       {open && (
-        <div className="menu mode-menu" role="menu" aria-label={t("mode.title")}>
+        <div ref={menu} className="menu mode-menu" role="menu" aria-label={t("mode.title")}>
           <div className="mode-head">{t("mode.title")}</div>
           {MODES.map((entry, index) => (
             <button

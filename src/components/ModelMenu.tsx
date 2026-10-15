@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { EFFORTS, MODELS, type Effort, type ModelId } from "../api";
 import { t } from "../i18n";
+import { useMenuFocus } from "./useMenuFocus";
 import { CheckIcon, ChevronDownIcon } from "./icons";
 
 interface Props {
@@ -46,8 +47,12 @@ function EffortSlider({ effort, onChange }: { effort: Effort; onChange: (effort:
 export function ModelMenu({ model, effort, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const current = MODELS.find((entry) => entry.id === model) ?? MODELS[1];
   const effortName = t((EFFORTS.find((entry) => entry.id === effort) ?? EFFORTS[1]).name);
+
+  useMenuFocus(open, menu, trigger);
 
   useEffect(() => {
     if (!open) return;
@@ -67,6 +72,7 @@ export function ModelMenu({ model, effort, onChange }: Props) {
     <div className="menu-anchor" ref={ref}>
       <button
         type="button"
+        ref={trigger}
         className="pill"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -78,7 +84,7 @@ export function ModelMenu({ model, effort, onChange }: Props) {
         <ChevronDownIcon size={13} />
       </button>
       {open && (
-        <div className="menu model-menu" role="menu">
+        <div ref={menu} className="menu model-menu" role="menu" aria-label={t("composer.modelHint")}>
           {MODELS.map((entry) => (
             <button
               key={entry.id}

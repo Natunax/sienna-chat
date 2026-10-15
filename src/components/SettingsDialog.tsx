@@ -54,9 +54,16 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
   };
 
   return (
-    <dialog ref={dialog} className="dialog" tabIndex={-1} onClose={onClose} onCancel={onClose}>
+    <dialog
+      ref={dialog}
+      className="dialog"
+      tabIndex={-1}
+      onClose={onClose}
+      onCancel={onClose}
+      aria-labelledby="settings-title"
+    >
       <header className="dialog-head">
-        <h2>{t("settings.title")}</h2>
+        <h2 id="settings-title">{t("settings.title")}</h2>
         <button type="button" className="icon-button" onClick={onClose} aria-label={t("settings.close")}>
           <CloseIcon />
         </button>
