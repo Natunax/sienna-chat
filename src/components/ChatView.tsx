@@ -122,6 +122,13 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
     },
     [chat.id, onOpenChat],
   );
+  const followUp = useCallback(
+    (text: string) => {
+      stuck.current = true;
+      void sendMessage(chat.id, text, []);
+    },
+    [chat.id, stuck],
+  );
   const revert = useCallback((messageId: string) => void revertChanges(chat.id, messageId), [chat.id]);
   // The chat's own last answer; a second model's may follow it.
   let ownLast = chat.messages.length - 1;
@@ -271,6 +278,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
                   onBranch={branch}
                   onRevert={chat.projectDir ? revert : undefined}
                   showModel={Boolean(message.lane || chat.messages[index + 1]?.lane)}
+                  onFollowUp={streaming ? undefined : followUp}
                 />
               );
               // A second model's answer stands next to the chat's own.

@@ -1327,27 +1327,51 @@ button.tool-toggle:hover .tool-name,
   gap: 8px;
 }
 
-.finding,
-.structured-tasks li {
+/* Tasks and findings: a click sends one as the next message. */
+.structured-item {
   display: flex;
   gap: 10px;
   align-items: flex-start;
+  width: 100%;
   padding: 10px 12px;
   border-radius: 10px;
   background: var(--fill);
+  color: var(--label);
+  text-align: left;
+  font: inherit;
+  line-height: 1.5;
+  transition: background-color 120ms, box-shadow 120ms;
+}
+
+.structured-item:not(:disabled):hover {
+  background: var(--fill-hover);
+  box-shadow: inset 0 0 0 0.5px var(--separator-strong);
+}
+
+.structured-item:disabled {
+  cursor: default;
 }
 
 .finding-body,
-.structured-tasks li > div {
+.task-text {
   display: grid;
+  flex: 1;
   gap: 3px;
   min-width: 0;
 }
 
-.finding-body p,
-.structured-tasks p {
-  margin: 0;
-  line-height: 1.5;
+.structured-go {
+  flex-shrink: 0;
+  margin-top: 4px;
+  color: var(--accent-text);
+  opacity: 0;
+  transform: rotate(45deg);
+  transition: opacity 120ms;
+}
+
+.structured-item:not(:disabled):hover .structured-go,
+.structured-item:focus-visible .structured-go {
+  opacity: 1;
 }
 
 .finding-where {

@@ -531,7 +531,8 @@ class ChatSession {
       case "assistant":
         this.lastAssistantUuid = message.uuid;
         for (const block of message.message.content) {
-          if (block.type !== "tool_use") continue;
+          // The answer format's own tool is how a template answer arrives, not a step.
+          if (block.type !== "tool_use" || block.name === "StructuredOutput") continue;
           this.flush();
           const input = block.input ?? {};
           if (RUN_TOOLS.includes(block.name)) this.commandIds.add(block.id);

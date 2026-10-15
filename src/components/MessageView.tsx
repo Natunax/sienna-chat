@@ -273,9 +273,21 @@ interface Props {
   onRevert?: (messageId: string) => void;
   /** Shows the model above the answer, when two answer side by side. */
   showModel?: boolean;
+  /** Sends a task or finding of a template answer as the next message. */
+  onFollowUp?: (text: string) => void;
 }
 
-function MessageViewImpl({ message, onRedo, onPermission, projectDir, onImplement, onBranch, onRevert, showModel }: Props) {
+function MessageViewImpl({
+  message,
+  onRedo,
+  onPermission,
+  projectDir,
+  onImplement,
+  onBranch,
+  onRevert,
+  showModel,
+  onFollowUp,
+}: Props) {
   const [editing, setEditing] = useState(false);
   const [confirmRevert, setConfirmRevert] = useState(false);
   useEffect(() => {
@@ -359,7 +371,7 @@ function MessageViewImpl({ message, onRedo, onPermission, projectDir, onImplemen
       {(message.thinking || waiting) && <Thinking text={message.thinking ?? ""} active={waiting} />}
       {message.tools?.length ? <Tools tools={message.tools} projectDir={projectDir} reverted={message.reverted} /> : null}
       {structured && message.format ? (
-        <StructuredView format={message.format} data={structured} />
+        <StructuredView format={message.format} data={structured} onFollowUp={onFollowUp} />
       ) : (
         message.text && !(message.format && streaming) && <Markdown text={message.text} final={!streaming} />
       )}

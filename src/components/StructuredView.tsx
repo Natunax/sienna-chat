@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { TemplateId } from "../api";
 import { t, type TextKey } from "../i18n";
-import { CheckIcon, CopyIcon } from "./icons";
+import { ArrowUpIcon, CheckIcon, CopyIcon } from "./icons";
 
 // A template's answer arrives as data (see sidecar/templates.mjs) and is
 // drawn here; anything unexpected in it is skipped rather than trusted.
@@ -35,7 +35,19 @@ function toMarkdown(format: TemplateId, data: Record<string, unknown>): string {
     .join("\n");
 }
 
-export function StructuredView({ format, data }: { format: TemplateId; data: unknown }) {
+/**
+ * `onFollowUp` sends a task or finding as the next message, so Claude starts
+ * on it; missing while an answer runs.
+ */
+export function StructuredView({
+  format,
+  data,
+  onFollowUp,
+}: {
+  format: TemplateId;
+  data: unknown;
+  onFollowUp?: (text: string) => void;
+}) {
   const [copied, setCopied] = useState(false);
   const value = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
 
@@ -71,16 +83,29 @@ export function StructuredView({ format, data }: { format: TemplateId; data: unk
         {text(value.summary) && <p className="structured-summary">{text(value.summary)}</p>}
         <ul className="structured-findings">
           {findings.map((finding, index) => (
-            <li key={index} className="finding">
-              <span className={`severity is-${level(finding.severity)}`}>{t(LEVELS[level(finding.severity)])}</span>
-              <div className="finding-body">
-                <code className="finding-where">
-                  {text(finding.file)}
-                  {typeof finding.line === "number" ? `:${finding.line}` : ""}
-                </code>
-                <p>{text(finding.issue)}</p>
-                {text(finding.fix) && <p className="finding-fix">{text(finding.fix)}</p>}
-              </div>
+            <li key={index}>
+              <button
+                type="button"
+                className="finding structured-item"
+                disabled={!onFollowUp}
+                title={t("template.findingHint")}
+                onClick={() => {
+                  const where = `${text(finding.file)}${typeof finding.line === "number" ? `:${finding.line}` : ""}`;
+                  const fix = text(finding.fix) ? `\n${t("template.suggestion", { fix: text(finding.fix) })}` : "";
+                  onFollowUp?.(t("template.fixFinding", { where, issue: text(finding.issue) }) + fix);
+                }}
+              >
+                <span className={`severity is-${level(finding.severity)}`}>{t(LEVELS[level(finding.severity)])}</span>
+                <span className="finding-body">
+                  <code className="finding-where">
+                    {text(finding.file)}
+                    {typeof finding.line === "number" ? `:${finding.line}` : ""}
+                  </code>
+                  <span className="finding-issue">{text(finding.issue)}</span>
+                  {text(finding.fix) && <span className="finding-fix">{text(finding.fix)}</span>}
+                </span>
+                <ArrowUpIcon size={14} className="structured-go" />
+              </button>
             </li>
           ))}
         </ul>
@@ -94,11 +119,23 @@ export function StructuredView({ format, data }: { format: TemplateId; data: unk
         <ul className="structured-tasks">
           {tasks.map((task, index) => (
             <li key={index}>
-              <span className={`severity is-${level(task.priority)}`}>{t(LEVELS[level(task.priority)])}</span>
-              <div>
-                <p className="task-title">{text(task.title)}</p>
-                {text(task.detail) && <p className="task-detail">{text(task.detail)}</p>}
-              </div>
+              <button
+                type="button"
+                className="structured-item"
+                disabled={!onFollowUp}
+                title={t("template.taskHint")}
+                onClick={() => {
+                  const detail = text(task.detail) ? `\n${text(task.detail)}` : "";
+                  onFollowUp?.(t("template.startTask", { title: text(task.title) }) + detail);
+                }}
+              >
+                <span className={`severity is-${level(task.priority)}`}>{t(LEVELS[level(task.priority)])}</span>
+                <span className="task-text">
+                  <span className="task-title">{text(task.title)}</span>
+                  {text(task.detail) && <span className="task-detail">{text(task.detail)}</span>}
+                </span>
+                <ArrowUpIcon size={14} className="structured-go" />
+              </button>
             </li>
           ))}
         </ul>
