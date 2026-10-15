@@ -136,7 +136,6 @@ class ChatSession {
         cwd: workDir,
         env: childEnv,
         pathToClaudeCodeExecutable: claudeBinary,
-      pathToClaudeCodeExecutable: claudeBinary,
         resume: config.sessionId ?? undefined,
         // Cutting back forks the session, so the dropped turn stays out of it.
         resumeSessionAt: config.rewindTo ?? undefined,
