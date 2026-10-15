@@ -40,11 +40,14 @@ const de = {
   "sidebar.settings": "Einstellungen (⌘,)",
 
   "chat.cost": "Kosten dieses Chats",
-  "chat.heroTitle": "Worüber möchtest du sprechen?",
+  "chat.greetMorning": "Guten Morgen. Womit fangen wir an?",
+  "chat.greetDay": "Was steht heute an?",
+  "chat.greetEvening": "Guten Abend. Woran tüftelst du?",
+  "chat.greetNight": "Noch wach? Lass uns nachdenken.",
   "chat.heroHint": "Läuft über dein API-Guthaben, nicht über dein Claude-Abo.",
   "chat.drop": "Bilder, PDFs oder Textdateien hier ablegen",
 
-  "composer.placeholder": "Frag Claude etwas",
+  "composer.placeholder": "Schieß los",
   "composer.more": "Anhängen und Optionen",
   "composer.webOff": "Websuche ausschalten",
   "composer.label": "Nachricht",
@@ -200,11 +203,14 @@ const en: Record<TextKey, string> = {
   "sidebar.settings": "Settings (⌘,)",
 
   "chat.cost": "Cost of this chat",
-  "chat.heroTitle": "What would you like to talk about?",
+  "chat.greetMorning": "Good morning. Where do we start?",
+  "chat.greetDay": "What's on today?",
+  "chat.greetEvening": "Good evening. What are you working on?",
+  "chat.greetNight": "Still up? Let's think it through.",
   "chat.heroHint": "Runs on your API credit, not your Claude subscription.",
   "chat.drop": "Drop images, PDFs or text files here",
 
-  "composer.placeholder": "Ask Claude anything",
+  "composer.placeholder": "Fire away",
   "composer.more": "Attach and options",
   "composer.webOff": "Turn off web search",
   "composer.label": "Message",

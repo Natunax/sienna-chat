@@ -1,11 +1,19 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { formatUsd, type Chat, type OutgoingAttachment } from "../api";
-import { t, useLanguage } from "../i18n";
+import { t, useLanguage, type TextKey } from "../i18n";
 import { redoLast, rewindPoint, sendMessage, stopMessage, updateChat } from "../store";
 import { Composer, type ComposerSettings } from "./Composer";
 import { SidebarIcon } from "./icons";
 import { MessageView } from "./MessageView";
+
+/** The empty chat greets by time of day. */
+function greeting(hour: number): TextKey {
+  if (hour >= 5 && hour < 11) return "chat.greetMorning";
+  if (hour >= 11 && hour < 18) return "chat.greetDay";
+  if (hour >= 18 && hour < 23) return "chat.greetEvening";
+  return "chat.greetNight";
+}
 
 interface Props {
   chat: Chat;
@@ -166,7 +174,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
       {empty ? (
         <div className="hero">
           <div className="hero-inner">
-            <h2 className="hero-title">{t("chat.heroTitle")}</h2>
+            <h2 className="hero-title">{t(greeting(new Date().getHours()))}</h2>
             {composer}
             <p className="hero-hint">{t("chat.heroHint")}</p>
           </div>
