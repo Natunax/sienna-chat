@@ -592,11 +592,13 @@ export function answerPermission(chatId: string, request: PermissionRequest, dec
     next = updateTool(next, request.toolUseId, (tool) =>
       decision === "deny"
         ? { ...tool, denied: true }
-        : request.tool === "Bash"
-          ? tool
-          : { ...tool, change: storedChange(request) },
+        : request.tool === "Edit" || request.tool === "Write"
+          ? { ...tool, change: storedChange(request) }
+          : tool,
     );
-    if (decision === "always" && request.tool !== "Bash" && next.mode === "default") next = { ...next, mode: "acceptEdits" };
+    if (decision === "always" && (request.tool === "Edit" || request.tool === "Write") && next.mode === "default") {
+      next = { ...next, mode: "acceptEdits" };
+    }
     return next;
   });
   void api.chatPermission(chatId, request.id, decision).catch(() => {});

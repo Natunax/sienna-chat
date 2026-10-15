@@ -101,16 +101,22 @@ fn dir_of(chat: &Value) -> Option<String> {
 /// Bumped when the index gains a field; an older index is rebuilt once.
 const INDEX_VERSION: &str = "3";
 
+/// Chats are private: files only the user can read (0600).
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
     let tmp = path.with_extension("json.tmp");
     fs::write(&tmp, bytes)
+        .and_then(|()| fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600)))
         .and_then(|()| fs::rename(&tmp, path))
         .map_err(|_| "error.saveFailed".to_string())
 }
 
 impl Store {
     pub fn new(root: PathBuf) -> Self {
+        use std::os::unix::fs::PermissionsExt;
         let _ = fs::create_dir_all(root.join("chats"));
+        // Chats, transcripts and the engine's config live below; only the user may enter.
+        let _ = fs::set_permissions(&root, fs::Permissions::from_mode(0o700));
         let store = Self {
             root,
             lock: Mutex::new(()),

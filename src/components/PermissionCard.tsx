@@ -11,6 +11,7 @@ interface Props {
 }
 
 function title(request: PermissionRequest): string {
+  if (request.tool === "Check") return t("permission.check");
   if (!["Edit", "Write", "Bash"].includes(request.tool)) return t("permission.other", { tool: request.tool });
   return t(titleKey(request));
 }
@@ -52,7 +53,9 @@ export function PermissionCard({ request, onAnswer }: Props) {
       {command ? (
         <div className="permission-body">
           {request.description && (
-            <p className="permission-text">{request.description}</p>
+            <p className="permission-text">
+              {request.tool === "Check" ? t("permission.checkFiles", { files: request.description }) : request.description}
+            </p>
           )}
           <pre className="permission-command">
             <code>{request.command}</code>

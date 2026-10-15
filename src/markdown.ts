@@ -11,6 +11,16 @@ const CACHE_LIMIT = 2000;
 
 const PURIFY = { FORBID_TAGS: ["style", "form", "input", "button", "iframe"], FORBID_ATTR: ["style"] };
 
+// An answer must not dress up as the app: no ids, and classes only for the
+// code language. A link shows where it goes before it is clicked.
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  node.removeAttribute("id");
+  if (node.tagName !== "CODE" || !/^language-[\w+-]+$/.test(node.getAttribute("class") ?? "")) {
+    node.removeAttribute("class");
+  }
+  if (node.tagName === "A") node.setAttribute("title", node.getAttribute("href") ?? "");
+});
+
 function renderBlock(token: Token, links: TokensList["links"]): string {
   const hit = cache.get(token.raw);
   if (hit !== undefined) return hit;

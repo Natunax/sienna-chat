@@ -1,6 +1,7 @@
 //! The project folder Claude may read in a chat. Only real folders inside the
 //! user's home folder or on an external volume qualify; the home folder itself,
-//! the root and hidden folders such as `~/.ssh` do not. The engine checks every
+//! the root, hidden folders such as `~/.ssh` and `~/Library` (app data,
+//! Sienna's own included, keychains, mail) do not. The engine checks every
 //! read against the canonical path returned here (`sidecar/project.mjs`).
 
 use std::path::{Component, Path, PathBuf};
@@ -15,7 +16,9 @@ pub fn validate(path: &str) -> Result<PathBuf, String> {
         .ok()
         .and_then(|home| Path::new(&home).canonicalize().ok())
         .ok_or_else(invalid)?;
-    let under_home = canonical.starts_with(&home) && canonical != home;
+    let under_home = canonical.starts_with(&home)
+        && canonical != home
+        && !canonical.starts_with(home.join("Library"));
     let on_volume = canonical.starts_with("/Volumes") && canonical.components().count() > 3;
     if !(under_home || on_volume) {
         return Err(invalid());
@@ -41,6 +44,7 @@ mod tests {
         let home = base.join("home");
         fs::create_dir_all(home.join("code/acme")).unwrap();
         fs::create_dir_all(home.join(".ssh")).unwrap();
+        fs::create_dir_all(home.join("Library/Application Support/sienna")).unwrap();
         fs::create_dir_all(base.join("elsewhere")).unwrap();
         fs::write(home.join("code/notes.txt"), "quokka").unwrap();
         // The only test that sets HOME, so no other test sees the change.
@@ -51,6 +55,8 @@ mod tests {
             (home.join("code/acme/../acme"), true),
             (home.clone(), false),
             (home.join(".ssh"), false),
+            (home.join("Library"), false),
+            (home.join("Library/Application Support/sienna"), false),
             (home.join("code/notes.txt"), false),
             (home.join("code/missing"), false),
             (base.join("elsewhere"), false),

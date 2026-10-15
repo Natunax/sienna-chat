@@ -71,7 +71,36 @@ const childEnv = {
   CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
   ENABLE_CLAUDEAI_MCP_SERVERS: "false",
   CLAUDE_AGENT_SDK_CLIENT_APP: "sienna/0.1.0",
+  // Commands Claude runs (Bash, hooks) get an environment without the API key;
+  // only Claude Code itself keeps it for its requests.
+  CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
 };
+
+// Never readable by sandboxed commands: credentials, shell history and
+// Sienna's own data (chats, transcripts).
+const PRIVATE_PATHS = [
+  ".ssh",
+  ".aws",
+  ".gnupg",
+  ".config/gh",
+  ".config/gcloud",
+  ".docker",
+  ".kube",
+  ".netrc",
+  ".npmrc",
+  ".pypirc",
+  ".git-credentials",
+  ".zsh_history",
+  ".bash_history",
+  ".claude",
+  "Library/Keychains",
+  "Library/Cookies",
+].map((path) => join(home, path));
+
+/** API keys in text that leaves the engine (command output, check output), masked. */
+function maskSecrets(text) {
+  return String(text ?? "").replace(/sk-ant-[A-Za-z0-9_-]{6,}/g, "sk-ant-…");
+}
 
 const SYSTEM_PROMPT = [
   "You are Claude, chatting in Sienna, a private chat app on the user's Mac.",
@@ -117,22 +146,35 @@ const CHECK_TIMEOUT_MS = 10 * 60 * 1000;
 const REVERTED_NOTE =
   "<sienna_note>The user reverted the file changes of an earlier answer in Sienna. The files are back to how they were before it; read them again before relying on them.</sienna_note>";
 
-/** Runs the user's check command in the project folder; resolves with its result. */
-function runCheck(command, cwd) {
+/**
+ * Runs the user's check command in the project folder; resolves with its
+ * result. Stopping (`signal`) ends it with everything it started.
+ */
+function runCheck(command, cwd, signal) {
   return new Promise((resolveCheck) => {
     // The API key stays out of the user's tests.
-    const { ANTHROPIC_API_KEY: _key, CLAUDE_CONFIG_DIR: _config, ...env } = childEnv;
-    const child = spawn("/bin/zsh", ["-c", command], { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    const { ANTHROPIC_API_KEY: _key, CLAUDE_CONFIG_DIR: _config, CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: _scrub, ...env } = childEnv;
+    // Its own process group, so test runners and their children stop together.
+    const child = spawn("/bin/zsh", ["-c", command], { cwd, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    const stop = () => {
+      try {
+        process.kill(-child.pid, "SIGTERM");
+      } catch {
+        // Already gone.
+      }
+    };
+    signal?.addEventListener("abort", stop, { once: true });
     let output = "";
     const collect = (chunk) => {
       output = (output + chunk.toString()).slice(-MAX_OUTPUT_CHARS * 4);
     };
     child.stdout.on("data", collect);
     child.stderr.on("data", collect);
-    const timer = setTimeout(() => child.kill("SIGTERM"), CHECK_TIMEOUT_MS);
+    const timer = setTimeout(stop, CHECK_TIMEOUT_MS);
     const finish = (code) => {
       clearTimeout(timer);
-      resolveCheck({ passed: code === 0, output: output.slice(-MAX_OUTPUT_CHARS) });
+      signal?.removeEventListener("abort", stop);
+      resolveCheck({ passed: code === 0, output: maskSecrets(output.slice(-MAX_OUTPUT_CHARS)) });
     };
     child.on("error", () => finish(-1));
     child.on("close", finish);
@@ -204,9 +246,12 @@ class ChatSession {
     this.permissions = new Map();
     /** Commands' tool use ids, to report their output. */
     this.commandIds = new Set();
-    /** Files changed in the running answer, and check rounds run for it. */
+    /** Files changed in the running answer, those changed without asking, and check rounds run for it. */
     this.edited = false;
+    this.unasked = new Set();
     this.checkRounds = 0;
+    /** Stops a running check when the answer is stopped. */
+    this.checkStop = null;
     this.query = query({
       prompt: this.inbox,
       options: {
@@ -230,6 +275,7 @@ class ChatSession {
                 autoAllowBashIfSandboxed: false,
                 allowUnsandboxedCommands: false,
                 network: { allowLocalBinding: true },
+                filesystem: { denyRead: [...PRIVATE_PATHS, dataDir] },
               }
             : undefined,
         canUseTool: config.projectDir ? (tool, input, options) => this.askUser(tool, input, options) : undefined,
@@ -239,10 +285,11 @@ class ChatSession {
                 mode: () => this.config.mode,
                 onEdit: (tool, input, toolUseId) => {
                   this.edited = true;
+                  this.unasked.add(this.relative(String(input.file_path ?? "")));
                   emit({ type: "change", chatId: this.chatId, id: randomUUID(), toolUseId, ...this.describe(tool, input) });
                 },
               }),
-              Stop: [{ hooks: [() => this.afterAnswer()] }],
+              Stop: [{ hooks: [(_input, _id, options) => this.afterAnswer(options?.signal)] }],
             }
           : undefined,
         // Backups of changed files, so an answer's changes can be undone.
@@ -267,7 +314,7 @@ class ChatSession {
    * Stop hook: after an answer that changed files, runs the project's check
    * command. A failing check sends Claude back to fix it, a few times at most.
    */
-  async afterAnswer() {
+  async afterAnswer(signal) {
     const command = this.config.check;
     if (!command || !this.edited || this.checkRounds >= MAX_CHECK_ROUNDS || this.interrupted) return {};
     this.edited = false;
@@ -275,7 +322,20 @@ class ChatSession {
     this.flush();
     const id = `check-${randomUUID()}`;
     emit({ type: "tool", chatId: this.chatId, id, name: "Check", detail: command.slice(0, 500) });
-    const result = await runCheck(command, this.config.projectDir);
+    // The check runs outside the sandbox. After changes nobody looked at (a
+    // test script, a Makefile), the user decides whether it may run.
+    if (this.unasked.size) {
+      const files = [...this.unasked];
+      this.unasked.clear();
+      const answer = await this.askUser("Check", { command, files }, { signal, toolUseID: id });
+      if (answer.behavior !== "allow") return {};
+    }
+    const controller = new AbortController();
+    this.checkStop = controller;
+    signal?.addEventListener("abort", () => controller.abort(), { once: true });
+    const result = await runCheck(command, this.config.projectDir, controller.signal);
+    this.checkStop = null;
+    if (this.interrupted || controller.signal.aborted) return {};
     emit({ type: "toolResult", chatId: this.chatId, id, failed: !result.passed, output: result.output || "" });
     if (result.passed) return {};
     return {
@@ -339,6 +399,9 @@ class ChatSession {
    */
   askUser(tool, input, { signal, toolUseID }) {
     const denied = (message) => ({ behavior: "deny", message });
+    if (signal?.aborted) return Promise.resolve(denied("The answer was stopped."));
+    // A second model's answer only reads; nobody is there to approve anything.
+    if (this.config.lane) return Promise.resolve(denied("This answer cannot change anything."));
     // Anything else that asks (the sandbox wanting network access, say) shows as it is.
     const id = randomUUID();
     this.flush();
@@ -369,6 +432,9 @@ class ChatSession {
 
   /** What the approval card shows: the file and its change, or the command. */
   describe(tool, input) {
+    if (tool === "Check") {
+      return { tool, command: String(input.command ?? ""), description: (input.files ?? []).slice(0, 12).join(", ") };
+    }
     if (!EDIT_TOOLS.includes(tool) && !RUN_TOOLS.includes(tool)) {
       return { tool, command: JSON.stringify(input, null, 2).slice(0, 4000) };
     }
@@ -443,6 +509,7 @@ class ChatSession {
     this.busy = true;
     this.interrupted = false;
     this.edited = false;
+    this.unasked.clear();
     this.checkRounds = 0;
     this.inbox.push({
       type: "user",
@@ -558,7 +625,7 @@ class ChatSession {
             chatId: this.chatId,
             id: block.tool_use_id,
             failed: Boolean(block.is_error),
-            output: command ? resultText(block.content).slice(-MAX_OUTPUT_CHARS) : "",
+            output: command ? maskSecrets(resultText(block.content).slice(-MAX_OUTPUT_CHARS)) : "",
           });
         }
         return;
@@ -641,6 +708,7 @@ class ChatSession {
   async interrupt() {
     this.interrupted = true;
     this.dropPermissions();
+    this.checkStop?.abort();
     try {
       await this.query.interrupt();
     } catch {
