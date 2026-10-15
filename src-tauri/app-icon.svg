@@ -11,9 +11,9 @@
   </defs>
   <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
   <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="3"/>
-  <g transform="translate(-36 0)">
+  <g transform="translate(8 -6)">
   <path d="M641.5 359c-35.3-35.3-82.4-53-141.3-53-88.3 0-147.2 47.1-147.2 111.8 0 129.5 306.1 70.6 306.1 200.1 0 64.7-64.7 111.8-158.9 111.8-58.9 0-111.8-17.7-153-58.9"
         fill="none" stroke="url(#s)" stroke-width="76" stroke-linecap="round"/>
-  <circle cx="758" cy="738" r="40" fill="#FFFFFF"/>
   </g>
+  <circle cx="766" cy="732" r="40" fill="#FFFFFF"/>
 </svg>
