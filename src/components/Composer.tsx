@@ -266,21 +266,21 @@ export function Composer(props: Props) {
         </div>
         {notice && <div className="composer-notice">{notice}</div>}
       </div>
-      {/* The model sits below the box, as in Claude Code. */}
+      {/* As in Claude Code: the mode on the left, model and context on the right. */}
       <div className="composer-footer">
-        <div className="composer-footer-start">
-          <ModeMenu mode={mode} onChange={onMode} />
+        <ModeMenu mode={mode} onChange={onMode} />
+        <div className="composer-footer-end">
           <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
+          {context && context.window > 0 && (
+            <ContextMeter
+              used={context.used}
+              window={context.window}
+              categories={context.categories}
+              onCompact={onCompact}
+              compacting={compacting}
+            />
+          )}
         </div>
-        {context && context.window > 0 && (
-          <ContextMeter
-            used={context.used}
-            window={context.window}
-            categories={context.categories}
-            onCompact={onCompact}
-            compacting={compacting}
-          />
-        )}
       </div>
     </div>
   );

@@ -1571,7 +1571,7 @@ button.tool-toggle:hover .tool-name,
   padding: 4px 2px 0;
 }
 
-.composer-footer-start {
+.composer-footer-end {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -1781,10 +1781,6 @@ button.tool-toggle:hover .tool-name,
 }
 
 /* Below the box the menu opens upward from the left edge. */
-.composer-footer .model-menu {
-  left: 0;
-  right: auto;
-}
 
 .composer-notice {
   margin: 4px 8px 2px;
