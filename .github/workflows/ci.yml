@@ -18,8 +18,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            sidecar/package-lock.json
 
       - run: npm ci
+      # The Tauri build bundles the engine's packages and checks they exist.
+      - run: npm ci --prefix sidecar
       - run: npx tsc --noEmit
       - run: npx vite build
       - run: node --check sidecar/index.mjs
