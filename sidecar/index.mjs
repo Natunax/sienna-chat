@@ -1,0 +1,356 @@
+// Chat engine of Claude API Chat. The Rust shell starts this script with Node
+// and talks to it in JSON lines: commands on stdin, events on stdout.
+//
+// Every chat keeps one live Agent SDK query in streaming-input mode, so a
+// follow-up message does not pay for a new Claude Code process. A chat whose
+// query was closed (app restart, settings change) is picked up again with
+// `resume` and its session id.
+
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { createInterface } from "node:readline";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+
+const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
+const dataDir = process.env.CHAT_DATA_DIR ?? "";
+
+// Without a key the SDK would quietly fall back to the Claude subscription
+// login, which this app must never use.
+if (!apiKey.startsWith("sk-ant-api") || !dataDir) {
+  emit({ type: "fatal", message: "Kein API-Key gefunden." });
+  process.exit(1);
+}
+
+// An own config dir keeps the user's Claude Code login, settings, hooks,
+// plugins and memory out of the chat.
+const configDir = join(dataDir, "claude-config");
+const workDir = join(dataDir, "workspace");
+mkdirSync(configDir, { recursive: true });
+mkdirSync(workDir, { recursive: true });
+
+const childEnv = {
+  PATH: process.env.PATH,
+  HOME: process.env.HOME,
+  LANG: process.env.LANG ?? "de_DE.UTF-8",
+  TMPDIR: process.env.TMPDIR,
+  ANTHROPIC_API_KEY: apiKey,
+  CLAUDE_CONFIG_DIR: configDir,
+  CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+  ENABLE_CLAUDEAI_MCP_SERVERS: "false",
+  CLAUDE_AGENT_SDK_CLIENT_APP: "sienna/0.1.0",
+};
+
+const SYSTEM_PROMPT = [
+  "Du bist Claude in einer privaten Chat-App auf dem Mac des Nutzers.",
+  "Antworte in der Sprache des Nutzers, standardmäßig auf Deutsch.",
+  "Schreib klar und direkt, nutze Markdown, wo es das Lesen erleichtert, und Codeblöcke mit Sprachangabe.",
+  "Wenn du im Web suchst, nenne die wichtigsten Quellen als Links.",
+].join("\n");
+
+// Search only: WebFetch would let a page the model reads tell it to fetch an
+// attacker's URL with parts of the conversation in it, unasked.
+const WEB_TOOLS = ["WebSearch"];
+const DELTA_FLUSH_MS = 32;
+// Every live chat keeps a Claude Code process of its own. Idle chats are
+// closed and picked up again with `resume` on their next message.
+const MAX_LIVE_SESSIONS = 3;
+const IDLE_CLOSE_MS = 10 * 60 * 1000;
+
+/** @type {Map<string, ChatSession>} */
+const sessions = new Map();
+
+function emit(event) {
+  process.stdout.write(JSON.stringify(event) + "\n");
+}
+
+// An async iterable the SDK reads user messages from; push() wakes it.
+function createInbox() {
+  const items = [];
+  let wake = null;
+  let closed = false;
+  return {
+    push(item) {
+      items.push(item);
+      wake?.();
+      wake = null;
+    },
+    close() {
+      closed = true;
+      wake?.();
+      wake = null;
+    },
+    async *[Symbol.asyncIterator]() {
+      while (true) {
+        while (items.length) yield items.shift();
+        if (closed) return;
+        await new Promise((resolve) => (wake = resolve));
+      }
+    },
+  };
+}
+
+class ChatSession {
+  constructor(chatId, config) {
+    this.chatId = chatId;
+    this.config = config;
+    this.inbox = createInbox();
+    // Cost already booked for this chat: a resumed query reports running
+    // totals that include the earlier turns.
+    this.costBase = config.costSoFar;
+    this.turnHasText = false;
+    this.pending = { text: "", thinking: "" };
+    this.flushTimer = null;
+    this.idleTimer = null;
+    this.busy = false;
+    this.interrupted = false;
+    this.failReason = null;
+    this.closed = false;
+    this.query = query({
+      prompt: this.inbox,
+      options: {
+        model: config.model,
+        effort: config.effort,
+        thinking: { type: "adaptive", display: "summarized" },
+        includePartialMessages: true,
+        settingSources: [],
+        strictMcpConfig: true,
+        tools: config.web ? WEB_TOOLS : [],
+        allowedTools: config.web ? WEB_TOOLS : [],
+        permissionMode: "dontAsk",
+        systemPrompt: SYSTEM_PROMPT,
+        cwd: workDir,
+        env: childEnv,
+        resume: config.sessionId ?? undefined,
+        stderr: () => {},
+      },
+    });
+    this.pump();
+  }
+
+  sameConfig(config) {
+    return this.config.effort === config.effort && this.config.web === config.web;
+  }
+
+  send(content) {
+    clearTimeout(this.idleTimer);
+    this.busy = true;
+    this.interrupted = false;
+    this.inbox.push({
+      type: "user",
+      message: { role: "user", content },
+      parent_tool_use_id: null,
+    });
+  }
+
+  queueDelta(kind, text) {
+    this.pending[kind] += text;
+    if (!this.flushTimer) this.flushTimer = setTimeout(() => this.flush(), DELTA_FLUSH_MS);
+  }
+
+  flush() {
+    clearTimeout(this.flushTimer);
+    this.flushTimer = null;
+    const { text, thinking } = this.pending;
+    if (!text && !thinking) return;
+    this.pending = { text: "", thinking: "" };
+    emit({ type: "delta", chatId: this.chatId, text, thinking });
+  }
+
+  handle(message) {
+    if (message.parent_tool_use_id) return;
+    switch (message.type) {
+      case "system":
+        if (message.subtype === "init") {
+          // Belt and braces: never run a turn on anything but the API key.
+          if (message.apiKeySource !== "ANTHROPIC_API_KEY") {
+            this.failReason = "Die Engine lief nicht mit dem API-Key und wurde gestoppt.";
+            this.close();
+            return;
+          }
+          emit({ type: "session", chatId: this.chatId, sessionId: message.session_id });
+        }
+        return;
+      case "stream_event": {
+        const event = message.event;
+        if (event.type === "content_block_delta") {
+          if (event.delta.type === "text_delta") this.queueDelta("text", event.delta.text);
+          else if (event.delta.type === "thinking_delta") this.queueDelta("thinking", event.delta.thinking);
+        } else if (event.type === "content_block_start" && event.content_block.type === "text") {
+          // A text block after a web search continues the answer as a new paragraph.
+          if (this.turnHasText) this.queueDelta("text", "\n\n");
+          this.turnHasText = true;
+        }
+        return;
+      }
+      case "assistant":
+        for (const block of message.message.content) {
+          if (block.type !== "tool_use") continue;
+          this.flush();
+          const input = block.input ?? {};
+          emit({
+            type: "tool",
+            chatId: this.chatId,
+            name: block.name,
+            detail: String(input.query ?? input.url ?? ""),
+          });
+        }
+        return;
+      case "result": {
+        this.flush();
+        // total_cost_usd is a running total of this query; report the turn's share.
+        const total = message.total_cost_usd ?? 0;
+        const turnCost = total >= this.costBase ? total - this.costBase : total;
+        this.costBase = total;
+        this.turnHasText = false;
+        this.busy = false;
+        // A stopped answer ends with an error result; that is not a failure.
+        const failed = message.is_error && !this.interrupted;
+        emit({
+          type: "done",
+          chatId: this.chatId,
+          sessionId: message.session_id,
+          costUsd: turnCost,
+          error: failed ? describeError(message) : null,
+        });
+        this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  async pump() {
+    let failure = null;
+    try {
+      for await (const message of this.query) this.handle(message);
+    } catch (error) {
+      failure = error;
+    } finally {
+      // The process ended in the middle of an answer: the UI must not wait for it.
+      if (this.busy) {
+        this.busy = false;
+        this.flush();
+        const error = this.interrupted
+          ? null
+          : (this.failReason ?? (failure ? describeError(failure) : "Die Antwort wurde unterbrochen."));
+        emit({ type: "done", chatId: this.chatId, costUsd: 0, error });
+      }
+      clearTimeout(this.idleTimer);
+      if (sessions.get(this.chatId) === this) sessions.delete(this.chatId);
+    }
+  }
+
+  async interrupt() {
+    this.interrupted = true;
+    try {
+      await this.query.interrupt();
+    } catch {
+      this.close();
+    }
+  }
+
+  close() {
+    if (this.closed) return;
+    this.closed = true;
+    clearTimeout(this.idleTimer);
+    this.flush();
+    this.inbox.close();
+    try {
+      this.query.close();
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
+function describeError(source) {
+  const raw =
+    source?.errors?.join(" ") ?? source?.result ?? source?.message ?? String(source ?? "");
+  const status = source?.api_error_status ?? 0;
+  if (status === 401 || /invalid api key|authentication/i.test(raw)) return "Der API-Key wurde abgelehnt.";
+  if (/usage limit|spend limit|credit balance/i.test(raw)) return "Das API-Guthaben oder Ausgabenlimit ist erreicht.";
+  if (status === 429 || /rate limit/i.test(raw)) return "Zu viele Anfragen. Bitte gleich noch einmal versuchen.";
+  if (status === 529 || /overloaded/i.test(raw)) return "Claude ist gerade überlastet. Bitte gleich noch einmal versuchen.";
+  return "Die Antwort ist fehlgeschlagen.";
+}
+
+function toContent(text, attachments) {
+  if (!attachments?.length) return text;
+  const blocks = attachments.map((file) =>
+    file.mediaType === "application/pdf"
+      ? { type: "document", source: { type: "base64", media_type: file.mediaType, data: file.data } }
+      : { type: "image", source: { type: "base64", media_type: file.mediaType, data: file.data } },
+  );
+  if (text) blocks.push({ type: "text", text });
+  return blocks;
+}
+
+async function onSend(command) {
+  const config = {
+    model: command.model,
+    effort: command.effort,
+    web: Boolean(command.web),
+    sessionId: command.sessionId ?? null,
+    costSoFar: Number(command.costSoFar) || 0,
+  };
+  let session = sessions.get(command.chatId);
+  if (session && !session.sameConfig(config)) {
+    session.close();
+    sessions.delete(command.chatId);
+    session = undefined;
+  }
+  if (!session) {
+    evictIdleSessions();
+    session = new ChatSession(command.chatId, config);
+  } else if (session.config.model !== config.model) {
+    session.config.model = config.model;
+    await session.query.setModel(config.model);
+  }
+  // Re-inserting keeps the map ordered from least to most recently used.
+  sessions.delete(command.chatId);
+  sessions.set(command.chatId, session);
+  session.send(toContent(command.text, command.attachments));
+}
+
+/** Makes room for one more live session by closing the oldest idle ones. */
+function evictIdleSessions() {
+  for (const [chatId, session] of sessions) {
+    if (sessions.size < MAX_LIVE_SESSIONS) return;
+    if (session.busy) continue;
+    session.close();
+    sessions.delete(chatId);
+  }
+}
+
+function onCommand(line) {
+  let command;
+  try {
+    command = JSON.parse(line);
+  } catch {
+    return;
+  }
+  switch (command.type) {
+    case "send":
+      onSend(command).catch((error) =>
+        emit({ type: "done", chatId: command.chatId, costUsd: 0, error: describeError(error) }),
+      );
+      return;
+    case "interrupt":
+      sessions.get(command.chatId)?.interrupt();
+      return;
+    case "close":
+      sessions.get(command.chatId)?.close();
+      sessions.delete(command.chatId);
+      return;
+    default:
+      return;
+  }
+}
+
+createInterface({ input: process.stdin }).on("line", onCommand).on("close", () => {
+  for (const session of sessions.values()) session.close();
+  process.exit(0);
+});
+
+emit({ type: "ready" });
