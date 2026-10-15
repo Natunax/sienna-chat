@@ -95,7 +95,7 @@ flowchart LR
 - **The key stays in the Keychain.** It is never written to a file, a log or the UI. It reaches the engine process only through its environment.
 - **No subscription fallback.** Without a key the Agent SDK would quietly use a logged-in Claude subscription. The engine refuses to start without an API key and runs with its own `CLAUDE_CONFIG_DIR` and no setting sources, so your Claude Code login, settings, hooks, plugins and memory are never loaded.
 - **The model gets no tools on your Mac.** The only tool is `WebSearch`, and only while the web toggle is on. No shell, no file access. `WebFetch` is left out on purpose: a page the model reads could otherwise tell it to fetch an attacker's URL with parts of your conversation in it.
-- **API keys only.** The app accepts only `sk-ant-api…` keys, and the engine stops a turn if the SDK reports any other credential source.
+- **API keys only.** The app refuses OAuth tokens (`sk-ant-oat…`) and admin keys, and the engine stops a turn if the SDK reports any credential source other than the API key.
 - **Rendered answers are sanitized** (marked + DOMPurify), the WebView runs under a strict Content Security Policy, remote images are not loaded, a navigation guard keeps the window on the app, and only `http`/`https` links open, in your default browser.
 - **Your data:** chats and the monthly spend are JSON files in `~/Library/Application Support/io.github.natunax.sienna/`. The Agent SDK keeps its own transcript of each chat in `claude-config/` there; deleting a chat deletes both. Requests go only to Anthropic.
 

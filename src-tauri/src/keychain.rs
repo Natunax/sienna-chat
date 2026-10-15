@@ -19,8 +19,12 @@ pub fn read() -> Option<String> {
 
 pub fn save(key: &str) -> Result<(), String> {
     let key = key.trim();
-    // Only API keys: an OAuth token (`sk-ant-oat…`) would bill a subscription.
-    let plausible = key.starts_with("sk-ant-api")
+    // API keys come in several prefixes (`sk-ant-api…`, `sk-ant-usr…`). An
+    // OAuth token (`sk-ant-oat…`) would bill a subscription and an admin key
+    // cannot chat, so those two are refused.
+    let refused = key.starts_with("sk-ant-oat") || key.starts_with("sk-ant-admin");
+    let plausible = key.starts_with("sk-ant-")
+        && !refused
         && key.len() >= 40
         && key.len() <= 256
         && key

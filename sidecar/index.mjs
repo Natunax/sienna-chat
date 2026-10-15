@@ -16,7 +16,9 @@ const dataDir = process.env.CHAT_DATA_DIR ?? "";
 
 // Without a key the SDK would quietly fall back to the Claude subscription
 // login, which this app must never use.
-if (!apiKey.startsWith("sk-ant-api") || !dataDir) {
+// API keys come in several prefixes; an OAuth token would bill a subscription.
+const isApiKey = apiKey.startsWith("sk-ant-") && !apiKey.startsWith("sk-ant-oat");
+if (!isApiKey || !dataDir) {
   emit({ type: "fatal", message: "Kein API-Key gefunden." });
   process.exit(1);
 }

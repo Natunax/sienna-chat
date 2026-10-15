@@ -29,7 +29,7 @@ export function KeyForm({ onSaved, submitLabel = "Speichern" }: { onSaved: () =>
       <input
         type="password"
         className="field"
-        placeholder="sk-ant-api03-…"
+        placeholder="sk-ant-…"
         value={key}
         onChange={(event) => setKey(event.target.value)}
         autoComplete="off"
