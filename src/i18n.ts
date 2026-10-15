@@ -56,8 +56,8 @@ const de = {
   "composer.projectLocked": "Claude liest {name}. Für einen anderen Ordner einen neuen Chat starten.",
   "composer.projectRemove": "Ordner entfernen",
   "composer.projectTitle": "Projektordner wählen",
-  "composer.modelHint": "Modell und Gründlichkeit",
-  "composer.effort": "Gründlichkeit",
+  "composer.modelHint": "Modell und Aufwand",
+  "composer.effort": "Aufwand",
   "composer.send": "Senden",
   "composer.sendHint": "Senden (↩)",
   "composer.stop": "Antwort stoppen",
@@ -70,13 +70,12 @@ const de = {
   "composer.imageSize": "Bilder dürfen höchstens 5 MB groß sein.",
   "composer.readError": "Die Datei konnte nicht gelesen werden.",
 
-  "model.sonnet": "Schnell und stark für fast alles",
-  "model.opus": "Am gründlichsten, kostet doppelt so viel",
-  "model.haiku": "Blitzschnell und sehr günstig",
   "model.other": "Sonstige",
   "effort.low": "Niedrig",
   "effort.medium": "Mittel",
   "effort.high": "Hoch",
+  "effort.xhigh": "Extra hoch",
+  "effort.max": "Maximal",
 
   "message.thinking": "Denkt nach…",
   "message.thoughts": "Gedankengang",
@@ -157,6 +156,7 @@ const de = {
   "error.rateLimited": "Zu viele Anfragen. Bitte gleich noch einmal versuchen.",
   "error.overloaded": "Claude ist gerade überlastet. Bitte gleich noch einmal versuchen.",
   "error.answerFailed": "Die Antwort ist fehlgeschlagen.",
+  "error.refused": "Claude hat diese Anfrage aus Sicherheitsgründen abgelehnt.",
   "error.projectInvalid":
     "Dieser Ordner geht nicht. Wähl einen Ordner in deinem Benutzerordner, nicht den Benutzerordner selbst und keinen versteckten.",
 };
@@ -228,13 +228,12 @@ const en: Record<TextKey, string> = {
   "composer.imageSize": "Images can be at most 5 MB.",
   "composer.readError": "The file could not be read.",
 
-  "model.sonnet": "Fast and strong for almost everything",
-  "model.opus": "Most thorough, costs twice as much",
-  "model.haiku": "Lightning fast and very cheap",
   "model.other": "Other",
   "effort.low": "Low",
   "effort.medium": "Medium",
   "effort.high": "High",
+  "effort.xhigh": "Extra high",
+  "effort.max": "Max",
 
   "message.thinking": "Thinking…",
   "message.thoughts": "Thoughts",
@@ -314,6 +313,7 @@ const en: Record<TextKey, string> = {
   "error.rateLimited": "Too many requests. Please try again in a moment.",
   "error.overloaded": "Claude is overloaded right now. Please try again in a moment.",
   "error.answerFailed": "The answer failed.",
+  "error.refused": "Claude declined this request for safety reasons.",
   "error.projectInvalid":
     "This folder cannot be used. Choose a folder inside your home folder, not the home folder itself and not a hidden one.",
 };

@@ -1,13 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
-import { EFFORTS, MODELS, type Effort, type ModelId, type OutgoingAttachment } from "../api";
+import { type Effort, type ModelId, type OutgoingAttachment } from "../api";
 import { PICKER_ACCEPT, readAttachment, TEXT_MEDIA_TYPE } from "../attachments";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
 import { errorText, t } from "../i18n";
+import { ModelMenu } from "./ModelMenu";
 import {
   ArrowUpIcon,
-  CheckIcon,
-  ChevronDownIcon,
   CloseIcon,
   DocumentIcon,
   FolderIcon,
@@ -46,81 +45,6 @@ function folderName(path: string): string {
 function fileLabel(name: string): string {
   const dot = name.lastIndexOf(".");
   return (dot > 0 ? name.slice(dot + 1) : "TXT").slice(0, 4).toUpperCase();
-}
-
-function ModelMenu({ settings, onSettings }: Pick<Props, "settings" | "onSettings">) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const current = MODELS.find((model) => model.id === settings.model) ?? MODELS[0];
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const escape = (event: globalThis.KeyboardEvent) => event.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", escape);
-    };
-  }, [open]);
-
-  return (
-    <div className="menu-anchor" ref={ref}>
-      <button
-        type="button"
-        className="pill"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        title={t("composer.modelHint")}
-      >
-        {current.name}
-        <ChevronDownIcon size={13} />
-      </button>
-      {open && (
-        <div className="menu" role="menu">
-          {MODELS.map((model) => (
-            <button
-              key={model.id}
-              type="button"
-              role="menuitemradio"
-              aria-checked={model.id === settings.model}
-              className="menu-item"
-              onClick={() => {
-                onSettings({ model: model.id });
-                setOpen(false);
-              }}
-            >
-              <span className="menu-text">
-                <span className="menu-title">{model.name}</span>
-                <span className="menu-hint">{t(model.hint)}</span>
-              </span>
-              {model.id === settings.model && <CheckIcon size={15} className="menu-check" />}
-            </button>
-          ))}
-          <div className="menu-sep" />
-          <div className="menu-label">{t("composer.effort")}</div>
-          <div className="segmented" role="radiogroup" aria-label={t("composer.effort")}>
-            {EFFORTS.map((effort) => (
-              <button
-                key={effort.id}
-                type="button"
-                role="radio"
-                aria-checked={effort.id === settings.effort}
-                className={effort.id === settings.effort ? "is-active" : undefined}
-                onClick={() => onSettings({ effort: effort.id })}
-              >
-                {t(effort.name)}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 export function Composer(props: Props) {
@@ -311,7 +235,7 @@ export function Composer(props: Props) {
               </button>
             )
           )}
-          <ModelMenu settings={settings} onSettings={onSettings} />
+          <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
         </div>
         {streaming ? (
           <button type="button" className="send-button is-stop" onClick={onStop} aria-label={t("composer.stop")} title={t("composer.stopHint")}>

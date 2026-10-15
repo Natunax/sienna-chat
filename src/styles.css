@@ -21,6 +21,7 @@
   --bubble: #f1eee9;
   --code-bg: #f5f3ef;
   --accent: #c15f3c;
+  --thumb-bg: #ffffff;
   --accent-hover: #ad5333;
   --accent-soft: rgba(193, 95, 60, 0.11);
   --accent-text: #a64c2c;
@@ -59,6 +60,7 @@
     --bubble: #2d2b29;
     --code-bg: #161514;
     --accent: #d97757;
+    --thumb-bg: #ebe7e3;
     --accent-hover: #e3876a;
     --accent-soft: rgba(217, 119, 87, 0.16);
     --accent-text: #eb9677;
@@ -493,7 +495,8 @@ a:focus-visible {
   height: 100%;
   border-radius: 2px;
   background: var(--accent);
-  transition: width 300ms ease;
+  transform-origin: left;
+  transition: transform 300ms ease-out;
 }
 
 .meter-fill.is-high {
@@ -1282,60 +1285,10 @@ a:focus-visible {
   }
 }
 
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 7px 10px;
-  border-radius: 8px;
-  text-align: left;
-}
-
-.menu-item:hover,
-.menu-item:focus-visible {
-  background: var(--fill-hover);
-  outline: none;
-}
-
-.menu-text {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-}
-
-.menu-title {
-  font-weight: 500;
-}
-
-.menu-hint {
-  font-size: 12px;
-  color: var(--label-3);
-}
-
-.menu-check {
-  color: var(--accent);
-}
-
-.menu-sep {
-  height: 0.5px;
-  margin: 6px 4px;
-  background: var(--separator-strong);
-}
-
-.menu-label {
-  margin: 4px 10px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--label-3);
-}
-
 .segmented {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 2px;
-  margin: 0 4px 4px;
   padding: 2px;
   border-radius: 8px;
   background: var(--fill);
@@ -1353,6 +1306,130 @@ a:focus-visible {
   background: var(--surface-raised);
   color: var(--label);
   box-shadow: 0 0 0 0.5px var(--separator-strong), 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* Model and effort menu */
+
+.pill-detail {
+  color: var(--label-3);
+  font-weight: 400;
+}
+
+.model-menu {
+  width: 232px;
+  padding: 5px;
+}
+
+.model-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  padding: 0 10px 0 6px;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.model-item:hover,
+.model-item:focus-visible {
+  background: var(--accent);
+  color: var(--on-accent);
+  outline: none;
+}
+
+.model-check {
+  display: grid;
+  place-items: center;
+  width: 16px;
+}
+
+.effort {
+  margin: 5px 0 0;
+  padding: 10px 10px 4px;
+  border-top: 0.5px solid var(--separator-strong);
+}
+
+.effort-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--label-2);
+}
+
+.effort-value {
+  color: var(--label);
+  font-weight: 500;
+}
+
+/* A native range input, restyled: keyboard, VoiceOver and dragging come free. */
+.effort-track {
+  --thumb: 16px;
+  position: relative;
+  height: 26px;
+}
+
+.effort-range {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+}
+
+.effort-range:focus-visible {
+  outline: none;
+}
+
+.effort-range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 1.5px;
+  /* Filled up to the thumb's center, which moves within the track minus one thumb width. */
+  background: linear-gradient(
+    to right,
+    var(--accent) 0,
+    var(--accent) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--ratio)),
+    var(--fill-active) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--ratio))
+  );
+}
+
+.effort-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: var(--thumb);
+  height: var(--thumb);
+  margin-top: -6.5px;
+  border-radius: 50%;
+  background: var(--thumb-bg);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.18),
+    0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.effort-range:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.18),
+    0 0 0 3px var(--focus);
+}
+
+.effort-ticks {
+  position: absolute;
+  top: 21px;
+  left: calc(var(--thumb) / 2 - 0.5px);
+  right: calc(var(--thumb) / 2 - 0.5px);
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.effort-ticks span {
+  width: 1px;
+  height: 4px;
+  background: var(--label-3);
 }
 
 /* Drop overlay */

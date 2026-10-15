@@ -221,7 +221,7 @@ export function Sidebar(props: Props) {
             <span className="usage-month">{monthName}</span>
           </span>
           <span className="meter" aria-hidden="true">
-            <span className={`meter-fill${share >= 0.9 ? " is-high" : ""}`} style={{ width: `${share * 100}%` }} />
+            <span className={`meter-fill${share >= 0.9 ? " is-high" : ""}`} style={{ transform: `scaleX(${share})` }} />
           </span>
           <GearIcon size={16} className="usage-gear" />
         </button>

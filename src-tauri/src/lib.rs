@@ -15,7 +15,12 @@ struct AppState {
     engine: Engine,
 }
 
-pub(crate) const MODELS: [&str; 3] = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"];
+pub(crate) const MODELS: [&str; 4] = [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5",
+    "claude-opus-5-5",
+    "claude-fable-5-1",
+];
 const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 /// Images and PDFs arrive as base64, text files (code, Markdown, CSV) as text.
 const MEDIA_TYPES: [&str; 6] = [

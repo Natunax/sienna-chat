@@ -1,19 +1,24 @@
 import { invoke } from "@tauri-apps/api/core";
 import { locale, type TextKey } from "./i18n";
 
-export type ModelId = "claude-sonnet-5-5" | "claude-opus-5-5" | "claude-haiku-5-5";
+export type ModelId = "claude-haiku-5-5" | "claude-sonnet-5-5" | "claude-opus-5-5" | "claude-fable-5-1";
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
-export const MODELS: { id: ModelId; name: string; hint: TextKey }[] = [
-  { id: "claude-sonnet-5-5", name: "Sonnet 5.5", hint: "model.sonnet" },
-  { id: "claude-opus-5-5", name: "Opus 5.5", hint: "model.opus" },
-  { id: "claude-haiku-5-5", name: "Haiku 5.5", hint: "model.haiku" },
+/** Ordered by strength (and price). */
+export const MODELS: { id: ModelId; name: string }[] = [
+  { id: "claude-haiku-5-5", name: "Haiku 5.5" },
+  { id: "claude-sonnet-5-5", name: "Sonnet 5.5" },
+  { id: "claude-opus-5-5", name: "Opus 5.5" },
+  { id: "claude-fable-5-1", name: "Fable 5.1" },
 ];
 
+/** Every current model accepts all five effort levels. */
 export const EFFORTS: { id: Effort; name: TextKey }[] = [
   { id: "low", name: "effort.low" },
   { id: "medium", name: "effort.medium" },
   { id: "high", name: "effort.high" },
+  { id: "xhigh", name: "effort.xhigh" },
+  { id: "max", name: "effort.max" },
 ];
 
 export interface ToolUse {

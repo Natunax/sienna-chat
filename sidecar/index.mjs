@@ -311,6 +311,8 @@ function describeError(source) {
   const raw =
     source?.errors?.join(" ") ?? source?.result ?? source?.message ?? String(source ?? "");
   const status = source?.api_error_status ?? 0;
+  // Fable 5.1 and the 5.5 models can decline a request through safety classifiers.
+  if (source?.stop_reason === "refusal") return "error.refused";
   if (status === 401 || /invalid api key|authentication/i.test(raw)) return "error.keyRejected";
   if (/usage limit|spend limit|credit balance/i.test(raw)) return "error.creditExhausted";
   if (status === 429 || /rate limit/i.test(raw)) return "error.rateLimited";
