@@ -5,13 +5,13 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
 import { errorText, t } from "../i18n";
 import { ModelMenu } from "./ModelMenu";
+import { PlusMenu } from "./PlusMenu";
 import {
   ArrowUpIcon,
   CloseIcon,
   DocumentIcon,
   FolderIcon,
   GlobeIcon,
-  PaperclipIcon,
   StopIcon,
 } from "./icons";
 
@@ -60,11 +60,17 @@ export function Composer(props: Props) {
     area.current?.focus();
   }, [autoFocusKey]);
 
+  // The text box grows with its content, and again when the window width changes the wrapping.
   useLayoutEffect(() => {
     const el = area.current;
     if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+    const fit = () => {
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
   }, [text]);
 
   const addFiles = async (list: File[]) => {
@@ -130,116 +136,109 @@ export function Composer(props: Props) {
     });
   };
 
+  const chips = settings.web || project || files.length > 0;
+
   return (
     <div className="composer">
-      {files.length > 0 && (
-        <div className="composer-files">
-          {files.map((file, index) => (
-            <div key={index} className="attachment">
-              {file.previewUrl ? (
-                <img src={file.previewUrl} alt="" />
-              ) : (
-                <span className="attachment-doc">
-                  {file.mediaType === TEXT_MEDIA_TYPE ? (
-                    <span className="attachment-ext">{fileLabel(file.name)}</span>
-                  ) : (
-                    <DocumentIcon size={18} />
-                  )}
-                </span>
-              )}
-              <span className="attachment-name">{file.name}</span>
+      {chips && (
+        <div className="composer-chips">
+          {settings.web && (
+            <span className="chip">
+              <GlobeIcon size={14} />
+              {t("composer.web")}
               <button
                 type="button"
-                className="attachment-remove"
-                aria-label={t("composer.remove", { name: file.name })}
-                onClick={() => removeFile(index)}
+                className="chip-remove"
+                onClick={() => onSettings({ web: false })}
+                aria-label={t("composer.webOff")}
+                title={t("composer.webOff")}
               >
-                <CloseIcon size={12} />
+                <CloseIcon size={11} />
               </button>
-            </div>
-          ))}
-        </div>
-      )}
-      <textarea
-        ref={area}
-        className="composer-input"
-        rows={1}
-        placeholder={t("composer.placeholder")}
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={onKeyDown}
-        onPaste={onPaste}
-        aria-label={t("composer.label")}
-      />
-      {notice && <div className="composer-notice">{notice}</div>}
-      <div className="composer-bar">
-        <div className="composer-tools">
-          <button
-            type="button"
-            className="icon-button"
-            onClick={() => picker.current?.click()}
-            aria-label={t("composer.attach")}
-            title={t("composer.attachHint")}
-          >
-            <PaperclipIcon />
-          </button>
-          <input
-            ref={picker}
-            type="file"
-            hidden
-            multiple
-            accept={PICKER_ACCEPT}
-            onChange={(event) => {
-              void addFiles(Array.from(event.target.files ?? []));
-              event.target.value = "";
-            }}
-          />
-          <button
-            type="button"
-            className={`pill${settings.web ? " is-on" : ""}`}
-            aria-pressed={settings.web}
-            onClick={() => onSettings({ web: !settings.web })}
-            title={t("composer.webHint")}
-          >
-            <GlobeIcon size={15} />
-            {t("composer.web")}
-          </button>
-          {project ? (
-            <span className={`pill is-on project-pill${projectLocked ? " is-locked" : ""}`}>
-              <span
-                className="project-name"
-                title={t(projectLocked ? "composer.projectLocked" : "composer.projectActive", {
-                  name: folderName(project),
-                })}
-              >
-                <FolderIcon size={15} />
-                {folderName(project)}
-              </span>
+            </span>
+          )}
+          {project && (
+            <span
+              className="chip"
+              title={t(projectLocked ? "composer.projectLocked" : "composer.projectActive", { name: folderName(project) })}
+            >
+              <FolderIcon size={14} />
+              <span className="chip-text">{folderName(project)}</span>
               {!projectLocked && (
                 <button
                   type="button"
-                  className="project-remove"
+                  className="chip-remove"
                   onClick={() => onProject(null)}
                   aria-label={t("composer.projectRemove")}
                   title={t("composer.projectRemove")}
                 >
-                  <CloseIcon size={12} />
+                  <CloseIcon size={11} />
                 </button>
               )}
             </span>
-          ) : (
-            !projectLocked && (
-              <button type="button" className="pill" onClick={() => void pickProject()} title={t("composer.projectPick")}>
-                <FolderIcon size={15} />
-                {t("composer.project")}
-              </button>
-            )
           )}
-          <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
+          {files.map((file, index) => (
+            <span key={index} className="chip chip-file">
+              {file.previewUrl ? (
+                <img src={file.previewUrl} alt="" />
+              ) : file.mediaType === TEXT_MEDIA_TYPE ? (
+                <span className="chip-ext">{fileLabel(file.name)}</span>
+              ) : (
+                <DocumentIcon size={14} />
+              )}
+              <span className="chip-text">{file.name}</span>
+              <button
+                type="button"
+                className="chip-remove"
+                aria-label={t("composer.remove", { name: file.name })}
+                title={t("composer.remove", { name: file.name })}
+                onClick={() => removeFile(index)}
+              >
+                <CloseIcon size={11} />
+              </button>
+            </span>
+          ))}
         </div>
+      )}
+      <div className="composer-row">
+        <PlusMenu
+          web={settings.web}
+          onWeb={() => onSettings({ web: !settings.web })}
+          onAttach={() => picker.current?.click()}
+          onProject={projectLocked ? undefined : () => void pickProject()}
+        />
+        <input
+          ref={picker}
+          type="file"
+          hidden
+          multiple
+          accept={PICKER_ACCEPT}
+          onChange={(event) => {
+            void addFiles(Array.from(event.target.files ?? []));
+            event.target.value = "";
+          }}
+        />
+        <textarea
+          ref={area}
+          className="composer-input"
+          rows={1}
+          placeholder={t("composer.placeholder")}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={onKeyDown}
+          onPaste={onPaste}
+          aria-label={t("composer.label")}
+        />
+        <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
         {streaming ? (
-          <button type="button" className="send-button is-stop" onClick={onStop} aria-label={t("composer.stop")} title={t("composer.stopHint")}>
-            <StopIcon />
+          <button
+            type="button"
+            className="send-button is-stop"
+            onClick={onStop}
+            aria-label={t("composer.stop")}
+            title={t("composer.stopHint")}
+          >
+            <StopIcon size={16} />
           </button>
         ) : (
           <button
@@ -250,10 +249,11 @@ export function Composer(props: Props) {
             aria-label={t("composer.send")}
             title={t("composer.sendHint")}
           >
-            <ArrowUpIcon />
+            <ArrowUpIcon size={16} />
           </button>
         )}
       </div>
+      {notice && <div className="composer-notice">{notice}</div>}
     </div>
   );
 }

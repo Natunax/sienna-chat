@@ -113,6 +113,12 @@ export const FolderIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const PlusIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M10 4.5v11M4.5 10h11" />
+  </Icon>
+);
+
 export const CloseIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="m5.5 5.5 9 9M14.5 5.5l-9 9" />

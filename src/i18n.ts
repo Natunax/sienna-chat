@@ -44,7 +44,9 @@ const de = {
   "chat.heroHint": "Läuft über dein API-Guthaben, nicht über dein Claude-Abo.",
   "chat.drop": "Bilder, PDFs oder Textdateien hier ablegen",
 
-  "composer.placeholder": "Schreib Claude eine Nachricht",
+  "composer.placeholder": "Frag Claude etwas",
+  "composer.more": "Anhängen und Optionen",
+  "composer.webOff": "Websuche ausschalten",
   "composer.label": "Nachricht",
   "composer.attach": "Datei anhängen",
   "composer.attachHint": "Bild, PDF oder Textdatei anhängen",
@@ -202,7 +204,9 @@ const en: Record<TextKey, string> = {
   "chat.heroHint": "Runs on your API credit, not your Claude subscription.",
   "chat.drop": "Drop images, PDFs or text files here",
 
-  "composer.placeholder": "Message Claude",
+  "composer.placeholder": "Ask Claude anything",
+  "composer.more": "Attach and options",
+  "composer.webOff": "Turn off web search",
   "composer.label": "Message",
   "composer.attach": "Attach file",
   "composer.attachHint": "Attach an image, PDF or text file",
