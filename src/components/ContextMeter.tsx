@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ContextCategory } from "../api";
 import { locale, t, type TextKey } from "../i18n";
+import { useMenuFocus } from "./useMenuFocus";
 
 /** Token counts in a short form: 950, 12.3k, 200k, 1M. */
 export function shortTokens(tokens: number): string {
@@ -41,6 +42,10 @@ interface Props {
 export function ContextMeter({ used, window, categories = [], onCompact, compacting }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  // Focus goes into the details and back to the meter, as in the menus.
+  useMenuFocus(open, panel, trigger);
   const ratio = Math.min(1, used / window);
   const percent = Math.round(ratio * 100);
   const radius = 5.5;
@@ -66,10 +71,13 @@ export function ContextMeter({ used, window, categories = [], onCompact, compact
   return (
     <div className="menu-anchor context-anchor" ref={ref}>
       <button
+        ref={trigger}
         type="button"
         className={`context-meter${ratio >= 0.8 ? " is-high" : ""}`}
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-controls={open ? "context-panel" : undefined}
+        aria-label={t("composer.context", { percent, used: exact.format(used), window: exact.format(window) })}
         title={t("composer.context", { percent, used: exact.format(used), window: exact.format(window) })}
         onClick={() => setOpen(!open)}
       >
@@ -86,10 +94,19 @@ export function ContextMeter({ used, window, categories = [], onCompact, compact
         </svg>
         <span className="context-figures">
           {shortTokens(used)} / {shortTokens(window)}
+          {/* Nearly full is said in words too, not only by the ring's color. */}
+          {ratio >= 0.8 && <span className="context-warning"> · {t("context.high", { percent })}</span>}
         </span>
       </button>
       {open && (
-        <div className="menu context-panel" role="dialog" aria-label={t("context.title")}>
+        <div
+          ref={panel}
+          id="context-panel"
+          className="menu context-panel"
+          role="dialog"
+          aria-label={t("context.title")}
+          tabIndex={-1}
+        >
           <div className="context-head">
             <span className="context-title">{t("context.title")}</span>
             <span className="context-percent">{percent} %</span>
@@ -126,6 +143,7 @@ export function ContextMeter({ used, window, categories = [], onCompact, compact
             <button
               type="button"
               className="secondary-button"
+              data-menu-item
               disabled={!onCompact || compacting}
               onClick={() => {
                 onCompact?.();

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 import type { PermissionDecision, PermissionRequest } from "../api";
 import { diffLines, diffStats } from "../diff";
 import { t, type TextKey } from "../i18n";
@@ -32,17 +32,44 @@ export function PermissionCard({ request, onAnswer }: Props) {
     () => (command ? null : diffStats(diffLines(before, after))),
     [command, before, after],
   );
-  const Icon = command
-    ? TerminalIcon
-    : request.tool === "Edit"
-      ? PencilIcon
-      : DocumentIcon;
+  const Icon = command ? TerminalIcon : request.tool === "Edit" ? PencilIcon : DocumentIcon;
+  const card = useRef<HTMLElement>(null);
+
+  // Claude waits for this answer: the card comes into view and, unless the
+  // user is typing, takes focus so ⌘↩ and Esc answer it.
+  useEffect(() => {
+    const element = card.current;
+    if (!element) return;
+    element.scrollIntoView({ block: "nearest" });
+    const active = document.activeElement;
+    const typing = active instanceof HTMLTextAreaElement && active.value.trim() !== "";
+    if (!typing) element.focus({ preventScroll: true });
+  }, []);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Enter" && event.metaKey) {
+      event.preventDefault();
+      onAnswer(request, "allow");
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      onAnswer(request, "deny");
+    }
+  };
 
   return (
-    <section className="permission" aria-label={title(request)}>
+    <section
+      ref={card}
+      className="permission"
+      role="alertdialog"
+      aria-labelledby={`permission-${request.id}`}
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
+    >
       <header className="permission-head">
         <Icon size={15} className="permission-icon" />
-        <span className="permission-title">{title(request)}</span>
+        <span className="permission-title" id={`permission-${request.id}`}>
+          {title(request)}
+        </span>
         {stats && (
           <span className="permission-stats">
             <span className="is-add">+{stats.added}</span>
@@ -78,6 +105,7 @@ export function PermissionCard({ request, onAnswer }: Props) {
         <button
           type="button"
           className="secondary-button"
+          title="Esc"
           onClick={() => onAnswer(request, "deny")}
         >
           {t("permission.deny")}
@@ -96,6 +124,7 @@ export function PermissionCard({ request, onAnswer }: Props) {
           <button
             type="button"
             className="primary-button"
+            title="⌘↩"
             onClick={() => onAnswer(request, "allow")}
           >
             {t("permission.allow")}

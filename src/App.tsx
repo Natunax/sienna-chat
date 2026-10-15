@@ -127,6 +127,11 @@ export function App() {
       } else if (event.key === ",") {
         event.preventDefault();
         setSettingsOpen(true);
+      } else if (event.key === "k" || event.key === "f") {
+        // The sidebar search, shown first if it is hidden.
+        event.preventDefault();
+        setSidebarOpen(true);
+        requestAnimationFrame(() => document.getElementById("sidebar-search")?.focus());
       } else if (event.key === "\\") {
         event.preventDefault();
         setSidebarOpen((open) => !open);

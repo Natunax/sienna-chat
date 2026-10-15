@@ -205,6 +205,9 @@ function CopyButton({ text }: { text: string }) {
       title={copied ? t("message.copied") : t("message.copy")}
     >
       {copied ? <CheckIcon size={15} /> : <CopyIcon size={15} />}
+      <span className="sr-only" role="status">
+        {copied ? t("message.copied") : ""}
+      </span>
     </button>
   );
 }

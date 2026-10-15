@@ -104,7 +104,10 @@ export function StructuredView({
                   <span className="finding-issue">{text(finding.issue)}</span>
                   {text(finding.fix) && <span className="finding-fix">{text(finding.fix)}</span>}
                 </span>
-                <ArrowUpIcon size={14} className="structured-go" />
+                <span className="structured-go">
+                  {t("template.fix")}
+                  <ArrowUpIcon size={13} />
+                </span>
               </button>
             </li>
           ))}
@@ -134,7 +137,10 @@ export function StructuredView({
                   <span className="task-title">{text(task.title)}</span>
                   {text(task.detail) && <span className="task-detail">{text(task.detail)}</span>}
                 </span>
-                <ArrowUpIcon size={14} className="structured-go" />
+                <span className="structured-go">
+                  {t("template.start")}
+                  <ArrowUpIcon size={13} />
+                </span>
               </button>
             </li>
           ))}
@@ -151,6 +157,9 @@ export function StructuredView({
         {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
         {t("template.copy")}
       </button>
+      <span className="sr-only" role="status">
+        {copied ? t("message.copied") : ""}
+      </span>
     </div>
   );
 }

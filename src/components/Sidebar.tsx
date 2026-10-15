@@ -110,7 +110,7 @@ function ChatRow({ chat, active, branch, onSelect, onDelete, onRename, onPin }: 
         onDoubleClick={() => setRenaming(true)}
         onKeyDown={(event) => event.key === "F2" && setRenaming(true)}
         aria-current={active ? "page" : undefined}
-        title={t("sidebar.renameHint")}
+        title={`${chat.title}\n${t("sidebar.renameHint")}`}
       >
         {branch && <BranchIcon size={13} className="chat-row-branch" />}
         {chat.title}
@@ -199,6 +199,7 @@ function ProjectRow(props: {
         className="project-main"
         onClick={onToggle}
         onDoubleClick={() => setRenaming(true)}
+        onKeyDown={(event) => event.key === "F2" && setRenaming(true)}
         aria-expanded={open}
         title={project.path}
       >
@@ -361,12 +362,26 @@ export function Sidebar(props: Props) {
       <label className="search">
         <SearchIcon size={14} />
         <input
+          id="sidebar-search"
           type="search"
           placeholder={t("sidebar.search")}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => event.key === "Escape" && query && setQuery("")}
           aria-label={t("sidebar.search")}
+          title="⌘K"
         />
+        {query && (
+          <button
+            type="button"
+            className="search-clear"
+            onClick={() => setQuery("")}
+            aria-label={t("sidebar.clearSearch")}
+            title={t("sidebar.clearSearch")}
+          >
+            <CloseIcon size={11} />
+          </button>
+        )}
       </label>
 
       <nav className="chat-list" aria-label={t("sidebar.chats")}>

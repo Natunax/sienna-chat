@@ -36,8 +36,12 @@ export function KeyForm({ onSaved, submitLabel }: { onSaved: () => void; submitL
         autoComplete="off"
         spellCheck={false}
         aria-label={t("key.label")}
+        aria-describedby="key-format"
         autoFocus
       />
+      <p className="key-format" id="key-format">
+        {t("key.format")}
+      </p>
       {error && (
         <p className="form-error" role="alert">
           {error}

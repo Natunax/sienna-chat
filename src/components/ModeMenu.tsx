@@ -7,6 +7,8 @@ import { useMenuFocus } from "./useMenuFocus";
 interface Props {
   mode: PermissionMode;
   onChange: (mode: PermissionMode) => void;
+  /** The chat has a project folder; without one the mode waits and shows quietly. */
+  active: boolean;
 }
 
 function modeName(mode: PermissionMode): string {
@@ -16,7 +18,7 @@ function modeName(mode: PermissionMode): string {
 }
 
 /** How far Claude may go without asking, as Claude Code's mode menu. Keys 1–4 pick a mode while it is open. */
-export function ModeMenu({ mode, onChange }: Props) {
+export function ModeMenu({ mode, onChange, active }: Props) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -60,10 +62,10 @@ export function ModeMenu({ mode, onChange }: Props) {
       <button
         type="button"
         ref={trigger}
-        className={`pill mode-pill is-${mode === "bypassPermissions" ? "danger" : mode === "auto" || mode === "acceptEdits" ? "auto" : "quiet"}`}
+        className={`pill mode-pill is-${!active ? "quiet" : mode === "bypassPermissions" ? "danger" : mode === "auto" || mode === "acceptEdits" ? "auto" : "quiet"}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={t("mode.title")}
+        title={active ? t("mode.title") : t("mode.inactive")}
         onClick={() => setOpen(!open)}
       >
         {modeName(mode)}

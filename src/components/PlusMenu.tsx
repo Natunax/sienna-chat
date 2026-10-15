@@ -106,9 +106,10 @@ export function PlusMenu({ web, onWeb, onAttach, onProject, comparing, onCompare
               type="button"
               role="menuitem"
               className="plus-item"
-              disabled={Boolean(template.blocked)}
+              // Still reachable by arrows and read out, with the reason it cannot run here.
+              aria-disabled={Boolean(template.blocked)}
               title={template.blocked ?? undefined}
-              onClick={run(template.run)}
+              onClick={template.blocked ? undefined : run(template.run)}
             >
               <ListIcon size={15} />
               <span className="plus-text">

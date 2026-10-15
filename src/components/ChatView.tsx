@@ -27,6 +27,7 @@ import {
   stopMessage,
   updateChat,
   useProjects,
+  useSummaries,
 } from "../store";
 import { Composer, type ComposerSettings } from "./Composer";
 import { SidebarIcon } from "./icons";
@@ -93,6 +94,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
   const empty = chat.messages.length === 0;
   const language = useLanguage();
   const project = projectFor(chat, useProjects());
+  const firstRun = useSummaries().length === 0;
 
   const settings: ComposerSettings = { model: chat.model, effort: chat.effort, web: chat.web };
 
@@ -252,7 +254,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
         </h1>
         {chat.costUsd > 0 && (
           <span className="chat-cost" title={t("chat.cost")} data-tauri-drag-region>
-            {formatUsd(chat.costUsd)}
+            {t("chat.costLabel", { cost: formatUsd(chat.costUsd) })}
           </span>
         )}
       </header>
@@ -264,7 +266,8 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
             <div className="hero">
               <h2 className="hero-title">{t(greeting(new Date().getHours()))}</h2>
               <p className="hero-hint">
-                {project ? t("chat.projectHint", { name: project.name }) : t("chat.heroHint")}
+                {/* The credit note matters before the first chat; later it would only repeat. */}
+                {project ? t("chat.projectHint", { name: project.name }) : firstRun ? t("chat.heroHint") : ""}
               </p>
             </div>
           ) : (

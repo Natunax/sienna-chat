@@ -11,9 +11,13 @@ export function useMenuFocus(open: boolean, menu: RefObject<HTMLElement | null>,
     if (!open) return;
     const element = menu.current;
     if (!element) return;
-    const items = () => [...element.querySelectorAll<HTMLElement>('[role^="menuitem"]:not(:disabled)')];
+    // Menu items, or the controls of a small dialog marked with data-menu-item.
+    const items = () => [
+      ...element.querySelectorAll<HTMLElement>('[role^="menuitem"]:not(:disabled), [data-menu-item]:not(:disabled)'),
+    ];
     const start = items().find((item) => item.getAttribute("aria-checked") === "true") ?? items()[0];
-    start?.focus({ preventScroll: true });
+    if (start) start.focus({ preventScroll: true });
+    else if (element.tabIndex >= 0 || element.hasAttribute("tabindex")) element.focus({ preventScroll: true });
 
     const onKey = (event: KeyboardEvent) => {
       const list = items();

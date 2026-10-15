@@ -15,6 +15,7 @@ import { addProject } from "../store";
 import { PICKER_ACCEPT, readAttachment, TEXT_MEDIA_TYPE } from "../attachments";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { errorText, t } from "../i18n";
+import { CompareChip } from "./CompareChip";
 import { ContextMeter } from "./ContextMeter";
 import { ModeMenu } from "./ModeMenu";
 import { ModelMenu } from "./ModelMenu";
@@ -22,7 +23,6 @@ import { PlusMenu } from "./PlusMenu";
 import {
   ArrowUpIcon,
   CloseIcon,
-  CompareIcon,
   DocumentIcon,
   ShieldCheckIcon,
   FolderIcon,
@@ -342,23 +342,7 @@ export function Composer(props: Props) {
                 )}
               </span>
             )}
-            {comparing && (
-              <span className="chip">
-                <CompareIcon size={13} />
-                <button type="button" className="chip-text chip-button" onClick={() => onCompare(otherModel(settings.model, comparing))} title={t("compare.next")}>
-                  {t("compare.chip", { model: MODELS.find((entry) => entry.id === comparing)?.name ?? "" })}
-                </button>
-                <button
-                  type="button"
-                  className="chip-remove"
-                  onClick={() => onCompare(null)}
-                  aria-label={t("compare.off")}
-                  title={t("compare.off")}
-                >
-                  <CloseIcon size={11} />
-                </button>
-              </span>
-            )}
+            {comparing && <CompareChip own={settings.model} model={comparing} onChange={onCompare} />}
             {check && onCheck && (
               <span className="chip">
                 <ShieldCheckIcon size={13} />
@@ -502,7 +486,7 @@ export function Composer(props: Props) {
       </div>
       {/* As in Claude Code: the mode on the left, model and context on the right. */}
       <div className="composer-footer">
-        <ModeMenu mode={mode} onChange={onMode} />
+        <ModeMenu mode={mode} onChange={onMode} active={Boolean(project)} />
         <div className="composer-footer-end">
           <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
           {context && context.window > 0 && (

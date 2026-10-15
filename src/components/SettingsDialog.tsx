@@ -1,7 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
 import { api, formatUsd, MODELS, type Usage } from "../api";
-import { errorText, languageChoice, setLanguageChoice, t, type LanguageChoice } from "../i18n";
+import { errorText, languageChoice, setLanguageChoice, t, type LanguageChoice, type TextKey } from "../i18n";
 import { setUsage } from "../store";
 import { CloseIcon, KeyIcon } from "./icons";
 import { KeyForm } from "./KeyForm";
@@ -9,6 +9,20 @@ import { KeyForm } from "./KeyForm";
 const CONSOLE_USAGE_URL = "https://platform.claude.com/settings/billing";
 
 // Language names stay in their own language, so each is recognizable in both.
+// Every shortcut of the app, listed in the settings.
+const SHORTCUTS: { keys: string; label: TextKey }[] = [
+  { keys: "⌘N", label: "shortcut.new" },
+  { keys: "⌘K", label: "shortcut.search" },
+  { keys: "⌘\\", label: "shortcut.sidebar" },
+  { keys: "⌘,", label: "shortcut.settings" },
+  { keys: "⌘.", label: "shortcut.stop" },
+  { keys: "/", label: "shortcut.commands" },
+  { keys: "⌘↩", label: "shortcut.allow" },
+  { keys: "Esc", label: "shortcut.deny" },
+  { keys: "1–4", label: "shortcut.modes" },
+  { keys: "F2", label: "shortcut.rename" },
+];
+
 const LANGUAGES: { id: LanguageChoice; name: string }[] = [
   { id: "system", name: "" },
   { id: "de", name: "Deutsch" },
@@ -25,22 +39,33 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [replacing, setReplacing] = useState(false);
   const [budget, setBudget] = useState(String(usage?.budget ?? 100));
-  const [message, setMessage] = useState<string | null>(null);
+  const [keyMessage, setKeyMessage] = useState<string | null>(null);
+  const [budgetMessage, setBudgetMessage] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [language, setLanguage] = useState<LanguageChoice>(languageChoice);
 
   useEffect(() => {
+    // Back to the button that opened the settings when they close.
+    const opener = document.activeElement as HTMLElement | null;
     dialog.current?.showModal();
     // Focus the dialog itself, not its first button, so no focus ring shows on open.
     dialog.current?.focus();
+    return () => opener?.focus?.();
   }, []);
+
+  useEffect(() => {
+    if (!confirmRemove) return;
+    const timer = setTimeout(() => setConfirmRemove(false), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmRemove]);
 
   const saveBudget = async () => {
     const value = Number(budget.replace(",", "."));
     try {
       setUsage(await api.budgetSet(value));
-      setMessage(t("settings.budgetSaved"));
+      setBudgetMessage(t("settings.budgetSaved"));
     } catch (reason) {
-      setMessage(errorText(reason));
+      setBudgetMessage(errorText(reason));
     }
   };
 
@@ -49,7 +74,7 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
       await api.keyDelete();
       onKeyRemoved();
     } catch (reason) {
-      setMessage(errorText(reason));
+      setKeyMessage(errorText(reason));
     }
   };
 
@@ -71,13 +96,12 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
 
       <section className="setting">
         <h3>{t("settings.language")}</h3>
-        <div className="segmented setting-segmented" role="radiogroup" aria-label={t("settings.language")}>
+        <div className="segmented setting-segmented" role="group" aria-label={t("settings.language")}>
           {LANGUAGES.map((option) => (
             <button
               key={option.id}
               type="button"
-              role="radio"
-              aria-checked={option.id === language}
+              aria-pressed={option.id === language}
               className={option.id === language ? "is-active" : undefined}
               onClick={() => {
                 setLanguage(option.id);
@@ -96,7 +120,7 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
           <KeyForm
             onSaved={() => {
               setReplacing(false);
-              setMessage(t("settings.keySaved"));
+              setKeyMessage(t("settings.keySaved"));
             }}
           />
         ) : (
@@ -109,11 +133,21 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
               <button type="button" className="secondary-button" onClick={() => setReplacing(true)}>
                 {t("settings.replace")}
               </button>
-              <button type="button" className="secondary-button is-danger" onClick={() => void removeKey()}>
-                {t("settings.remove")}
+              {/* Removing the key ends every chat until a new one is entered, so it asks once more. */}
+              <button
+                type="button"
+                className={`secondary-button is-danger${confirmRemove ? " is-confirming" : ""}`}
+                onClick={() => (confirmRemove ? void removeKey() : setConfirmRemove(true))}
+              >
+                {t(confirmRemove ? "settings.removeConfirm" : "settings.remove")}
               </button>
             </span>
           </div>
+        )}
+        {keyMessage && (
+          <p className="setting-message" role="status">
+            {keyMessage}
+          </p>
         )}
       </section>
 
@@ -153,21 +187,37 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
               className="field"
               inputMode="decimal"
               value={budget}
-              onChange={(event) => setBudget(event.target.value)}
+              onChange={(event) => {
+                setBudget(event.target.value);
+                setBudgetMessage(null);
+              }}
               aria-label={t("settings.budgetLabel")}
             />
           </label>
-          <button type="button" className="secondary-button" onClick={() => void saveBudget()}>
-            {t("settings.budgetSave")}
-          </button>
+          <span className="setting-actions">
+            <span className="setting-status" role="status">
+              {budgetMessage}
+            </span>
+            <button type="button" className="secondary-button" onClick={() => void saveBudget()}>
+              {t("settings.budgetSave")}
+            </button>
+          </span>
         </div>
       </section>
 
-      {message && (
-        <p className="setting-message" role="status">
-          {message}
-        </p>
-      )}
+      <section className="setting">
+        <h3>{t("settings.shortcuts")}</h3>
+        <dl className="shortcut-list">
+          {SHORTCUTS.map((shortcut) => (
+            <div key={shortcut.keys} className="shortcut-row">
+              <dt>{t(shortcut.label)}</dt>
+              <dd>
+                <kbd>{shortcut.keys}</kbd>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
     </dialog>
   );
 }
