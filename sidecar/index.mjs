@@ -10,9 +10,13 @@
 import { deleteSession, query } from "@anthropic-ai/claude-agent-sdk";
 import { createInterface } from "node:readline";
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
+// The packaged app ships the engine as one bundled file plus the Claude Code
+// binary next to it; in development the SDK finds the binary in node_modules.
+// Absolute, because the engine runs Claude Code in its own working folder.
+const claudeBinary = process.env.SIENNA_CLAUDE_BIN ? resolve(process.env.SIENNA_CLAUDE_BIN) : undefined;
 const dataDir = process.env.CHAT_DATA_DIR ?? "";
 
 // Without a key the SDK would quietly fall back to the Claude subscription
@@ -20,7 +24,7 @@ const dataDir = process.env.CHAT_DATA_DIR ?? "";
 // API keys come in several prefixes; an OAuth token would bill a subscription.
 const isApiKey = apiKey.startsWith("sk-ant-") && !apiKey.startsWith("sk-ant-oat");
 if (!isApiKey || !dataDir) {
-  emit({ type: "fatal", message: "Kein API-Key gefunden." });
+  emit({ type: "fatal", message: "error.noKey" });
   process.exit(1);
 }
 
@@ -46,10 +50,10 @@ const childEnv = {
 };
 
 const SYSTEM_PROMPT = [
-  "Du bist Claude in einer privaten Chat-App auf dem Mac des Nutzers.",
-  "Antworte in der Sprache des Nutzers, standardmäßig auf Deutsch.",
-  "Schreib klar und direkt, nutze Markdown, wo es das Lesen erleichtert, und Codeblöcke mit Sprachangabe.",
-  "Wenn du im Web suchst, nenne die wichtigsten Quellen als Links.",
+  "You are Claude, chatting in Sienna, a private chat app on the user's Mac.",
+  "Always reply in the language the user writes in.",
+  "Be clear and direct. Use Markdown where it helps reading, and code blocks with a language tag.",
+  "When you search the web, cite the most important sources as links.",
 ].join("\n");
 
 // Search only: WebFetch would let a page the model reads tell it to fetch an
@@ -57,8 +61,8 @@ const SYSTEM_PROMPT = [
 const WEB_TOOLS = ["WebSearch"];
 const TITLE_MODEL = "claude-haiku-5-5";
 const TITLE_PROMPT = [
-  "Du formulierst Titel für Chats.",
-  "Antworte nur mit dem Titel: höchstens sechs Wörter, ohne Anführungszeichen, ohne Punkt am Ende, in der Sprache des Gesprächs.",
+  "You write titles for chats.",
+  "Reply with the title only: at most six words, no quotation marks, no final period, in the language of the conversation.",
 ].join("\n");
 const DELTA_FLUSH_MS = 32;
 // Every live chat keeps a Claude Code process of its own. Idle chats are
@@ -131,6 +135,8 @@ class ChatSession {
         systemPrompt: SYSTEM_PROMPT,
         cwd: workDir,
         env: childEnv,
+        pathToClaudeCodeExecutable: claudeBinary,
+      pathToClaudeCodeExecutable: claudeBinary,
         resume: config.sessionId ?? undefined,
         // Cutting back forks the session, so the dropped turn stays out of it.
         resumeSessionAt: config.rewindTo ?? undefined,
@@ -177,7 +183,7 @@ class ChatSession {
         if (message.subtype === "init") {
           // Belt and braces: never run a turn on anything but the API key.
           if (message.apiKeySource !== "ANTHROPIC_API_KEY") {
-            this.failReason = "Die Engine lief nicht mit dem API-Key und wurde gestoppt.";
+            this.failReason = "error.wrongCredential";
             this.close();
             return;
           }
@@ -256,7 +262,7 @@ class ChatSession {
         this.flush();
         const error = this.interrupted
           ? null
-          : (this.failReason ?? (failure ? describeError(failure) : "Die Antwort wurde unterbrochen."));
+          : (this.failReason ?? (failure ? describeError(failure) : "error.interrupted"));
         emit({ type: "done", chatId: this.chatId, costUsd: 0, error });
       }
       clearTimeout(this.idleTimer);
@@ -287,15 +293,16 @@ class ChatSession {
   }
 }
 
+/** Maps a failure to an error code; the window translates it (src/i18n.ts). */
 function describeError(source) {
   const raw =
     source?.errors?.join(" ") ?? source?.result ?? source?.message ?? String(source ?? "");
   const status = source?.api_error_status ?? 0;
-  if (status === 401 || /invalid api key|authentication/i.test(raw)) return "Der API-Key wurde abgelehnt.";
-  if (/usage limit|spend limit|credit balance/i.test(raw)) return "Das API-Guthaben oder Ausgabenlimit ist erreicht.";
-  if (status === 429 || /rate limit/i.test(raw)) return "Zu viele Anfragen. Bitte gleich noch einmal versuchen.";
-  if (status === 529 || /overloaded/i.test(raw)) return "Claude ist gerade überlastet. Bitte gleich noch einmal versuchen.";
-  return "Die Antwort ist fehlgeschlagen.";
+  if (status === 401 || /invalid api key|authentication/i.test(raw)) return "error.keyRejected";
+  if (/usage limit|spend limit|credit balance/i.test(raw)) return "error.creditExhausted";
+  if (status === 429 || /rate limit/i.test(raw)) return "error.rateLimited";
+  if (status === 529 || /overloaded/i.test(raw)) return "error.overloaded";
+  return "error.answerFailed";
 }
 
 function toContent(text, attachments) {
@@ -374,6 +381,7 @@ async function onTitle(command) {
       systemPrompt: TITLE_PROMPT,
       cwd: workDir,
       env: childEnv,
+      pathToClaudeCodeExecutable: claudeBinary,
       stderr: () => {},
     },
   });

@@ -28,6 +28,8 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx vite build
       - run: node --check sidecar/index.mjs
+      # The Tauri build checks that the bundled engine exists.
+      - run: npm run engine:build
 
       - uses: dtolnay/rust-toolchain@stable
         with:

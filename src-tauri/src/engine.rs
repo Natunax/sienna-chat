@@ -49,22 +49,25 @@ fn find_node() -> Option<PathBuf> {
     .find(|path| path.is_file())
 }
 
-fn find_script(app: &AppHandle) -> Option<PathBuf> {
+/// The engine script and, in the packaged app, the Claude Code binary next to
+/// it. Development runs the unbundled script, whose SDK finds the binary in
+/// `node_modules` itself.
+fn find_engine(app: &AppHandle) -> Option<(PathBuf, Option<PathBuf>)> {
     if cfg!(debug_assertions) {
         let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("../sidecar/index.mjs");
         if dev.is_file() {
-            return Some(dev);
+            return Some((dev, None));
         }
     }
-    let bundled = app.path().resource_dir().ok()?.join("sidecar/index.mjs");
-    bundled.is_file().then_some(bundled)
+    let dir = app.path().resource_dir().ok()?.join("sidecar");
+    let (script, binary) = (dir.join("engine.mjs"), dir.join("claude"));
+    (script.is_file() && binary.is_file()).then_some((script, Some(binary)))
 }
 
 fn spawn(app: &AppHandle, store: Arc<Store>, generation: u64) -> Result<Running, String> {
-    let key = keychain::read().ok_or("Kein API-Key hinterlegt.")?;
-    let node = find_node()
-        .ok_or("Node.js wurde nicht gefunden. Installiere es mit Homebrew: brew install node")?;
-    let script = find_script(app).ok_or("Die Chat-Engine fehlt im App-Paket.")?;
+    let key = keychain::read().ok_or("error.noKey")?;
+    let node = find_node().ok_or("error.nodeMissing")?;
+    let (script, binary) = find_engine(app).ok_or("error.engineMissing")?;
     let node_dir = node
         .parent()
         .map(|dir| dir.display().to_string())
@@ -79,20 +82,15 @@ fn spawn(app: &AppHandle, store: Arc<Store>, generation: u64) -> Result<Running,
         .env("LANG", "de_DE.UTF-8")
         .env("ANTHROPIC_API_KEY", key)
         .env("CHAT_DATA_DIR", store.root())
+        .env("SIENNA_CLAUDE_BIN", binary.unwrap_or_default())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|_| "Die Chat-Engine konnte nicht gestartet werden.".to_string())?;
+        .map_err(|_| "error.engineStart".to_string())?;
 
-    let stdin = child
-        .stdin
-        .take()
-        .ok_or("Die Chat-Engine antwortet nicht.")?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or("Die Chat-Engine antwortet nicht.")?;
+    let stdin = child.stdin.take().ok_or("error.engineNoResponse")?;
+    let stdout = child.stdout.take().ok_or("error.engineNoResponse")?;
     let app = app.clone();
     std::thread::spawn(move || {
         for line in BufReader::new(stdout).lines() {
@@ -129,10 +127,7 @@ impl Engine {
     /// Sends a command, starting the engine if needed; returns the generation
     /// of the engine that received it.
     pub fn send(&self, app: &AppHandle, store: &Arc<Store>, line: &str) -> Result<u64, String> {
-        let mut running = self
-            .running
-            .lock()
-            .map_err(|_| "Die Chat-Engine ist blockiert.")?;
+        let mut running = self.running.lock().map_err(|_| "error.engineBlocked")?;
         let alive = running
             .as_mut()
             .is_some_and(|r| matches!(r.child.try_wait(), Ok(None)));
@@ -147,7 +142,7 @@ impl Engine {
             .is_err()
         {
             retire(running.take());
-            return Err("Die Chat-Engine wurde beendet. Bitte noch einmal senden.".into());
+            return Err("error.engineStopped".into());
         }
         Ok(process.generation)
     }

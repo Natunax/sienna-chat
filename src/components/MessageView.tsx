@@ -1,11 +1,12 @@
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { formatUsd, type Message } from "../api";
+import { storedErrorText, t, type TextKey } from "../i18n";
 import { loadHighlighter, renderBlocks } from "../markdown";
 import { AlertIcon, CheckIcon, ChevronRightIcon, CopyIcon, DocumentIcon, GlobeIcon, PencilIcon, RetryIcon, SparkIcon } from "./icons";
 
-const TOOL_LABELS: Record<string, string> = {
-  WebSearch: "Sucht im Web",
-  WebFetch: "Liest Seite",
+const TOOL_LABELS: Record<string, TextKey> = {
+  WebSearch: "message.searching",
+  WebFetch: "message.reading",
 };
 
 function Markdown({ text, final }: { text: string; final: boolean }) {
@@ -29,12 +30,12 @@ function Markdown({ text, final }: { text: string; final: boolean }) {
         const bar = document.createElement("div");
         bar.className = "code-bar";
         const label = document.createElement("span");
-        label.textContent = language ?? "Code";
+        label.textContent = language ?? t("code.fallback");
         const copy = document.createElement("button");
         copy.type = "button";
         copy.className = "code-copy";
-        copy.textContent = "Kopieren";
-        copy.setAttribute("aria-label", "Code kopieren");
+        copy.textContent = t("code.copy");
+        copy.setAttribute("aria-label", t("code.copyLabel"));
         bar.append(label, copy);
         pre.prepend(bar);
       });
@@ -61,7 +62,7 @@ function Thinking({ text, active }: { text: string; active: boolean }) {
     <div className={`thinking${open ? " is-open" : ""}`}>
       <button type="button" className="thinking-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
         <SparkIcon size={14} className={active ? "pulse" : undefined} />
-        <span>{active ? "Denkt nach…" : "Gedankengang"}</span>
+        <span>{active ? t("message.thinking") : t("message.thoughts")}</span>
         <ChevronRightIcon size={14} className="thinking-chevron" />
       </button>
       {open && text && <div className="thinking-body">{text}</div>}
@@ -81,8 +82,8 @@ function CopyButton({ text }: { text: string }) {
       type="button"
       className="msg-action"
       onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
-      aria-label={copied ? "Kopiert" : "Antwort kopieren"}
-      title={copied ? "Kopiert" : "Antwort kopieren"}
+      aria-label={copied ? t("message.copied") : t("message.copy")}
+      title={copied ? t("message.copied") : t("message.copy")}
     >
       {copied ? <CheckIcon size={15} /> : <CopyIcon size={15} />}
     </button>
@@ -124,14 +125,14 @@ function EditBox({ text, onSubmit, onCancel }: { text: string; onSubmit: (text: 
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={onKeyDown}
-        aria-label="Nachricht bearbeiten"
+        aria-label={t("message.edit")}
       />
       <div className="edit-actions">
         <button type="button" className="secondary-button" onClick={onCancel}>
-          Abbrechen
+          {t("message.cancel")}
         </button>
         <button type="button" className="primary-button" onClick={submit} disabled={!value.trim()}>
-          Senden
+          {t("message.send")}
         </button>
       </div>
     </div>
@@ -181,8 +182,8 @@ function MessageViewImpl({ message, onRedo }: Props) {
               type="button"
               className="msg-action"
               onClick={() => setEditing(true)}
-              aria-label="Nachricht bearbeiten"
-              title="Nachricht bearbeiten"
+              aria-label={t("message.edit")}
+              title={t("message.edit")}
             >
               <PencilIcon size={15} />
             </button>
@@ -202,7 +203,7 @@ function MessageViewImpl({ message, onRedo }: Props) {
           {message.tools.map((tool, index) => (
             <span key={index} className="tool-chip">
               <GlobeIcon size={13} />
-              <span className="tool-name">{TOOL_LABELS[tool.name] ?? tool.name}</span>
+              <span className="tool-name">{TOOL_LABELS[tool.name] ? t(TOOL_LABELS[tool.name]) : tool.name}</span>
               {tool.detail && <span className="tool-detail">{tool.detail}</span>}
             </span>
           ))}
@@ -213,7 +214,7 @@ function MessageViewImpl({ message, onRedo }: Props) {
       {message.error && (
         <div className="msg-error" role="alert">
           <AlertIcon size={15} />
-          {message.error}
+          {storedErrorText(message.error)}
         </div>
       )}
       {!streaming && (message.text || onRedo) ? (
@@ -224,8 +225,8 @@ function MessageViewImpl({ message, onRedo }: Props) {
               type="button"
               className="msg-action"
               onClick={() => onRedo()}
-              aria-label="Antwort neu erzeugen"
-              title="Antwort neu erzeugen"
+              aria-label={t("message.regenerate")}
+              title={t("message.regenerate")}
             >
               <RetryIcon size={15} />
             </button>

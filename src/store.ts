@@ -3,7 +3,8 @@
 
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useSyncExternalStore } from "react";
-import { api, errorText, type Chat, type ChatSummary, type Message, type Usage } from "./api";
+import { api, type Chat, type ChatSummary, type Message, type Usage } from "./api";
+import { t } from "./i18n";
 
 type Listener = () => void;
 
@@ -62,14 +63,14 @@ function putChat(chat: Chat) {
 }
 
 function upsertSummary(chat: Chat, keepPlace = false) {
-  const entry = { id: chat.id, title: chat.title, updatedAt: chat.updatedAt };
+  const entry = { id: chat.id, title: chat.title, updatedAt: chat.updatedAt, pinned: chat.pinned };
   if (keepPlace && summaries.some((summary) => summary.id === chat.id)) {
     summaries = summaries.map((summary) => (summary.id === chat.id ? entry : summary));
     notifyGlobal();
     return;
   }
   summaries = [
-    { id: chat.id, title: chat.title, updatedAt: chat.updatedAt },
+    entry,
     ...summaries.filter((entry) => entry.id !== chat.id),
   ];
   notifyGlobal();
@@ -96,7 +97,7 @@ export async function loadChat(id: string): Promise<Chat> {
   const chat = await api.chatLoad(id);
   // A chat saved while an answer streamed must not show a spinner forever.
   const messages = chat.messages.map((message) =>
-    message.streaming ? { ...message, streaming: false, error: message.error ?? "Die Antwort wurde unterbrochen." } : message,
+    message.streaming ? { ...message, streaming: false, error: message.error ?? "error.interrupted" } : message,
   );
   const clean = { ...chat, messages };
   chats.set(id, clean);
@@ -107,7 +108,7 @@ export function createChat(defaults: Pick<Chat, "model" | "effort" | "web">): Ch
   const now = Date.now();
   const chat: Chat = {
     id: crypto.randomUUID(),
-    title: "Neuer Chat",
+    title: t("app.newChat"),
     createdAt: now,
     updatedAt: now,
     sessionId: null,
@@ -151,6 +152,11 @@ function updateLastAssistant(chat: Chat, change: (message: Message) => Message):
   return { ...chat, messages };
 }
 
+/** Messages keep the error code, so the text follows the interface language. */
+function errorCode(error: unknown): string {
+  return typeof error === "string" && error.startsWith("error.") ? error : "error.generic";
+}
+
 type Outgoing = { name: string; mediaType: string; data: string };
 
 /** Shows the user's message and an empty answer, then hands both to the engine. */
@@ -166,7 +172,7 @@ async function dispatch(chat: Chat, kept: Message[], text: string, attachments: 
   const first = kept.length === 0;
   const next: Chat = {
     ...chat,
-    title: first && !chat.titleLocked ? titleFrom(text, attachments[0]?.name ?? "Neuer Chat") : chat.title,
+    title: first && !chat.titleLocked ? titleFrom(text, attachments[0]?.name ?? t("app.newChat")) : chat.title,
     // A new first question deserves a new generated title.
     titleRequested: first ? false : chat.titleRequested,
     updatedAt: Date.now(),
@@ -197,7 +203,7 @@ async function dispatch(chat: Chat, kept: Message[], text: string, attachments: 
     );
   } catch (error) {
     updateChat(id, (current) =>
-      updateLastAssistant(current, (message) => ({ ...message, streaming: false, error: errorText(error) })),
+      updateLastAssistant(current, (message) => ({ ...message, streaming: false, error: errorCode(error) })),
     );
     persist(id);
   }
@@ -242,6 +248,15 @@ export async function renameChat(id: string, title: string) {
   const chat = await loadChat(id).catch(() => undefined);
   if (!chat) return;
   const next = { ...chat, title: clean, titleLocked: true };
+  putChat(next);
+  upsertSummary(next, true);
+  persist(id);
+}
+
+export async function togglePin(id: string) {
+  const chat = await loadChat(id).catch(() => undefined);
+  if (!chat) return;
+  const next = { ...chat, pinned: !chat.pinned };
   putChat(next);
   upsertSummary(next, true);
   persist(id);
@@ -342,7 +357,7 @@ function onEngineEvent(event: EngineEvent) {
       failStreaming(event.generation, event.message);
       return;
     case "exit":
-      failStreaming(event.generation, "Die Chat-Engine wurde beendet. Bitte noch einmal senden.");
+      failStreaming(event.generation, "error.engineStopped");
       return;
     default:
       return;

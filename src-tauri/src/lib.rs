@@ -51,6 +51,14 @@ struct SendRequest {
     rewind_to: Option<String>,
 }
 
+/// The Mac's preferred language, for the window's own translations. Errors
+/// returned by the commands are codes such as `error.noKey` that the window
+/// translates as well.
+#[tauri::command]
+fn app_language() -> String {
+    sys_locale::get_locale().unwrap_or_else(|| "en".into())
+}
+
 #[tauri::command]
 fn key_status() -> bool {
     keychain::read().is_some()
@@ -118,20 +126,20 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         || !MODELS.contains(&request.model.as_str())
         || !EFFORTS.contains(&request.effort.as_str())
     {
-        return Err("Ungültige Anfrage.".into());
+        return Err("error.invalidRequest".into());
     }
     if request.text.chars().count() > MAX_TEXT_CHARS {
-        return Err("Die Nachricht ist zu lang.".into());
+        return Err("error.messageTooLong".into());
     }
     if request.text.trim().is_empty() && request.attachments.is_empty() {
-        return Err("Die Nachricht ist leer.".into());
+        return Err("error.messageEmpty".into());
     }
     if request
         .attachments
         .iter()
         .any(|file| !MEDIA_TYPES.contains(&file.media_type.as_str()))
     {
-        return Err("Nur Bilder und PDFs können angehängt werden.".into());
+        return Err("error.attachmentType".into());
     }
     if request
         .attachments
@@ -140,11 +148,11 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         .sum::<usize>()
         > MAX_ATTACHMENT_BYTES
     {
-        return Err("Die Anhänge sind zusammen zu groß.".into());
+        return Err("error.attachmentsTooLarge".into());
     }
     let usage = state.store.usage();
     if usage.usd >= usage.budget {
-        return Err("Das Monatsbudget ist aufgebraucht.".into());
+        return Err("error.budgetReached".into());
     }
 
     let line = json!({
@@ -176,7 +184,7 @@ fn chat_title(
     state: State<AppState>,
 ) -> Result<(), String> {
     if !store::valid_id(&chat_id) {
-        return Err("Unbekannter Chat.".into());
+        return Err("error.unknownChat".into());
     }
     let usage = state.store.usage();
     if usage.usd >= usage.budget {
@@ -221,6 +229,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            app_language,
             key_status,
             key_save,
             key_delete,

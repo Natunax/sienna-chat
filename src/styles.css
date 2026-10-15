@@ -341,30 +341,51 @@ a:focus-visible {
   border-radius: 7px;
 }
 
-.chat-row-delete,
+.chat-row-actions,
 .chat-row-confirm {
   position: absolute;
   right: 3px;
-  display: inline-grid;
-  place-items: center;
-  height: 24px;
-  border-radius: 6px;
 }
 
-.chat-row-delete {
-  width: 24px;
-  color: var(--label-3);
+.chat-row-actions {
+  display: flex;
+  gap: 1px;
   opacity: 0;
 }
 
-.chat-row:hover .chat-row-delete,
-.chat-row-delete:focus-visible {
+.chat-row:hover .chat-row-actions,
+.chat-row-actions:focus-within {
   opacity: 1;
 }
 
-.chat-row-delete:hover {
-  color: var(--danger);
+/* Make room so the title ends before the buttons instead of under them. */
+.chat-row:hover .chat-row-main,
+.chat-row:focus-within .chat-row-main {
+  padding-right: 58px;
+}
+
+.chat-row-action {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--label-3);
+}
+
+.chat-row-action:hover {
+  color: var(--label);
   background: var(--fill-hover);
+}
+
+.chat-row-action.is-delete:hover {
+  color: var(--danger);
+}
+
+.chat-row-confirm {
+  display: inline-grid;
+  place-items: center;
+  height: 24px;
 }
 
 .chat-row-confirm {
@@ -740,8 +761,16 @@ a:focus-visible {
   transition: opacity 150ms;
 }
 
+/* The edit button sits in the gap below the bubble instead of adding space. */
+.msg-user {
+  position: relative;
+}
+
 .msg-user .msg-actions {
-  margin: 0 -6px 0 0;
+  position: absolute;
+  top: 100%;
+  right: -6px;
+  margin: 0;
 }
 
 .msg:hover .msg-actions,

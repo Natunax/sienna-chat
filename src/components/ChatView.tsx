@@ -1,6 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { formatUsd, type Chat, type OutgoingAttachment } from "../api";
+import { t } from "../i18n";
 import { redoLast, rewindPoint, sendMessage, stopMessage, updateChat } from "../store";
 import { Composer, type ComposerSettings } from "./Composer";
 import { SidebarIcon } from "./icons";
@@ -103,8 +104,8 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
     if (copy) {
       const code = copy.closest("pre")?.querySelector("code")?.textContent ?? "";
       void navigator.clipboard.writeText(code).then(() => {
-        copy.textContent = "Kopiert";
-        setTimeout(() => (copy.textContent = "Kopieren"), 1400);
+        copy.textContent = t("code.copied");
+        setTimeout(() => (copy.textContent = t("code.copy")), 1400);
       });
     }
   };
@@ -143,7 +144,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
     >
       <header className={`chat-header${sidebarOpen ? "" : " is-collapsed"}`} data-tauri-drag-region>
         {!sidebarOpen && (
-          <button type="button" className="icon-button" onClick={onToggleSidebar} aria-label="Seitenleiste einblenden" title="Seitenleiste (⌘\)">
+          <button type="button" className="icon-button" onClick={onToggleSidebar} aria-label={t("sidebar.show")} title={t("sidebar.shortcut")}>
             <SidebarIcon />
           </button>
         )}
@@ -151,7 +152,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
           {empty ? "" : chat.title}
         </h1>
         {chat.costUsd > 0 && (
-          <span className="chat-cost" title="Kosten dieses Chats" data-tauri-drag-region>
+          <span className="chat-cost" title={t("chat.cost")} data-tauri-drag-region>
             {formatUsd(chat.costUsd)}
           </span>
         )}
@@ -160,9 +161,9 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
       {empty ? (
         <div className="hero">
           <div className="hero-inner">
-            <h2 className="hero-title">Worüber möchtest du sprechen?</h2>
+            <h2 className="hero-title">{t("chat.heroTitle")}</h2>
             {composer}
-            <p className="hero-hint">Läuft über dein API-Guthaben, nicht über dein Claude-Abo.</p>
+            <p className="hero-hint">{t("chat.heroHint")}</p>
           </div>
         </div>
       ) : (
@@ -184,7 +185,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
 
       {dragging && (
         <div className="drop-overlay" aria-hidden="true">
-          <div className="drop-card">Bilder oder PDFs hier ablegen</div>
+          <div className="drop-card">{t("chat.drop")}</div>
         </div>
       )}
     </main>

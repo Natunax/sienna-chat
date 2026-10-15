@@ -9,9 +9,47 @@ import type { Chat, ChatSummary } from "./api";
 const now = Date.now();
 const day = 86_400_000;
 
+const english = (new URLSearchParams(location.search).get("lang") ?? "de").toLowerCase().startsWith("en");
+
+const sampleText = english
+  ? {
+      title: "Rust: Arc or Rc?",
+      question: "When do I use Arc and when Rc in Rust?",
+      thinking: "Difference: atomic reference counting, Send/Sync, cost.",
+      intro: "In short: **`Rc`** for one thread, **`Arc`** as soon as the value crosses threads.",
+      heading: "## The difference",
+      rc: "- `Rc<T>` counts references *non-atomically*. That is cheaper, but `Rc` is neither `Send` nor `Sync`.",
+      arc: "- `Arc<T>` counts atomically. Each clone costs a few nanoseconds more, but it works with `std::thread::spawn` and Tokio.",
+      table: ["| Threads | one | many |", "| Cost | low | a bit higher |"],
+      rule: "> Rule of thumb: start with `Rc`; the compiler tells you when you need `Arc`.",
+      more: "More in the [Rust Book](https://doc.rust-lang.org/book/ch16-03-shared-state.html).",
+      others: ["Weekly meal plan and shopping list", "Tauri window with vibrancy", "Trip to Lisbon in May"],
+      answer:
+        "Sure! Here is an idea:\n\n1. **Monday:** Roasted vegetables with feta\n2. **Tuesday:** Lentil curry\n3. **Wednesday:** Lemon spinach pasta\n\nShall I write the shopping list too?",
+      think: "The user wants a plan.",
+      generated: "Weekly plan with three dishes",
+    }
+  : {
+      title: "Rust: Arc oder Rc?",
+      question: "Wann nehme ich in Rust Arc und wann Rc?",
+      thinking: "Unterschied: atomare Referenzzählung, Send/Sync, Kosten.",
+      intro: "Kurz: **`Rc`** für einen Thread, **`Arc`** sobald der Wert Threadgrenzen überquert.",
+      heading: "## Der Unterschied",
+      rc: "- `Rc<T>` zählt Referenzen *nicht atomar*. Das ist billiger, aber `Rc` ist weder `Send` noch `Sync`.",
+      arc: "- `Arc<T>` zählt atomar. Das kostet pro Klon ein paar Nanosekunden mehr, funktioniert aber mit `std::thread::spawn` und Tokio.",
+      table: ["| Threads | einer | viele |", "| Kosten | gering | etwas höher |"],
+      rule: "> Faustregel: Fang mit `Rc` an; der Compiler sagt dir, wann du `Arc` brauchst.",
+      more: "Mehr dazu im [Rust Book](https://doc.rust-lang.org/book/ch16-03-shared-state.html).",
+      others: ["Wochenplan Essen und Einkaufsliste", "Tauri Fenster mit Vibrancy", "Reiseplanung Lissabon im Mai"],
+      answer:
+        "Gern! Hier ist ein Vorschlag:\n\n1. **Montag:** Ofengemüse mit Feta\n2. **Dienstag:** Linsencurry\n3. **Mittwoch:** Pasta mit Zitrone und Spinat\n\nSoll ich dir die Einkaufsliste dazu schreiben?",
+      think: "Der Nutzer möchte einen Plan.",
+      generated: "Wochenplan mit drei Gerichten",
+    };
+
 const sample: Chat = {
   id: "11111111-1111-4111-8111-111111111111",
-  title: "Rust: Arc oder Rc?",
+  title: sampleText.title,
   createdAt: now - 3_600_000,
   updatedAt: now - 3_600_000,
   model: "claude-sonnet-5-5",
@@ -20,20 +58,20 @@ const sample: Chat = {
   sessionId: null,
   costUsd: 0.0184,
   messages: [
-    { id: "m1", role: "user", text: "Wann nehme ich in Rust Arc und wann Rc?" },
+    { id: "m1", role: "user", text: sampleText.question },
     {
       id: "m2",
       role: "assistant",
       turnEnd: "66666666-6666-4666-8666-666666666666",
-      thinking: "Unterschied: atomare Referenzzählung, Send/Sync, Kosten.",
+      thinking: sampleText.thinking,
       costUsd: 0.0184,
       text: [
-        "Kurz: **`Rc`** für einen Thread, **`Arc`** sobald der Wert Threadgrenzen überquert.",
+        sampleText.intro,
         "",
-        "## Der Unterschied",
+        sampleText.heading,
         "",
-        "- `Rc<T>` zählt Referenzen *nicht atomar*. Das ist billiger, aber `Rc` ist weder `Send` noch `Sync`.",
-        "- `Arc<T>` zählt atomar. Das kostet pro Klon ein paar Nanosekunden mehr, funktioniert aber mit `std::thread::spawn` und Tokio.",
+        sampleText.rc,
+        sampleText.arc,
         "",
         "```rust",
         "use std::sync::{Arc, Mutex};",
@@ -52,12 +90,11 @@ const sample: Chat = {
         "",
         "| | `Rc` | `Arc` |",
         "|---|---|---|",
-        "| Threads | einer | viele |",
-        "| Kosten | gering | etwas höher |",
+        ...sampleText.table,
         "",
-        "> Faustregel: Fang mit `Rc` an; der Compiler sagt dir, wann du `Arc` brauchst.",
+        sampleText.rule,
         "",
-        "Mehr dazu im [Rust Book](https://doc.rust-lang.org/book/ch16-03-shared-state.html).",
+        sampleText.more,
       ].join("\n"),
     },
   ],
@@ -65,19 +102,18 @@ const sample: Chat = {
 
 const summaries: ChatSummary[] = [
   { id: sample.id, title: sample.title, updatedAt: sample.updatedAt },
-  { id: "22222222-2222-4222-8222-222222222222", title: "Wochenplan Essen und Einkaufsliste", updatedAt: now - day - 1000 },
-  { id: "33333333-3333-4333-8333-333333333333", title: "Tauri Fenster mit Vibrancy", updatedAt: now - 3 * day },
-  { id: "44444444-4444-4444-8444-444444444444", title: "Reiseplanung Lissabon im Mai", updatedAt: now - 20 * day },
+  { id: "22222222-2222-4222-8222-222222222222", title: sampleText.others[0], updatedAt: now - day - 1000 },
+  { id: "33333333-3333-4333-8333-333333333333", title: sampleText.others[1], updatedAt: now - 3 * day },
+  { id: "44444444-4444-4444-8444-444444444444", title: sampleText.others[2], updatedAt: now - 20 * day },
 ];
 
-const answer =
-  "Gern! Hier ist ein Vorschlag:\n\n1. **Montag:** Ofengemüse mit Feta\n2. **Dienstag:** Linsencurry\n3. **Mittwoch:** Pasta mit Zitrone und Spinat\n\nSoll ich dir die Einkaufsliste dazu schreiben?";
+const answer = sampleText.answer;
 
 function streamAnswer(chatId: string) {
   let sent = 0;
   void emit("engine", { type: "session", chatId, sessionId: "55555555-5555-4555-8555-555555555555" });
   setTimeout(() => {
-    void emit("engine", { type: "delta", chatId, text: "", thinking: "Der Nutzer möchte einen Plan." });
+    void emit("engine", { type: "delta", chatId, text: "", thinking: sampleText.think });
     const timer = setInterval(() => {
       const chunk = answer.slice(sent, sent + 6);
       sent += 6;
@@ -101,12 +137,20 @@ export function installDevMock() {
     (cmd, args) => {
       const payload = args as Record<string, unknown> | undefined;
       switch (cmd) {
+        case "app_language":
+          return new URLSearchParams(location.search).get("lang") ?? "de-DE";
         case "key_status":
           return !new URLSearchParams(location.search).has("onboarding");
         case "chats_list":
           return summaries;
         case "chat_load":
-          return payload?.id === sample.id ? sample : { ...sample, id: payload?.id, messages: sample.messages.slice(0, 1) };
+          if (payload?.id === sample.id) return sample;
+          return {
+            ...sample,
+            id: payload?.id,
+            title: summaries.find((entry) => entry.id === payload?.id)?.title ?? sample.title,
+            messages: sample.messages.slice(0, 1),
+          };
         case "usage_get":
           return {
             month: "2026-10",
@@ -116,7 +160,7 @@ export function installDevMock() {
           };
         case "chat_title":
           setTimeout(
-            () => void emit("engine", { type: "title", chatId: payload?.chatId, title: "Wochenplan mit drei Gerichten" }),
+            () => void emit("engine", { type: "title", chatId: payload?.chatId, title: sampleText.generated }),
             600,
           );
           return null;
@@ -131,7 +175,7 @@ export function installDevMock() {
   );
 }
 
-/** `?demo=chat` opens the sample chat, for README screenshots. */
+/** `?demo=chat` opens the sample chat and `?lang=en` switches to English, for README screenshots. */
 export function openDemoChat() {
   if (new URLSearchParams(location.search).get("demo") !== "chat") return;
   const open = () => {

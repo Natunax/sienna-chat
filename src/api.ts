@@ -1,18 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
+import { locale, type TextKey } from "./i18n";
 
 export type ModelId = "claude-sonnet-5-5" | "claude-opus-5-5" | "claude-haiku-5-5";
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
-export const MODELS: { id: ModelId; name: string; hint: string }[] = [
-  { id: "claude-sonnet-5-5", name: "Sonnet 5.5", hint: "Schnell und stark für fast alles" },
-  { id: "claude-opus-5-5", name: "Opus 5.5", hint: "Am gründlichsten, kostet doppelt so viel" },
-  { id: "claude-haiku-5-5", name: "Haiku 5.5", hint: "Blitzschnell und sehr günstig" },
+export const MODELS: { id: ModelId; name: string; hint: TextKey }[] = [
+  { id: "claude-sonnet-5-5", name: "Sonnet 5.5", hint: "model.sonnet" },
+  { id: "claude-opus-5-5", name: "Opus 5.5", hint: "model.opus" },
+  { id: "claude-haiku-5-5", name: "Haiku 5.5", hint: "model.haiku" },
 ];
 
-export const EFFORTS: { id: Effort; name: string }[] = [
-  { id: "low", name: "Niedrig" },
-  { id: "medium", name: "Mittel" },
-  { id: "high", name: "Hoch" },
+export const EFFORTS: { id: Effort; name: TextKey }[] = [
+  { id: "low", name: "effort.low" },
+  { id: "medium", name: "effort.medium" },
+  { id: "high", name: "effort.high" },
 ];
 
 export interface ToolUse {
@@ -56,12 +57,15 @@ export interface Chat {
   titleLocked?: boolean;
   /** A generated title was already asked for. */
   titleRequested?: boolean;
+  /** Pinned chats stay on top of the sidebar. */
+  pinned?: boolean;
 }
 
 export interface ChatSummary {
   id: string;
   title: string;
   updatedAt: number;
+  pinned?: boolean;
 }
 
 export interface Usage {
@@ -77,6 +81,7 @@ export interface OutgoingAttachment extends AttachmentMeta {
 }
 
 export const api = {
+  appLanguage: () => invoke<string>("app_language"),
   keyStatus: () => invoke<boolean>("key_status"),
   keySave: (key: string) => invoke<void>("key_save", { key }),
   keyDelete: () => invoke<void>("key_delete"),
@@ -102,13 +107,16 @@ export const api = {
   chatTitle: (chatId: string, text: string) => invoke<void>("chat_title", { chatId, text }),
 };
 
-export function errorText(error: unknown): string {
-  return typeof error === "string" ? error : "Etwas ist schiefgelaufen.";
-}
-
-const usd = new Intl.NumberFormat("de-DE", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
-const usdFine = new Intl.NumberFormat("de-DE", { style: "currency", currency: "USD", maximumFractionDigits: 3 });
+let formatters: { locale: string; coarse: Intl.NumberFormat; fine: Intl.NumberFormat } | null = null;
 
 export function formatUsd(value: number): string {
-  return value > 0 && value < 0.1 ? usdFine.format(value) : usd.format(value);
+  if (formatters?.locale !== locale()) {
+    const options = { style: "currency", currency: "USD" } as const;
+    formatters = {
+      locale: locale(),
+      coarse: new Intl.NumberFormat(locale(), { ...options, maximumFractionDigits: 2 }),
+      fine: new Intl.NumberFormat(locale(), { ...options, maximumFractionDigits: 3 }),
+    };
+  }
+  return value > 0 && value < 0.1 ? formatters.fine.format(value) : formatters.coarse.format(value);
 }

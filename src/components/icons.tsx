@@ -101,6 +101,12 @@ export const PencilIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const PinIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M7.5 3.5h5M8.5 3.5v4.2L5.8 11h8.4l-2.7-3.3V3.5M10 11v5.5" />
+  </Icon>
+);
+
 export const CloseIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="m5.5 5.5 9 9M14.5 5.5l-9 9" />

@@ -1,6 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
-import { api, errorText, formatUsd, MODELS, type Usage } from "../api";
+import { api, formatUsd, MODELS, type Usage } from "../api";
+import { errorText, t } from "../i18n";
 import { setUsage } from "../store";
 import { CloseIcon, KeyIcon } from "./icons";
 import { KeyForm } from "./KeyForm";
@@ -29,7 +30,7 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
     const value = Number(budget.replace(",", "."));
     try {
       setUsage(await api.budgetSet(value));
-      setMessage("Budget gespeichert.");
+      setMessage(t("settings.budgetSaved"));
     } catch (reason) {
       setMessage(errorText(reason));
     }
@@ -47,33 +48,33 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
   return (
     <dialog ref={dialog} className="dialog" tabIndex={-1} onClose={onClose} onCancel={onClose}>
       <header className="dialog-head">
-        <h2>Einstellungen</h2>
-        <button type="button" className="icon-button" onClick={onClose} aria-label="Schließen">
+        <h2>{t("settings.title")}</h2>
+        <button type="button" className="icon-button" onClick={onClose} aria-label={t("settings.close")}>
           <CloseIcon />
         </button>
       </header>
 
       <section className="setting">
-        <h3>API-Key</h3>
+        <h3>{t("settings.key")}</h3>
         {replacing ? (
           <KeyForm
             onSaved={() => {
               setReplacing(false);
-              setMessage("Neuer Key gespeichert.");
+              setMessage(t("settings.keySaved"));
             }}
           />
         ) : (
           <div className="setting-row">
             <span className="setting-value">
               <KeyIcon size={16} />
-              Im Schlüsselbund gespeichert
+              {t("settings.keyStored")}
             </span>
             <span className="setting-actions">
               <button type="button" className="secondary-button" onClick={() => setReplacing(true)}>
-                Ersetzen
+                {t("settings.replace")}
               </button>
               <button type="button" className="secondary-button is-danger" onClick={() => void removeKey()}>
-                Entfernen
+                {t("settings.remove")}
               </button>
             </span>
           </div>
@@ -81,40 +82,34 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
       </section>
 
       <section className="setting">
-        <h3>Kosten in Sienna diesen Monat</h3>
-        <p className="setting-hint">
-          Nur was diese App verbraucht hat, nach den Schätzungen des SDK. Die Claude Console zeigt alles, was über deine
-          Organisation läuft, auch andere Keys und den Playground.
-        </p>
+        <h3>{t("settings.costs")}</h3>
+        <p className="setting-hint">{t("settings.costsHint")}</p>
         {usage && Object.keys(usage.byModel ?? {}).length ? (
           <dl className="cost-list">
             {Object.entries(usage.byModel)
               .sort(([, a], [, b]) => b - a)
               .map(([model, usd]) => (
                 <div key={model} className="cost-row">
-                  <dt>{MODELS.find((entry) => entry.id === model)?.name ?? "Sonstige"}</dt>
+                  <dt>{MODELS.find((entry) => entry.id === model)?.name ?? t("model.other")}</dt>
                   <dd>{formatUsd(usd)}</dd>
                 </div>
               ))}
             <div className="cost-row is-total">
-              <dt>Gesamt in Sienna</dt>
+              <dt>{t("settings.costsTotal")}</dt>
               <dd>{formatUsd(usage.usd)}</dd>
             </div>
           </dl>
         ) : (
-          <p className="setting-hint">Noch keine Kosten in diesem Monat.</p>
+          <p className="setting-hint">{t("settings.noCosts")}</p>
         )}
         <button type="button" className="link-button cost-link" onClick={() => void openUrl(CONSOLE_USAGE_URL)}>
-          Gesamtverbrauch in der Console ansehen
+          {t("settings.console")}
         </button>
       </section>
 
       <section className="setting">
-        <h3>Monatsbudget</h3>
-        <p className="setting-hint">
-          Gilt nur für Sienna: Ist es erreicht, nimmt die App keine Nachrichten mehr an. Die harte Grenze für alles ist
-          das Ausgabenlimit in der Claude Console.
-        </p>
+        <h3>{t("settings.budget")}</h3>
+        <p className="setting-hint">{t("settings.budgetHint")}</p>
         <div className="setting-row">
           <label className="budget-field">
             <span>$</span>
@@ -123,11 +118,11 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
               inputMode="decimal"
               value={budget}
               onChange={(event) => setBudget(event.target.value)}
-              aria-label="Monatsbudget in Dollar"
+              aria-label={t("settings.budgetLabel")}
             />
           </label>
           <button type="button" className="secondary-button" onClick={() => void saveBudget()}>
-            Budget speichern
+            {t("settings.budgetSave")}
           </button>
         </div>
       </section>

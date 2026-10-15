@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { EFFORTS, MODELS, type Effort, type ModelId, type OutgoingAttachment } from "../api";
+import { t } from "../i18n";
 import { ArrowUpIcon, CheckIcon, ChevronDownIcon, CloseIcon, DocumentIcon, GlobeIcon, PaperclipIcon, StopIcon } from "./icons";
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
@@ -26,16 +27,16 @@ interface Props {
 function readFile(file: File): Promise<OutgoingAttachment> {
   return new Promise((resolve, reject) => {
     const isPdf = file.type === "application/pdf";
-    if (!isPdf && !IMAGE_TYPES.includes(file.type)) return reject("Nur Bilder (PNG, JPEG, GIF, WebP) und PDFs.");
+    if (!isPdf && !IMAGE_TYPES.includes(file.type)) return reject(t("composer.fileType"));
     if (file.size > (isPdf ? MAX_PDF_BYTES : MAX_IMAGE_BYTES)) {
-      return reject(isPdf ? "PDFs dürfen höchstens 20 MB groß sein." : "Bilder dürfen höchstens 5 MB groß sein.");
+      return reject(isPdf ? t("composer.pdfSize") : t("composer.imageSize"));
     }
     const reader = new FileReader();
-    reader.onerror = () => reject("Die Datei konnte nicht gelesen werden.");
+    reader.onerror = () => reject(t("composer.readError"));
     reader.onload = () => {
       const result = String(reader.result);
       resolve({
-        name: file.name || "Bild",
+        name: file.name || t("app.image"),
         mediaType: file.type,
         data: result.slice(result.indexOf(",") + 1),
         previewUrl: isPdf ? undefined : URL.createObjectURL(file),
@@ -72,7 +73,7 @@ function ModelMenu({ settings, onSettings }: Pick<Props, "settings" | "onSetting
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        title="Modell und Gründlichkeit"
+        title={t("composer.modelHint")}
       >
         {current.name}
         <ChevronDownIcon size={13} />
@@ -93,14 +94,14 @@ function ModelMenu({ settings, onSettings }: Pick<Props, "settings" | "onSetting
             >
               <span className="menu-text">
                 <span className="menu-title">{model.name}</span>
-                <span className="menu-hint">{model.hint}</span>
+                <span className="menu-hint">{t(model.hint)}</span>
               </span>
               {model.id === settings.model && <CheckIcon size={15} className="menu-check" />}
             </button>
           ))}
           <div className="menu-sep" />
-          <div className="menu-label">Gründlichkeit</div>
-          <div className="segmented" role="radiogroup" aria-label="Gründlichkeit">
+          <div className="menu-label">{t("composer.effort")}</div>
+          <div className="segmented" role="radiogroup" aria-label={t("composer.effort")}>
             {EFFORTS.map((effort) => (
               <button
                 key={effort.id}
@@ -110,7 +111,7 @@ function ModelMenu({ settings, onSettings }: Pick<Props, "settings" | "onSetting
                 className={effort.id === settings.effort ? "is-active" : undefined}
                 onClick={() => onSettings({ effort: effort.id })}
               >
-                {effort.name}
+                {t(effort.name)}
               </button>
             ))}
           </div>
@@ -208,7 +209,7 @@ export function Composer(props: Props) {
               <button
                 type="button"
                 className="attachment-remove"
-                aria-label={`${file.name} entfernen`}
+                aria-label={t("composer.remove", { name: file.name })}
                 onClick={() => removeFile(index)}
               >
                 <CloseIcon size={12} />
@@ -221,12 +222,12 @@ export function Composer(props: Props) {
         ref={area}
         className="composer-input"
         rows={1}
-        placeholder="Schreib Claude eine Nachricht"
+        placeholder={t("composer.placeholder")}
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        aria-label="Nachricht"
+        aria-label={t("composer.label")}
       />
       {notice && <div className="composer-notice">{notice}</div>}
       <div className="composer-bar">
@@ -235,8 +236,8 @@ export function Composer(props: Props) {
             type="button"
             className="icon-button"
             onClick={() => picker.current?.click()}
-            aria-label="Datei anhängen"
-            title="Bild oder PDF anhängen"
+            aria-label={t("composer.attach")}
+            title={t("composer.attachHint")}
           >
             <PaperclipIcon />
           </button>
@@ -256,15 +257,15 @@ export function Composer(props: Props) {
             className={`pill${settings.web ? " is-on" : ""}`}
             aria-pressed={settings.web}
             onClick={() => onSettings({ web: !settings.web })}
-            title="Claude darf im Web suchen"
+            title={t("composer.webHint")}
           >
             <GlobeIcon size={15} />
-            Websuche
+            {t("composer.web")}
           </button>
           <ModelMenu settings={settings} onSettings={onSettings} />
         </div>
         {streaming ? (
-          <button type="button" className="send-button is-stop" onClick={onStop} aria-label="Antwort stoppen" title="Stoppen (⌘.)">
+          <button type="button" className="send-button is-stop" onClick={onStop} aria-label={t("composer.stop")} title={t("composer.stopHint")}>
             <StopIcon />
           </button>
         ) : (
@@ -273,8 +274,8 @@ export function Composer(props: Props) {
             className="send-button"
             onClick={submit}
             disabled={!canSend}
-            aria-label="Senden"
-            title="Senden (↩)"
+            aria-label={t("composer.send")}
+            title={t("composer.sendHint")}
           >
             <ArrowUpIcon />
           </button>

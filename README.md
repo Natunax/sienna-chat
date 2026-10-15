@@ -35,11 +35,11 @@ Every request goes to Anthropic with **your API key**, is billed to **your API o
 - **Monthly budget cap**: once reached, the app stops sending
 - **Regenerate or edit** the last exchange; the conversation resumes from the turn before it
 - **Copy** any answer with one click
-- **Chat history** grouped by day, with search, delete and rename (double-click or F2); titles are written by Haiku after the first answer
+- **Chat history** grouped by day, with search, pinning, delete and rename (double-click or F2); titles are written by Haiku after the first answer
 - **Native Mac look**: sidebar with the system material, light and dark mode, reduced motion and transparency respected
 - **Keyboard first**: ⌘N new chat, ⌘, settings, ⌘\ sidebar, ⌘. stop, ↩ send, ⇧↩ new line
 
-The interface is in German.
+The interface is in English or German and follows your Mac's language.
 
 ## Install
 
@@ -89,7 +89,8 @@ flowchart LR
 | --- | --- |
 | `src/` | React UI: `store.ts` holds chats and the stream, `components/` the views |
 | `src-tauri/src/` | Rust shell: `lib.rs` commands, `engine.rs` engine process, `keychain.rs`, `store.rs` |
-| `sidecar/index.mjs` | Chat engine on the Claude Agent SDK |
+| `sidecar/index.mjs` | Chat engine on the Claude Agent SDK, bundled into `sidecar/dist/engine.mjs` for the app |
+| `src/i18n.ts` | Interface texts in English and German |
 | `src/devMock.ts` | Browser preview with sample data, only in `npm run dev` |
 
 ## Privacy and security
@@ -116,7 +117,7 @@ npm run tauri dev     # the app with hot reload
 npm run dev           # browser preview with sample chats, no key needed
 ```
 
-`http://localhost:1430/?demo=chat` opens the sample chat in the browser preview, `?onboarding` shows the key setup.
+`http://localhost:1430/?demo=chat` opens the sample chat in the browser preview, `?onboarding` shows the key setup and `?lang=en` switches to English.
 
 Checks:
 
@@ -128,9 +129,8 @@ cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 ## Limitations
 
 - macOS on Apple Silicon only; Node.js must be installed (looked up in Homebrew, `/usr/local`, Volta and `~/.local/bin`).
-- The app bundle is about 280 MB, almost all of it the Claude Code engine the Agent SDK ships.
+- The app bundle is about 245 MB: the chat engine is bundled into one 1 MB file, the rest is the Claude Code binary the Agent SDK runs, which cannot be made smaller.
 - Not signed or notarized; macOS may ask you to confirm the first launch.
-- German interface.
 
 ## License
 

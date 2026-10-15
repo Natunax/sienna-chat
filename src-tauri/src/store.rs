@@ -17,6 +17,8 @@ pub struct ChatSummary {
     pub id: String,
     pub title: String,
     pub updated_at: i64,
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -59,7 +61,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let tmp = path.with_extension("json.tmp");
     fs::write(&tmp, bytes)
         .and_then(|()| fs::rename(&tmp, path))
-        .map_err(|_| "Speichern fehlgeschlagen.".to_string())
+        .map_err(|_| "error.saveFailed".to_string())
 }
 
 impl Store {
@@ -122,6 +124,7 @@ impl Store {
                         .and_then(Value::as_str)
                         .unwrap_or("Chat")
                         .to_string(),
+                    pinned: chat.get("pinned").and_then(Value::as_bool).unwrap_or(false),
                     updated_at: chat.get("updatedAt").and_then(Value::as_i64).unwrap_or(0),
                 })
             })
@@ -133,24 +136,22 @@ impl Store {
     }
 
     fn write_index(&self, list: &[ChatSummary]) -> Result<(), String> {
-        let bytes =
-            serde_json::to_vec(list).map_err(|_| "Speichern fehlgeschlagen.".to_string())?;
+        let bytes = serde_json::to_vec(list).map_err(|_| "error.saveFailed".to_string())?;
         write_atomic(&self.index_path(), &bytes)
     }
 
     pub fn load(&self, id: &str) -> Result<Value, String> {
         if !valid_id(id) {
-            return Err("Unbekannter Chat.".into());
+            return Err("error.unknownChat".into());
         }
-        let bytes = fs::read(self.chat_path(id))
-            .map_err(|_| "Der Chat wurde nicht gefunden.".to_string())?;
-        serde_json::from_slice(&bytes).map_err(|_| "Der Chat ist beschädigt.".into())
+        let bytes = fs::read(self.chat_path(id)).map_err(|_| "error.chatNotFound".to_string())?;
+        serde_json::from_slice(&bytes).map_err(|_| "error.chatDamaged".into())
     }
 
     pub fn save(&self, chat: &Value) -> Result<(), String> {
         let id = chat.get("id").and_then(Value::as_str).unwrap_or_default();
         if !valid_id(id) {
-            return Err("Unbekannter Chat.".into());
+            return Err("error.unknownChat".into());
         }
         let title: String = chat
             .get("title")
@@ -160,8 +161,7 @@ impl Store {
             .take(120)
             .collect();
         let updated_at = chat.get("updatedAt").and_then(Value::as_i64).unwrap_or(0);
-        let bytes =
-            serde_json::to_vec(chat).map_err(|_| "Speichern fehlgeschlagen.".to_string())?;
+        let bytes = serde_json::to_vec(chat).map_err(|_| "error.saveFailed".to_string())?;
         let _guard = self.guard();
         write_atomic(&self.chat_path(id), &bytes)?;
 
@@ -171,13 +171,14 @@ impl Store {
             id: id.to_string(),
             title,
             updated_at,
+            pinned: chat.get("pinned").and_then(Value::as_bool).unwrap_or(false),
         });
         self.write_index(&list)
     }
 
     pub fn delete(&self, id: &str) -> Result<(), String> {
         if !valid_id(id) {
-            return Err("Unbekannter Chat.".into());
+            return Err("error.unknownChat".into());
         }
         let _guard = self.guard();
         let session = fs::read(self.chat_path(id))
@@ -238,8 +239,7 @@ impl Store {
     }
 
     fn write_usage(&self, usage: &Usage) -> Result<(), String> {
-        let bytes =
-            serde_json::to_vec(usage).map_err(|_| "Speichern fehlgeschlagen.".to_string())?;
+        let bytes = serde_json::to_vec(usage).map_err(|_| "error.saveFailed".to_string())?;
         write_atomic(&self.root.join("usage.json"), &bytes)
     }
 
@@ -256,7 +256,7 @@ impl Store {
 
     pub fn set_budget(&self, budget: f64) -> Result<Usage, String> {
         if !budget.is_finite() || !(1.0..=10_000.0).contains(&budget) {
-            return Err("Das Budget muss zwischen 1 und 10.000 $ liegen.".into());
+            return Err("error.budgetRange".into());
         }
         let _guard = self.guard();
         let mut usage = self.read_usage();

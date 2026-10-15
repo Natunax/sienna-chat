@@ -12,6 +12,7 @@ import {
   loadChat,
   refreshSummaries,
   renameChat,
+  togglePin,
   refreshUsage,
   startEngineListener,
   useChat,
@@ -111,6 +112,7 @@ export function App() {
           onNew={newChat}
           onDelete={(id) => void removeChat(id)}
           onRename={(id, title) => void renameChat(id, title)}
+          onPin={(id) => void togglePin(id)}
           onToggle={() => setSidebarOpen(false)}
           onSettings={() => setSettingsOpen(true)}
         />

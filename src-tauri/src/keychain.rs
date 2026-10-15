@@ -6,7 +6,7 @@ const SERVICE: &str = "sienna";
 const ACCOUNT: &str = "anthropic-api-key";
 
 fn entry() -> Result<Entry, String> {
-    Entry::new(SERVICE, ACCOUNT).map_err(|_| "Der Schlüsselbund ist nicht erreichbar.".to_string())
+    Entry::new(SERVICE, ACCOUNT).map_err(|_| "error.keychainUnavailable".to_string())
 }
 
 pub fn read() -> Option<String> {
@@ -31,16 +31,16 @@ pub fn save(key: &str) -> Result<(), String> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     if !plausible {
-        return Err("Das sieht nicht wie ein Anthropic-API-Key aus.".into());
+        return Err("error.keyFormat".into());
     }
     entry()?
         .set_password(key)
-        .map_err(|_| "Der Key konnte nicht im Schlüsselbund gespeichert werden.".into())
+        .map_err(|_| "error.keySave".into())
 }
 
 pub fn delete() -> Result<(), String> {
     match entry()?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(_) => Err("Der Key konnte nicht entfernt werden.".into()),
+        Err(_) => Err("error.keyDelete".into()),
     }
 }

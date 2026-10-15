@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { formatUsd, type ChatSummary, type Usage } from "../api";
-import { ComposeIcon, GearIcon, SearchIcon, SidebarIcon, TrashIcon } from "./icons";
+import { locale, t } from "../i18n";
+import { ComposeIcon, GearIcon, PinIcon, SearchIcon, SidebarIcon, TrashIcon } from "./icons";
 
 interface Props {
   summaries: ChatSummary[];
@@ -10,20 +11,19 @@ interface Props {
   onNew: () => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
+  onPin: (id: string) => void;
   onToggle: () => void;
   onSettings: () => void;
 }
 
-const MONTHS = new Intl.DateTimeFormat("de-DE", { month: "long" });
-
 function groupOf(updatedAt: number, now: Date): string {
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const day = 86_400_000;
-  if (updatedAt >= startOfToday) return "Heute";
-  if (updatedAt >= startOfToday - day) return "Gestern";
-  if (updatedAt >= startOfToday - 6 * day) return "Letzte 7 Tage";
-  if (updatedAt >= startOfToday - 29 * day) return "Letzte 30 Tage";
-  return "Älter";
+  if (updatedAt >= startOfToday) return t("sidebar.today");
+  if (updatedAt >= startOfToday - day) return t("sidebar.yesterday");
+  if (updatedAt >= startOfToday - 6 * day) return t("sidebar.week");
+  if (updatedAt >= startOfToday - 29 * day) return t("sidebar.month");
+  return t("sidebar.older");
 }
 
 function RenameField({ title, onDone }: { title: string; onDone: (title: string | null) => void }) {
@@ -40,19 +40,20 @@ function RenameField({ title, onDone }: { title: string; onDone: (title: string 
       onKeyDown={onKeyDown}
       onBlur={() => onDone(value.trim() || null)}
       onFocus={(event) => event.target.select()}
-      aria-label="Chat umbenennen"
+      aria-label={t("sidebar.rename")}
       maxLength={120}
       autoFocus
     />
   );
 }
 
-function ChatRow({ chat, active, onSelect, onDelete, onRename }: {
+function ChatRow({ chat, active, onSelect, onDelete, onRename, onPin }: {
   chat: ChatSummary;
   active: boolean;
   onSelect: () => void;
   onDelete: () => void;
   onRename: (title: string) => void;
+  onPin: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -86,38 +87,52 @@ function ChatRow({ chat, active, onSelect, onDelete, onRename }: {
         onDoubleClick={() => setRenaming(true)}
         onKeyDown={(event) => event.key === "F2" && setRenaming(true)}
         aria-current={active ? "page" : undefined}
-        title="Doppelklick zum Umbenennen"
+        title={t("sidebar.renameHint")}
       >
         {chat.title}
       </button>
       {confirming ? (
         <button type="button" className="chat-row-confirm" onClick={onDelete}>
-          Löschen
+          {t("sidebar.confirmDelete")}
         </button>
       ) : (
-        <button
-          type="button"
-          className="chat-row-delete"
-          onClick={() => setConfirming(true)}
-          aria-label={`${chat.title} löschen`}
-          title="Chat löschen"
-        >
-          <TrashIcon size={15} />
-        </button>
+        <span className="chat-row-actions">
+          <button
+            type="button"
+            className="chat-row-action"
+            onClick={onPin}
+            aria-label={t(chat.pinned ? "sidebar.unpinLabel" : "sidebar.pinLabel", { title: chat.title })}
+            title={t(chat.pinned ? "sidebar.unpin" : "sidebar.pin")}
+          >
+            <PinIcon size={15} />
+          </button>
+          <button
+            type="button"
+            className="chat-row-action is-delete"
+            onClick={() => setConfirming(true)}
+            aria-label={t("sidebar.deleteLabel", { title: chat.title })}
+            title={t("sidebar.delete")}
+          >
+            <TrashIcon size={15} />
+          </button>
+        </span>
       )}
     </li>
   );
 }
 
 export function Sidebar(props: Props) {
-  const { summaries, activeId, usage, onSelect, onNew, onDelete, onRename, onToggle, onSettings } = props;
+  const { summaries, activeId, usage, onSelect, onNew, onDelete, onRename, onPin, onToggle, onSettings } = props;
   const [query, setQuery] = useState("");
 
   const groups = useMemo(() => {
     const now = new Date();
     const needle = query.trim().toLowerCase();
     const result: { label: string; chats: ChatSummary[] }[] = [];
+    const pinned = summaries.filter((chat) => chat.pinned && (!needle || chat.title.toLowerCase().includes(needle)));
+    if (pinned.length) result.push({ label: t("sidebar.pinned"), chats: pinned });
     for (const chat of summaries) {
+      if (chat.pinned) continue;
       if (needle && !chat.title.toLowerCase().includes(needle)) continue;
       const label = groupOf(chat.updatedAt, now);
       const group = result.find((entry) => entry.label === label);
@@ -128,15 +143,17 @@ export function Sidebar(props: Props) {
   }, [summaries, query]);
 
   const share = usage ? Math.min(1, usage.usd / usage.budget) : 0;
-  const monthName = usage ? MONTHS.format(new Date(`${usage.month}-01T12:00:00`)) : "";
+  const monthName = usage
+    ? new Intl.DateTimeFormat(locale(), { month: "long" }).format(new Date(`${usage.month}-01T12:00:00`))
+    : "";
 
   return (
     <aside className="sidebar">
       <div className="sidebar-top" data-tauri-drag-region>
-        <button type="button" className="icon-button" onClick={onToggle} aria-label="Seitenleiste ausblenden" title="Seitenleiste (⌘\)">
+        <button type="button" className="icon-button" onClick={onToggle} aria-label={t("sidebar.hide")} title={t("sidebar.shortcut")}>
           <SidebarIcon />
         </button>
-        <button type="button" className="icon-button" onClick={onNew} aria-label="Neuer Chat" title="Neuer Chat (⌘N)">
+        <button type="button" className="icon-button" onClick={onNew} aria-label={t("sidebar.new")} title={t("sidebar.newShortcut")}>
           <ComposeIcon />
         </button>
       </div>
@@ -145,14 +162,14 @@ export function Sidebar(props: Props) {
         <SearchIcon size={14} />
         <input
           type="search"
-          placeholder="Chats durchsuchen"
+          placeholder={t("sidebar.search")}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          aria-label="Chats durchsuchen"
+          aria-label={t("sidebar.search")}
         />
       </label>
 
-      <nav className="chat-list" aria-label="Chats">
+      <nav className="chat-list" aria-label={t("sidebar.chats")}>
         {groups.map((group) => (
           <section key={group.label}>
             <h2 className="group-label">{group.label}</h2>
@@ -165,13 +182,14 @@ export function Sidebar(props: Props) {
                   onSelect={() => onSelect(chat.id)}
                   onDelete={() => onDelete(chat.id)}
                   onRename={(title) => onRename(chat.id, title)}
+                  onPin={() => onPin(chat.id)}
                 />
               ))}
             </ul>
           </section>
         ))}
-        {summaries.length === 0 && <p className="list-empty">Deine Chats erscheinen hier.</p>}
-        {summaries.length > 0 && groups.length === 0 && <p className="list-empty">Kein Chat passt zur Suche.</p>}
+        {summaries.length === 0 && <p className="list-empty">{t("sidebar.empty")}</p>}
+        {summaries.length > 0 && groups.length === 0 && <p className="list-empty">{t("sidebar.noMatch")}</p>}
       </nav>
 
       <div className="sidebar-foot">
@@ -181,13 +199,13 @@ export function Sidebar(props: Props) {
           onClick={onSettings}
           title={
             usage
-              ? `Diesen Monat in Sienna, von ${formatUsd(usage.budget)} Budget. Den Gesamtverbrauch deiner Organisation zeigt die Claude Console. Einstellungen (⌘,)`
-              : "Einstellungen (⌘,)"
+              ? t("sidebar.spendHint", { budget: formatUsd(usage.budget) })
+              : t("sidebar.settings")
           }
         >
           <span className="usage-text">
             <span className="usage-amount">
-              {usage ? `${formatUsd(usage.usd)} in Sienna` : "Kosten"}
+              {usage ? t("sidebar.spend", { amount: formatUsd(usage.usd) }) : t("sidebar.spendFallback")}
             </span>
             <span className="usage-month">{monthName}</span>
           </span>
