@@ -349,6 +349,7 @@ type EngineEvent =
       error: string | null;
     }
   | { type: "title"; chatId: string; title: string }
+  | { type: "context"; chatId: string; used: number; window: number }
   | { type: "fatal"; message: string; generation: number }
   | { type: "exit"; generation: number }
   | { type: "ready" };
@@ -404,6 +405,10 @@ function onEngineEvent(event: EngineEvent) {
         const chat = chats.get(event.chatId);
         if (chat) requestTitle(chat);
       }
+      return;
+    case "context":
+      updateChat(event.chatId, (chat) => ({ ...chat, context: { used: event.used, window: event.window } }));
+      persist(event.chatId);
       return;
     case "title": {
       const chat = chats.get(event.chatId);

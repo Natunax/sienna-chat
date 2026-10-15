@@ -150,6 +150,17 @@ class ChatSession {
     this.pump();
   }
 
+  /** How full the context window is; a local estimate, no extra API call. */
+  reportContext() {
+    this.query
+      .getContextUsage({ detail: "summary" })
+      .then((usage) => {
+        if (!usage?.rawMaxTokens) return;
+        emit({ type: "context", chatId: this.chatId, used: usage.totalTokens, window: usage.rawMaxTokens });
+      })
+      .catch(() => {});
+  }
+
   /** Shows paths inside the project folder relative to it. */
   relative(text) {
     const root = this.config.projectDir;
@@ -255,6 +266,7 @@ class ChatSession {
           error: failed ? describeError(message) : null,
         });
         this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
+        this.reportContext();
         return;
       }
       default:

@@ -4,6 +4,7 @@ import { addProject } from "../store";
 import { PICKER_ACCEPT, readAttachment, TEXT_MEDIA_TYPE } from "../attachments";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { errorText, t } from "../i18n";
+import { ContextMeter } from "./ContextMeter";
 import { ModelMenu } from "./ModelMenu";
 import { PlusMenu } from "./PlusMenu";
 import {
@@ -36,6 +37,8 @@ interface Props {
   projectLocked: boolean;
   /** A picked folder becomes (or finds) a project; `null` takes the chat out of it. */
   onProject: (project: Project | null) => void;
+  /** Context window use after the last answer, when known. */
+  context?: { used: number; window: number } | null;
 }
 
 function folderName(path: string): string {
@@ -50,7 +53,7 @@ function fileLabel(name: string): string {
 
 export function Composer(props: Props) {
   const { settings, onSettings, streaming, onSend, onStop, autoFocusKey, pendingFiles, onFilesTaken } = props;
-  const { project, projectLocked, onProject } = props;
+  const { project, projectLocked, onProject, context } = props;
   const [text, setText] = useState("");
   const [files, setFiles] = useState<OutgoingAttachment[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -259,6 +262,7 @@ export function Composer(props: Props) {
       {/* The model sits below the box, as in Claude Code. */}
       <div className="composer-footer">
         <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
+        {context && context.window > 0 && <ContextMeter used={context.used} window={context.window} />}
       </div>
     </div>
   );

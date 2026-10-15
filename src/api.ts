@@ -68,6 +68,8 @@ export interface Chat {
   projectDir?: string | null;
   /** The project the chat belongs to in the sidebar. */
   projectId?: string | null;
+  /** Context window use after the last answer, in tokens. */
+  context?: { used: number; window: number } | null;
 }
 
 export interface Project {

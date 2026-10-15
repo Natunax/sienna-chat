@@ -145,6 +145,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
       project={chat.projectDir ?? null}
       // A chat's session lives in its folder, so the folder is set before the first message.
       projectLocked={!empty}
+      context={chat.context}
       onProject={(picked) =>
         updateChat(chat.id, (current) => ({
           ...current,

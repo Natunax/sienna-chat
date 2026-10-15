@@ -57,6 +57,7 @@ const sample: Chat = {
   web: false,
   sessionId: null,
   costUsd: 0.0184,
+  context: { used: 18_400, window: 200_000 },
   messages: [
     { id: "m1", role: "user", text: sampleText.question },
     {
@@ -138,6 +139,7 @@ function streamAnswer(chatId: string) {
           turnEnd: crypto.randomUUID(),
           error: null,
         });
+        void emit("engine", { type: "context", chatId, used: 9_850, window: 200_000 });
       }
     }, 32);
   }, 900);

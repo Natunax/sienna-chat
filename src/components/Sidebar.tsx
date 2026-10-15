@@ -418,16 +418,25 @@ export function Sidebar(props: Props) {
               : t("sidebar.settings")
           }
         >
-          <span className="usage-text">
-            <span className="usage-amount">
-              {usage ? t("sidebar.spend", { amount: formatUsd(usage.usd) }) : t("sidebar.spendFallback")}
-            </span>
-            <span className="usage-month">{monthName}</span>
+          <span className="usage-head">
+            {usage ? t("sidebar.spendTitle", { month: monthName }) : t("sidebar.spendFallback")}
+            <GearIcon size={15} className="usage-gear" />
           </span>
-          <span className="meter" aria-hidden="true">
-            <span className={`meter-fill${share >= 0.9 ? " is-high" : ""}`} style={{ transform: `scaleX(${share})` }} />
-          </span>
-          <GearIcon size={16} className="usage-gear" />
+          {usage && (
+            <>
+              <span className="usage-figures">
+                <span className="usage-amount">{formatUsd(usage.usd)}</span>
+                <span className="usage-budget">{t("sidebar.spendOf", { budget: formatUsd(usage.budget) })}</span>
+              </span>
+              <span className="meter" aria-hidden="true">
+                {/* Any spend shows at least a sliver, so the bar never looks unused. */}
+                <span
+                  className={`meter-fill${share >= 0.9 ? " is-high" : ""}`}
+                  style={{ transform: `scaleX(${usage.usd > 0 ? Math.max(share, 0.03) : 0})` }}
+                />
+              </span>
+            </>
+          )}
         </button>
       </div>
     </aside>

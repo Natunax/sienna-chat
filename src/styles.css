@@ -555,14 +555,10 @@ a:focus-visible {
   border-top: 0.5px solid var(--separator);
 }
 
-.usage {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-rows: auto auto;
-  column-gap: 10px;
-  row-gap: 7px;
+.sidebar-foot .usage {
+  display: block;
   width: 100%;
-  padding: 8px;
+  padding: 8px 8px 10px;
   border-radius: 8px;
   text-align: left;
 }
@@ -571,36 +567,45 @@ a:focus-visible {
   background: var(--fill);
 }
 
-.usage-text {
+.usage-head {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.usage-amount {
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-  color: var(--label-2);
-  font-weight: 500;
-}
-
-.usage-month {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--label-3);
 }
 
 .usage-gear {
-  grid-row: 1 / 3;
-  grid-column: 2;
-  align-self: center;
+  color: var(--label-3);
+}
+
+.usage:hover .usage-gear {
+  color: var(--label-2);
+}
+
+.usage-figures {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 3px 0 8px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.usage-amount {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--label);
+}
+
+.usage-budget {
+  font-size: 12px;
   color: var(--label-3);
 }
 
 .meter {
+  display: block;
   height: 4px;
   border-radius: 2px;
   background: var(--fill-active);
@@ -1289,6 +1294,8 @@ a:focus-visible {
 
 .composer-footer {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 4px 2px 0;
 }
 
@@ -1297,6 +1304,40 @@ a:focus-visible {
   padding: 0 8px;
   font-size: 12px;
   white-space: nowrap;
+}
+
+.context-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-meter svg {
+  transform: rotate(-90deg);
+}
+
+.context-track,
+.context-fill {
+  fill: none;
+  stroke-width: 2;
+}
+
+.context-track {
+  stroke: var(--fill-active);
+}
+
+.context-fill {
+  stroke: var(--label-2);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 300ms ease-out;
+}
+
+.context-meter.is-high .context-fill {
+  stroke: var(--danger);
 }
 
 /* Below the box the menu opens upward from the left edge. */
