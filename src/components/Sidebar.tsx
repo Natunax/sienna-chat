@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { formatUsd, type ChatSummary, type Usage } from "../api";
-import { locale, t } from "../i18n";
+import { locale, t, useLanguage } from "../i18n";
 import { ComposeIcon, GearIcon, PinIcon, SearchIcon, SidebarIcon, TrashIcon } from "./icons";
 
 interface Props {
@@ -124,6 +124,7 @@ function ChatRow({ chat, active, onSelect, onDelete, onRename, onPin }: {
 export function Sidebar(props: Props) {
   const { summaries, activeId, usage, onSelect, onNew, onDelete, onRename, onPin, onToggle, onSettings } = props;
   const [query, setQuery] = useState("");
+  const language = useLanguage();
 
   const groups = useMemo(() => {
     const now = new Date();
@@ -140,7 +141,8 @@ export function Sidebar(props: Props) {
       else result.push({ label, chats: [chat] });
     }
     return result;
-  }, [summaries, query]);
+    // The group labels are translated, so they are rebuilt when the language changes.
+  }, [summaries, query, language]);
 
   const share = usage ? Math.min(1, usage.usd / usage.budget) : 0;
   const monthName = usage

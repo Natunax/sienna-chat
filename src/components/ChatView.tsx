@@ -1,7 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { formatUsd, type Chat, type OutgoingAttachment } from "../api";
-import { t } from "../i18n";
+import { t, useLanguage } from "../i18n";
 import { redoLast, rewindPoint, sendMessage, stopMessage, updateChat } from "../store";
 import { Composer, type ComposerSettings } from "./Composer";
 import { SidebarIcon } from "./icons";
@@ -53,6 +53,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
   const last = chat.messages[chat.messages.length - 1];
   const streaming = Boolean(last?.streaming);
   const empty = chat.messages.length === 0;
+  const language = useLanguage();
 
   const settings: ComposerSettings = { model: chat.model, effort: chat.effort, web: chat.web };
 
@@ -172,7 +173,8 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
             <div className="thread" ref={content}>
               {chat.messages.map((message, index) => (
                 <MessageView
-                  key={message.id}
+                  // Messages are memoized; a new key redraws them in the new language.
+                  key={`${message.id}:${language}`}
                   message={message}
                   onRedo={canRedo && index >= lastQuestion ? redo : undefined}
                 />

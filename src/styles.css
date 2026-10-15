@@ -1460,6 +1460,11 @@ a:focus-visible {
   gap: 8px;
 }
 
+.setting-segmented {
+  margin: 0;
+  max-width: 300px;
+}
+
 .cost-list {
   margin: 0;
 }

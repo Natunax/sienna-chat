@@ -1,6 +1,8 @@
-// Interface texts in German and English. The language follows the Mac's
-// preferred language (reported by Rust, see `app_language`); anything that is
-// not German gets English. Rust and the engine send error codes (`error.*`)
+import { useSyncExternalStore } from "react";
+
+// Interface texts in German and English. By default the language follows the
+// Mac's preferred language (reported by Rust, see `app_language`); anything
+// that is not German gets English. The settings can pin German or English. Rust and the engine send error codes (`error.*`)
 // that are translated here too.
 
 const de = {
@@ -93,6 +95,8 @@ const de = {
   "key.saving": "Speichert…",
 
   "settings.title": "Einstellungen",
+  "settings.language": "Sprache",
+  "settings.languageSystem": "System",
   "settings.close": "Schließen",
   "settings.key": "API-Key",
   "settings.keyStored": "Im Schlüsselbund gespeichert",
@@ -235,6 +239,8 @@ const en: Record<TextKey, string> = {
   "key.saving": "Saving…",
 
   "settings.title": "Settings",
+  "settings.language": "Language",
+  "settings.languageSystem": "System",
   "settings.close": "Close",
   "settings.key": "API key",
   "settings.keyStored": "Stored in the Keychain",
@@ -289,12 +295,63 @@ const en: Record<TextKey, string> = {
 let texts: Record<TextKey, string> = de;
 let localeTag = "de-DE";
 
-/** Picks German for a German system language and English for everything else. */
-export function setLanguage(systemLocale: string) {
-  const german = systemLocale.toLowerCase().startsWith("de");
+export type LanguageChoice = "system" | "de" | "en";
+
+const CHOICE_KEY = "language";
+let systemLocale = "en-US";
+let choice: LanguageChoice = readChoice();
+let version = 0;
+const listeners = new Set<() => void>();
+
+function readChoice(): LanguageChoice {
+  try {
+    const stored = localStorage.getItem(CHOICE_KEY);
+    return stored === "de" || stored === "en" ? stored : "system";
+  } catch {
+    return "system";
+  }
+}
+
+/** Picks German for a German locale and English for everything else. */
+function apply() {
+  const tag = choice === "de" ? "de-DE" : choice === "en" && !/^en\b/i.test(systemLocale) ? "en-US" : systemLocale;
+  const german = tag.toLowerCase().startsWith("de");
   texts = german ? de : en;
-  localeTag = german ? "de-DE" : systemLocale.includes("-") ? systemLocale : "en-US";
+  localeTag = german ? "de-DE" : tag.includes("-") ? tag : "en-US";
   document.documentElement.lang = german ? "de" : "en";
+}
+
+/** Called once before the first render with the Mac's preferred language. */
+export function initLanguage(system: string) {
+  systemLocale = system || "en-US";
+  apply();
+}
+
+export function languageChoice(): LanguageChoice {
+  return choice;
+}
+
+export function setLanguageChoice(next: LanguageChoice) {
+  choice = next;
+  try {
+    if (next === "system") localStorage.removeItem(CHOICE_KEY);
+    else localStorage.setItem(CHOICE_KEY, next);
+  } catch {
+    // The choice still applies until the app restarts.
+  }
+  apply();
+  version += 1;
+  listeners.forEach((listener) => listener());
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** Re-renders the caller when the language changes; returns a change counter. */
+export function useLanguage(): number {
+  return useSyncExternalStore(subscribe, () => version);
 }
 
 /** The locale for numbers and dates. */

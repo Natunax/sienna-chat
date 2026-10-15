@@ -4,6 +4,7 @@ import { ChatView } from "./components/ChatView";
 import type { ComposerSettings } from "./components/Composer";
 import { Onboarding } from "./components/KeyForm";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { useLanguage } from "./i18n";
 import { Sidebar } from "./components/Sidebar";
 import {
   createChat,
@@ -41,6 +42,8 @@ function writeDefaults(settings: ComposerSettings) {
 }
 
 export function App() {
+  // Re-render everything when the language is switched in the settings.
+  useLanguage();
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   // The first chat exists from the first render on, so the window never shows an empty pane.
   const [activeId, setActiveId] = useState<string | null>(() => createChat(readDefaults()).id);

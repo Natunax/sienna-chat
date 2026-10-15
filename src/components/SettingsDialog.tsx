@@ -1,12 +1,19 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
 import { api, formatUsd, MODELS, type Usage } from "../api";
-import { errorText, t } from "../i18n";
+import { errorText, languageChoice, setLanguageChoice, t, type LanguageChoice } from "../i18n";
 import { setUsage } from "../store";
 import { CloseIcon, KeyIcon } from "./icons";
 import { KeyForm } from "./KeyForm";
 
 const CONSOLE_USAGE_URL = "https://platform.claude.com/settings/billing";
+
+// Language names stay in their own language, so each is recognizable in both.
+const LANGUAGES: { id: LanguageChoice; name: string }[] = [
+  { id: "system", name: "" },
+  { id: "de", name: "Deutsch" },
+  { id: "en", name: "English" },
+];
 
 interface Props {
   usage: Usage | null;
@@ -19,6 +26,7 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
   const [replacing, setReplacing] = useState(false);
   const [budget, setBudget] = useState(String(usage?.budget ?? 100));
   const [message, setMessage] = useState<string | null>(null);
+  const [language, setLanguage] = useState<LanguageChoice>(languageChoice);
 
   useEffect(() => {
     dialog.current?.showModal();
@@ -53,6 +61,27 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
           <CloseIcon />
         </button>
       </header>
+
+      <section className="setting">
+        <h3>{t("settings.language")}</h3>
+        <div className="segmented setting-segmented" role="radiogroup" aria-label={t("settings.language")}>
+          {LANGUAGES.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={option.id === language}
+              className={option.id === language ? "is-active" : undefined}
+              onClick={() => {
+                setLanguage(option.id);
+                setLanguageChoice(option.id);
+              }}
+            >
+              {option.id === "system" ? t("settings.languageSystem") : option.name}
+            </button>
+          ))}
+        </div>
+      </section>
 
       <section className="setting">
         <h3>{t("settings.key")}</h3>

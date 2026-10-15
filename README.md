@@ -39,7 +39,7 @@ Every request goes to Anthropic with **your API key**, is billed to **your API o
 - **Native Mac look**: sidebar with the system material, light and dark mode, reduced motion and transparency respected
 - **Keyboard first**: ⌘N new chat, ⌘, settings, ⌘\ sidebar, ⌘. stop, ↩ send, ⇧↩ new line
 
-The interface is in English or German and follows your Mac's language.
+The interface is in English or German. It follows your Mac's language, or the one you pick in the settings (⌘,).
 
 ## Install
 
