@@ -77,8 +77,6 @@ type TemplateState = {
   prompt: string;
   /** Why it cannot run here; null when it can. */
   blocked: string | null;
-  /** Offered in the + menu (it leaves out what cannot run here). */
-  fits: boolean;
 };
 
 /** The text typed after a leading slash, while it is still one word. */
@@ -185,7 +183,6 @@ export function Composer(props: Props) {
       name: t(entry.name),
       command: t(entry.command),
       prompt: t(entry.prompt),
-      fits: !outOfPlace && !early,
       blocked: outOfPlace ? t("slash.projectOnly") : early ? t("slash.afterAnswer") : streaming ? t("slash.busy") : null,
     };
   });
@@ -426,9 +423,12 @@ export function Composer(props: Props) {
             comparing={Boolean(comparing)}
             onCompare={() => onCompare(comparing ? null : otherModel(settings.model, null))}
             onCheck={project && onCheck ? () => void editCheck() : undefined}
-            templates={templates
-              .filter((template) => template.fits)
-              .map((template) => ({ id: template.id, name: template.name, run: () => runTemplate(template) }))}
+            templates={templates.map((template) => ({
+              id: template.id,
+              name: template.name,
+              blocked: template.blocked,
+              run: () => runTemplate(template),
+            }))}
           />
           <input
             ref={picker}

@@ -12,7 +12,8 @@ interface Props {
   onCompare: () => void;
   /** Only in project chats: the command run after changes. */
   onCheck?: () => void;
-  templates: { id: string; name: string; run: () => void }[];
+  /** All templates; one that cannot run here says why and stays disabled. */
+  templates: { id: string; name: string; blocked: string | null; run: () => void }[];
 }
 
 /** The composer's + button: files, project folder, web search, comparing, checks and templates. */
@@ -94,9 +95,20 @@ export function PlusMenu({ web, onWeb, onAttach, onProject, comparing, onCompare
           )}
           {templates.length > 0 && <div className="plus-heading">{t("template.title")}</div>}
           {templates.map((template) => (
-            <button key={template.id} type="button" role="menuitem" className="plus-item" onClick={run(template.run)}>
+            <button
+              key={template.id}
+              type="button"
+              role="menuitem"
+              className="plus-item"
+              disabled={Boolean(template.blocked)}
+              title={template.blocked ?? undefined}
+              onClick={run(template.run)}
+            >
               <ListIcon size={15} />
-              {template.name}
+              <span className="plus-text">
+                {template.name}
+                {template.blocked && <span className="plus-reason">{template.blocked}</span>}
+              </span>
             </button>
           ))}
         </div>
