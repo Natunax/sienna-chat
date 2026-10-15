@@ -118,6 +118,8 @@ function ChatRow({ chat, active, onSelect, onDelete, onRename, onPin }: {
           // Escape or clicking elsewhere cancels; the button has focus so ↩ confirms.
           onKeyDown={(event) => event.key === "Escape" && setConfirming(false)}
           onBlur={() => setConfirming(false)}
+          // Safari moves focus away on mousedown, which would cancel before the click lands.
+          onMouseDown={(event) => event.preventDefault()}
           autoFocus
         >
           <TrashIcon size={13} />
@@ -206,6 +208,8 @@ function ProjectRow(props: {
           onClick={onRemove}
           onKeyDown={(event) => event.key === "Escape" && setConfirming(false)}
           onBlur={() => setConfirming(false)}
+          // Safari moves focus away on mousedown, which would cancel before the click lands.
+          onMouseDown={(event) => event.preventDefault()}
           autoFocus
         >
           {t("sidebar.removeProject")}
