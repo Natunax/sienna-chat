@@ -853,25 +853,27 @@ a:focus-visible {
   }
 }
 
+/* The steps of an answer, one per line, as Claude Code lists them. */
 .tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
+  display: grid;
+  justify-items: start;
+  gap: 1px;
+  margin: 0 0 12px -8px;
 }
 
 .tool-chip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   max-width: 100%;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 13px;
-  background: var(--fill);
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 7px;
   color: var(--label-2);
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1;
 }
+
 
 .tool-name {
   font-weight: 500;
@@ -887,17 +889,37 @@ a:focus-visible {
 
 .tool-chip .tool-detail {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
-.tool-chip.is-button {
-  padding-right: 8px;
-  transition: background-color 120ms;
+.tool-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 100%;
+  color: inherit;
 }
 
-.tool-chip.is-button:hover,
-.tool-chip.is-open {
-  background: var(--fill-hover);
+.tool-toggle > svg:first-child {
+  color: var(--label-3);
+}
+
+button.tool-toggle:hover .tool-name,
+.tool-chip.is-open .tool-name {
+  color: var(--label);
+}
+
+.tool-file {
+  min-width: 0;
+  border-radius: 4px;
+  transition: color 120ms;
+}
+
+.tool-file:hover {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .tool-chevron {
@@ -912,23 +934,27 @@ a:focus-visible {
 
 .tool-state {
   flex-shrink: 0;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: var(--fill);
+  color: var(--label-3);
+  font-size: 11px;
   font-weight: 500;
 }
 
-.tool-chip.is-denied {
+.tool-chip.is-denied .tool-name,
+.tool-chip.is-denied .tool-detail {
   color: var(--label-3);
 }
 
-.tool-chip.is-denied .tool-detail {
-  text-decoration: line-through;
-}
-
+.tool-state.is-error,
 .tool-chip.is-failed .tool-state {
+  background: var(--danger-soft);
   color: var(--danger);
 }
 
 .tool-panel {
-  margin: 0 0 14px;
+  margin: -6px 0 14px;
 }
 
 .tool-output {

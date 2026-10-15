@@ -223,6 +223,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
                 message={message}
                 onRedo={canRedo && index >= lastQuestion ? redo : undefined}
                 onPermission={index === chat.messages.length - 1 ? answer : undefined}
+                projectDir={chat.projectDir}
               />
             ))
           )}

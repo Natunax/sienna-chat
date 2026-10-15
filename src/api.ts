@@ -175,6 +175,7 @@ export const api = {
   }) => invoke<number>("chat_send", { request }),
   chatPermission: (chatId: string, id: string, decision: PermissionDecision) =>
     invoke<void>("chat_permission", { chatId, id, decision }),
+  projectOpenFile: (projectDir: string, path: string) => invoke<void>("project_open_file", { projectDir, path }),
   chatAutoEdits: (chatId: string, on: boolean) => invoke<void>("chat_auto_edits", { chatId, on }),
   projectCheck: (path: string) => invoke<string>("project_check", { path }),
   projectsList: () => invoke<Project[]>("projects_list"),

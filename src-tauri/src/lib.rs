@@ -319,6 +319,26 @@ fn chat_stop(chat_id: String, state: State<AppState>) {
     }
 }
 
+/// Opens a file of a chat's project folder in the default text editor. Never
+/// the file's default app: a `.command` file Claude wrote would run.
+#[tauri::command(async)]
+fn project_open_file(project_dir: String, path: String) -> Result<(), String> {
+    let root = project::validate(&project_dir)?;
+    let file = root
+        .join(&path)
+        .canonicalize()
+        .map_err(|_| "error.fileMissing".to_string())?;
+    if !file.starts_with(&root) || !file.is_file() {
+        return Err("error.fileMissing".into());
+    }
+    std::process::Command::new("/usr/bin/open")
+        .arg("-t")
+        .arg(&file)
+        .status()
+        .map_err(|_| "error.fileMissing".to_string())
+        .map(|_| ())
+}
+
 /// The user's answer to a change or command Claude asked to run.
 #[tauri::command]
 fn chat_permission(chat_id: String, id: String, decision: String, state: State<AppState>) {
@@ -389,6 +409,7 @@ pub fn run() {
             project_remove,
             chat_stop,
             chat_permission,
+            project_open_file,
             chat_auto_edits,
         ])
         .build(tauri::generate_context!())

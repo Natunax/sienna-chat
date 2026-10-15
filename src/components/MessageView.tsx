@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { formatUsd, type Message, type PermissionDecision, type PermissionRequest, type ToolUse } from "../api";
+import { api, formatUsd, type Message, type PermissionDecision, type PermissionRequest, type ToolUse } from "../api";
 import { storedErrorText, t, type TextKey } from "../i18n";
 import { loadHighlighter, renderBlocks } from "../markdown";
 import { shortTokens } from "./ContextMeter";
@@ -38,40 +38,63 @@ function ToolIcon({ name }: { name: string }) {
   return <SearchIcon size={13} />;
 }
 
-/** The tools an answer used; changes and command output open below the row. */
-function Tools({ tools }: { tools: ToolUse[] }) {
+const FILE_TOOLS = ["Read", "Edit", "Write"];
+
+/** The tools an answer used; changes and command output open below the row, files in the editor. */
+function Tools({ tools, projectDir }: { tools: ToolUse[]; projectDir?: string | null }) {
   const [open, setOpen] = useState<number | null>(null);
+  const [missing, setMissing] = useState<number | null>(null);
   const shown = open === null ? undefined : tools[open];
   return (
     <>
       <div className="tools">
         {tools.map((tool, index) => {
           const state = tool.denied ? " is-denied" : tool.failed ? " is-failed" : "";
-          const body = (
+          const expandable = Boolean(tool.change || tool.output !== undefined);
+          const name = (
             <>
               <ToolIcon name={tool.name} />
               <span className="tool-name">{TOOL_LABELS[tool.name] ? t(TOOL_LABELS[tool.name]) : tool.name}</span>
-              {tool.detail && <span className="tool-detail">{tool.detail}</span>}
-              {tool.denied && <span className="tool-state">{t("tool.denied")}</span>}
-              {!tool.denied && tool.failed && <span className="tool-state">{t("tool.failed")}</span>}
             </>
           );
-          const expandable = Boolean(tool.change || tool.output !== undefined);
-          return expandable ? (
-            <button
-              key={index}
-              type="button"
-              className={`tool-chip is-button${state}${open === index ? " is-open" : ""}`}
-              aria-expanded={open === index}
-              onClick={() => setOpen(open === index ? null : index)}
-            >
-              {body}
-              <ChevronRightIcon size={12} className="tool-chevron" />
-            </button>
-          ) : (
-            <span key={index} className={`tool-chip${state}`}>
-              {body}
-            </span>
+          // A file that was only proposed and declined may not exist.
+          const openable = projectDir && FILE_TOOLS.includes(tool.name) && tool.detail && !tool.denied;
+          return (
+            <div key={index} className={`tool-chip${state}${open === index ? " is-open" : ""}`}>
+              {expandable ? (
+                <button
+                  type="button"
+                  className="tool-toggle"
+                  aria-expanded={open === index}
+                  onClick={() => setOpen(open === index ? null : index)}
+                >
+                  {name}
+                  <ChevronRightIcon size={12} className="tool-chevron" />
+                </button>
+              ) : (
+                <span className="tool-toggle">{name}</span>
+              )}
+              {openable ? (
+                <button
+                  type="button"
+                  className="tool-detail tool-file"
+                  title={t("tool.open", { path: tool.detail })}
+                  onClick={() =>
+                    void api
+                      .projectOpenFile(projectDir, tool.detail)
+                      .then(() => setMissing(null))
+                      .catch(() => setMissing(index))
+                  }
+                >
+                  {tool.detail}
+                </button>
+              ) : (
+                tool.detail && <span className="tool-detail">{tool.detail}</span>
+              )}
+              {tool.denied && <span className="tool-state">{t("tool.denied")}</span>}
+              {!tool.denied && tool.failed && <span className="tool-state">{t("tool.failed")}</span>}
+              {missing === index && <span className="tool-state is-error">{t("error.fileMissing")}</span>}
+            </div>
           );
         })}
       </div>
@@ -224,9 +247,11 @@ interface Props {
   /** Set on the last question and answer when they can be replaced. */
   onRedo?: (text?: string) => void;
   onPermission?: (request: PermissionRequest, decision: PermissionDecision) => void;
+  /** The chat's project folder; file paths in the steps open from it. */
+  projectDir?: string | null;
 }
 
-function MessageViewImpl({ message, onRedo, onPermission }: Props) {
+function MessageViewImpl({ message, onRedo, onPermission, projectDir }: Props) {
   const [editing, setEditing] = useState(false);
 
   if (message.role === "note") {
@@ -294,7 +319,7 @@ function MessageViewImpl({ message, onRedo, onPermission }: Props) {
   return (
     <div className="msg msg-assistant" aria-busy={streaming}>
       {(message.thinking || waiting) && <Thinking text={message.thinking ?? ""} active={waiting} />}
-      {message.tools?.length ? <Tools tools={message.tools} /> : null}
+      {message.tools?.length ? <Tools tools={message.tools} projectDir={projectDir} /> : null}
       {message.text && <Markdown text={message.text} final={!streaming} />}
       {streaming && message.text && !message.permissions?.length && <span className="caret" aria-hidden="true" />}
       {onPermission &&
