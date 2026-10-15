@@ -10,6 +10,11 @@ interface Props {
   onAnswer: (request: PermissionRequest, decision: PermissionDecision) => void;
 }
 
+function title(request: PermissionRequest): string {
+  if (!["Edit", "Write", "Bash"].includes(request.tool)) return t("permission.other", { tool: request.tool });
+  return t(titleKey(request));
+}
+
 function titleKey(request: PermissionRequest): TextKey {
   if (request.tool === "Bash") return "permission.bash";
   if (request.tool === "Edit") return "permission.edit";
@@ -18,7 +23,8 @@ function titleKey(request: PermissionRequest): TextKey {
 
 /** A change or command Claude waits to run, with the user's three answers. */
 export function PermissionCard({ request, onAnswer }: Props) {
-  const command = request.tool === "Bash";
+  // Bash, and any other tool, show their command or input as text.
+  const command = request.tool !== "Edit" && request.tool !== "Write";
   const before = request.before ?? "";
   const after = request.after ?? "";
   const stats = useMemo(
@@ -32,10 +38,10 @@ export function PermissionCard({ request, onAnswer }: Props) {
       : DocumentIcon;
 
   return (
-    <section className="permission" aria-label={t(titleKey(request))}>
+    <section className="permission" aria-label={title(request)}>
       <header className="permission-head">
         <Icon size={15} className="permission-icon" />
-        <span className="permission-title">{t(titleKey(request))}</span>
+        <span className="permission-title">{title(request)}</span>
         {stats && (
           <span className="permission-stats">
             <span className="is-add">+{stats.added}</span>

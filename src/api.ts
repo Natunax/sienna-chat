@@ -3,6 +3,17 @@ import { locale, type TextKey } from "./i18n";
 
 export type ModelId = "claude-haiku-5-5" | "claude-sonnet-5-5" | "claude-opus-5-5" | "claude-fable-5-1";
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+/** How far Claude may go without asking in a project chat, as in Claude Code. */
+export type PermissionMode = "auto" | "default" | "acceptEdits" | "plan" | "bypassPermissions";
+
+/** The modes in the menu, numbered 1–4; bypassing permissions is set apart. */
+export const MODES: { id: PermissionMode; name: TextKey; hint: TextKey }[] = [
+  { id: "auto", name: "mode.auto", hint: "mode.autoHint" },
+  { id: "default", name: "mode.default", hint: "mode.defaultHint" },
+  { id: "acceptEdits", name: "mode.acceptEdits", hint: "mode.acceptEditsHint" },
+  { id: "plan", name: "mode.plan", hint: "mode.planHint" },
+];
+export const DEFAULT_MODE: PermissionMode = "auto";
 
 /** Ordered by strength (and price). */
 export const MODELS: { id: ModelId; name: string }[] = [
@@ -46,7 +57,8 @@ export interface ToolUse {
 export interface PermissionRequest {
   id: string;
   toolUseId: string | null;
-  tool: "Edit" | "Write" | "Bash";
+  /** Edit, Write or Bash; anything else shows its input as it is. */
+  tool: string;
   path?: string;
   before?: string | null;
   after?: string;
@@ -78,6 +90,8 @@ export interface Message {
   engine?: number;
   /** SDK message id at the end of this answer's turn; a rewind cuts back to it. */
   turnEnd?: string | null;
+  /** Written in plan mode: the answer ends with a plan to carry out. */
+  plan?: boolean;
   /** Changes and commands this answer waits on; never saved. */
   permissions?: PermissionRequest[];
   /** For a note about a compaction: how it was triggered and the tokens before and after. */
@@ -115,7 +129,9 @@ export interface Chat {
   context?: { used: number; window: number; categories?: ContextCategory[] } | null;
   /** The conversation is being summarized right now. */
   compacting?: boolean;
-  /** File changes in the project run without asking first. */
+  /** How far Claude may go without asking (project chats). */
+  mode?: PermissionMode;
+  /** Older chats: file changes ran without asking. */
   autoEdits?: boolean;
 }
 
@@ -171,12 +187,12 @@ export const api = {
     rewind?: boolean;
     rewindTo?: string | null;
     projectDir?: string | null;
-    autoEdits?: boolean;
+    mode: PermissionMode;
   }) => invoke<number>("chat_send", { request }),
   chatPermission: (chatId: string, id: string, decision: PermissionDecision) =>
     invoke<void>("chat_permission", { chatId, id, decision }),
   projectOpenFile: (projectDir: string, path: string) => invoke<void>("project_open_file", { projectDir, path }),
-  chatAutoEdits: (chatId: string, on: boolean) => invoke<void>("chat_auto_edits", { chatId, on }),
+  chatMode: (chatId: string, mode: PermissionMode) => invoke<void>("chat_mode", { chatId, mode }),
   projectCheck: (path: string) => invoke<string>("project_check", { path }),
   projectsList: () => invoke<Project[]>("projects_list"),
   projectAdd: (id: string, path: string) => invoke<Project>("project_add", { id, path }),
@@ -191,6 +207,7 @@ export const api = {
     web: boolean;
     costSoFar: number;
     projectDir: string | null;
+    mode: PermissionMode;
   }) => invoke<void>("chat_compact", { request }),
 };
 

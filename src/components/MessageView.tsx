@@ -1,5 +1,13 @@
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { api, formatUsd, type Message, type PermissionDecision, type PermissionRequest, type ToolUse } from "../api";
+import {
+  api,
+  formatUsd,
+  type Message,
+  type PermissionDecision,
+  type PermissionMode,
+  type PermissionRequest,
+  type ToolUse,
+} from "../api";
 import { storedErrorText, t, type TextKey } from "../i18n";
 import { loadHighlighter, renderBlocks } from "../markdown";
 import { shortTokens } from "./ContextMeter";
@@ -249,9 +257,11 @@ interface Props {
   onPermission?: (request: PermissionRequest, decision: PermissionDecision) => void;
   /** The chat's project folder; file paths in the steps open from it. */
   projectDir?: string | null;
+  /** Set on the last answer: carries out a plan it ends with. */
+  onImplement?: (mode: PermissionMode) => void;
 }
 
-function MessageViewImpl({ message, onRedo, onPermission, projectDir }: Props) {
+function MessageViewImpl({ message, onRedo, onPermission, projectDir, onImplement }: Props) {
   const [editing, setEditing] = useState(false);
 
   if (message.role === "note") {
@@ -263,7 +273,9 @@ function MessageViewImpl({ message, onRedo, onPermission, projectDir }: Props) {
         <span>
           {message.error
             ? storedErrorText(message.error)
-            : `${t(compaction?.trigger === "auto" ? "note.compactedAuto" : "note.compactedManual")}${figures}`}
+            : message.text
+              ? t(message.text as TextKey)
+              : `${t(compaction?.trigger === "auto" ? "note.compactedAuto" : "note.compactedManual")}${figures}`}
         </span>
       </div>
     );
@@ -326,6 +338,16 @@ function MessageViewImpl({ message, onRedo, onPermission, projectDir }: Props) {
         message.permissions?.map((request) => (
           <PermissionCard key={request.id} request={request} onAnswer={onPermission} />
         ))}
+      {message.plan && !streaming && !message.error && message.text && onImplement && (
+        <div className="plan-actions">
+          <button type="button" className="primary-button" onClick={() => onImplement("auto")}>
+            {t("plan.implement")}
+          </button>
+          <button type="button" className="secondary-button" onClick={() => onImplement("default")}>
+            {t("plan.implementManual")}
+          </button>
+        </div>
+      )}
       {message.error && (
         <div className="msg-error" role="alert">
           <AlertIcon size={15} />

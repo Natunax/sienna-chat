@@ -7,8 +7,9 @@
 // `resume` and its session id. Regenerating or editing the last exchange
 // resumes the session cut back to the turn before it (`resumeSessionAt`).
 //
-// In a project chat Claude may also change files and run commands. Each such
-// call waits in `canUseTool` until the user approves or declines it in the
+// In a project chat Claude may also change files and run commands. The chat's
+// mode (auto, manual, accept edits, plan, bypass) decides which calls need the
+// user's approval; those wait in `canUseTool` until the user answers in the
 // window (a "permission" event out, a "permission" command back).
 
 import { deleteSession, query } from "@anthropic-ai/claude-agent-sdk";
@@ -16,7 +17,7 @@ import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { EDIT_TOOLS, READ_TOOLS, RUN_TOOLS, projectGuard, projectPrompt } from "./project.mjs";
+import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, projectGuard, projectPrompt } from "./project.mjs";
 
 const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
 // The packaged app ships the engine as one bundled file plus the Claude Code
@@ -89,6 +90,27 @@ const DELTA_FLUSH_MS = 32;
 // What an approval card and a stored change show at most, per side.
 const MAX_CHANGE_CHARS = 200_000;
 const MAX_OUTPUT_CHARS = 8000;
+// Sienna's plan mode is its own: Claude Code runs in manual mode, the guard
+// denies changes and commands, and each message carries this instruction.
+const PLAN_NOTE = [
+  "<sienna_plan_mode>",
+  "The user switched on plan mode. Read and investigate the project, but do not change files or run commands.",
+  "End your answer with a concrete, numbered plan of the changes you would make, naming the files.",
+  "</sienna_plan_mode>",
+].join("\n");
+// Auto mode's model checks and bypassing run commands in macOS's sandbox,
+// which keeps their writes in the project folder.
+const SANDBOXED_MODES = ["auto", "bypassPermissions"];
+/** Models known to lack auto mode, learned from the SDK. */
+const noAutoMode = new Set();
+
+function sdkMode(mode) {
+  return mode === "plan" ? "default" : mode;
+}
+
+function validMode(mode) {
+  return MODES.includes(mode) ? mode : "auto";
+}
 // Every live chat keeps a Claude Code process of its own. Idle chats are
 // closed and picked up again with `resume` on their next message.
 const MAX_LIVE_SESSIONS = 3;
@@ -163,9 +185,27 @@ class ChatSession {
         tools: toolsFor(config),
         // Changes and commands are not pre-approved: they go to canUseTool.
         allowedTools: allowedFor(config),
-        permissionMode: config.projectDir ? "default" : "dontAsk",
+        permissionMode: config.projectDir ? sdkMode(config.mode) : "dontAsk",
+        // Lets the user switch to bypassing later; the guard still holds.
+        allowDangerouslySkipPermissions: config.projectDir ? true : undefined,
+        sandbox:
+          config.projectDir && SANDBOXED_MODES.includes(config.mode)
+            ? {
+                enabled: true,
+                failIfUnavailable: false,
+                autoAllowBashIfSandboxed: false,
+                allowUnsandboxedCommands: false,
+                network: { allowLocalBinding: true },
+              }
+            : undefined,
         canUseTool: config.projectDir ? (tool, input, options) => this.askUser(tool, input, options) : undefined,
-        hooks: config.projectDir ? projectGuard(config.projectDir, config.web ? WEB_TOOLS : []) : undefined,
+        hooks: config.projectDir
+          ? projectGuard(config.projectDir, config.web ? WEB_TOOLS : [], {
+              mode: () => this.config.mode,
+              onEdit: (tool, input, toolUseId) =>
+                emit({ type: "change", chatId: this.chatId, id: randomUUID(), toolUseId, ...this.describe(tool, input) }),
+            })
+          : undefined,
         systemPrompt: config.projectDir ? SYSTEM_PROMPT + projectPrompt(config.projectDir) : SYSTEM_PROMPT,
         cwd: config.projectDir ?? workDir,
         env: childEnv,
@@ -178,6 +218,35 @@ class ChatSession {
       },
     });
     this.pump();
+    if (config.projectDir && config.mode === "auto") this.checkAutoMode();
+  }
+
+  /** Falls back to manual approvals when the model has no auto mode. */
+  checkAutoMode() {
+    if (noAutoMode.has(this.config.model)) return this.fallBack();
+    this.query
+      .supportedModels()
+      .then((models) => {
+        const info = models.find((entry) => entry.value === this.config.model || entry.resolvedModel === this.config.model);
+        if (info && info.supportsAutoMode === false) {
+          noAutoMode.add(this.config.model);
+          this.fallBack();
+        }
+      })
+      .catch(() => {});
+  }
+
+  fallBack() {
+    if (this.config.mode !== "auto") return;
+    this.setMode("default");
+    emit({ type: "mode", chatId: this.chatId, mode: "default", reason: "autoUnavailable" });
+  }
+
+  /** Switches the mode, live if the answer is running. */
+  setMode(mode) {
+    const before = this.config.mode;
+    this.config.mode = mode;
+    if (sdkMode(before) !== sdkMode(mode)) this.query.setPermissionMode(sdkMode(mode)).catch(() => {});
   }
 
   /** How full the context window is; a local estimate, no extra API call. */
@@ -207,13 +276,7 @@ class ChatSession {
    */
   askUser(tool, input, { signal, toolUseID }) {
     const denied = (message) => ({ behavior: "deny", message });
-    if (!EDIT_TOOLS.includes(tool) && !RUN_TOOLS.includes(tool)) {
-      return Promise.resolve(denied("This tool is not available in Sienna."));
-    }
-    if (EDIT_TOOLS.includes(tool) && this.config.autoEdits) {
-      emit({ type: "change", chatId: this.chatId, id: randomUUID(), toolUseId: toolUseID ?? null, ...this.describe(tool, input) });
-      return Promise.resolve({ behavior: "allow", updatedInput: input });
-    }
+    // Anything else that asks (the sandbox wanting network access, say) shows as it is.
     const id = randomUUID();
     this.flush();
     emit({ type: "permission", chatId: this.chatId, id, toolUseId: toolUseID ?? null, ...this.describe(tool, input) });
@@ -222,7 +285,10 @@ class ChatSession {
         if (!this.permissions.delete(id)) return;
         emit({ type: "permissionGone", chatId: this.chatId, id });
         if (decision === "allow" || decision === "always") {
-          if (decision === "always" && EDIT_TOOLS.includes(tool)) this.config.autoEdits = true;
+          if (decision === "always" && EDIT_TOOLS.includes(tool) && this.config.mode === "default") {
+            this.setMode("acceptEdits");
+            emit({ type: "mode", chatId: this.chatId, mode: "acceptEdits" });
+          }
           done({ behavior: "allow", updatedInput: input });
         } else {
           done(denied("The user declined this. Do not try it another way; ask how they want to go on."));
@@ -239,6 +305,9 @@ class ChatSession {
 
   /** What the approval card shows: the file and its change, or the command. */
   describe(tool, input) {
+    if (!EDIT_TOOLS.includes(tool) && !RUN_TOOLS.includes(tool)) {
+      return { tool, command: JSON.stringify(input, null, 2).slice(0, 4000) };
+    }
     if (tool === "Bash") {
       return {
         tool,
@@ -291,12 +360,18 @@ class ChatSession {
     return (
       this.config.effort === config.effort &&
       this.config.web === config.web &&
-      this.config.projectDir === config.projectDir
+      this.config.projectDir === config.projectDir &&
+      // The sandbox is set when the session starts.
+      SANDBOXED_MODES.includes(this.config.mode) === SANDBOXED_MODES.includes(config.mode)
     );
   }
 
   send(content) {
     clearTimeout(this.idleTimer);
+    if (this.config.projectDir && this.config.mode === "plan") {
+      const blocks = typeof content === "string" ? [{ type: "text", text: content }] : content;
+      content = [{ type: "text", text: PLAN_NOTE }, ...blocks];
+    }
     this.busy = true;
     this.interrupted = false;
     this.inbox.push({
@@ -570,7 +645,7 @@ async function onSend(command) {
     costSoFar: Number(command.costSoFar) || 0,
     // Already checked and made canonical by the Rust shell.
     projectDir: typeof command.projectDir === "string" && command.projectDir ? command.projectDir : null,
-    autoEdits: Boolean(command.autoEdits),
+    mode: validMode(command.mode),
     rewindTo: null,
     replacesSession: null,
   };
@@ -597,7 +672,7 @@ async function onSend(command) {
     session.config.model = config.model;
     await session.query.setModel(config.model);
   }
-  session.config.autoEdits = config.autoEdits;
+  session.setMode(config.mode);
   // Re-inserting keeps the map ordered from least to most recently used.
   sessions.delete(command.chatId);
   sessions.set(command.chatId, session);
@@ -618,6 +693,7 @@ async function onCompact(command) {
       sessionId: command.sessionId,
       costSoFar: Number(command.costSoFar) || 0,
       projectDir: typeof command.projectDir === "string" && command.projectDir ? command.projectDir : null,
+      mode: validMode(command.mode),
       rewindTo: null,
       replacesSession: null,
     });
@@ -696,11 +772,9 @@ function onCommand(line) {
     case "permission":
       sessions.get(command.chatId)?.answer(command.id, command.decision);
       return;
-    case "autoEdits": {
-      const session = sessions.get(command.chatId);
-      if (session) session.config.autoEdits = Boolean(command.on);
+    case "mode":
+      sessions.get(command.chatId)?.setMode(validMode(command.mode));
       return;
-    }
     case "title":
       onTitle(command).catch(() => {});
       return;

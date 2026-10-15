@@ -5,12 +5,14 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useSyncExternalStore } from "react";
 import {
   api,
+  DEFAULT_MODE,
   type Chat,
   type ChatSummary,
   type ContextCategory,
   type FileChange,
   type Message,
   type PermissionDecision,
+  type PermissionMode,
   type PermissionRequest,
   type Project,
   type ToolUse,
@@ -171,7 +173,9 @@ export async function loadChat(id: string): Promise<Chat> {
       ? { ...message, streaming: false, permissions: undefined, error: message.error ?? "error.interrupted" }
       : message,
   );
-  const clean = { ...chat, messages, compacting: false };
+  // Chats from before the modes: "allow all changes" becomes its mode.
+  const mode: PermissionMode = chat.mode ?? (chat.autoEdits ? "acceptEdits" : DEFAULT_MODE);
+  const clean = { ...chat, messages, compacting: false, mode, autoEdits: undefined };
   chats.set(id, clean);
   return clean;
 }
@@ -245,7 +249,14 @@ async function dispatch(chat: Chat, kept: Message[], text: string, attachments: 
     text,
     attachments: attachments.map(({ name, mediaType }) => ({ name, mediaType })),
   };
-  const reply: Message = { id: crypto.randomUUID(), role: "assistant", text: "", streaming: true };
+  const mode = chat.mode ?? DEFAULT_MODE;
+  const reply: Message = {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    text: "",
+    streaming: true,
+    plan: chat.projectDir && mode === "plan" ? true : undefined,
+  };
   const first = kept.length === 0;
   const next: Chat = {
     ...chat,
@@ -275,7 +286,7 @@ async function dispatch(chat: Chat, kept: Message[], text: string, attachments: 
       rewind,
       rewindTo: rewindTo ?? null,
       projectDir: next.projectDir ?? null,
-      autoEdits: Boolean(next.autoEdits),
+      mode,
     });
     updateChat(id, (current) =>
       updateLastAssistant(current, (message) => (message.id === reply.id ? { ...message, engine } : message)),
@@ -389,17 +400,23 @@ export function answerPermission(chatId: string, request: PermissionRequest, dec
           ? tool
           : { ...tool, change: storedChange(request) },
     );
-    if (decision === "always" && request.tool !== "Bash") next = { ...next, autoEdits: true };
+    if (decision === "always" && request.tool !== "Bash" && next.mode === "default") next = { ...next, mode: "acceptEdits" };
     return next;
   });
   void api.chatPermission(chatId, request.id, decision).catch(() => {});
 }
 
-/** Lets file changes in a project chat run without asking, or asks again. */
-export function setAutoEdits(chatId: string, on: boolean) {
-  updateChat(chatId, (chat) => ({ ...chat, autoEdits: on }));
+/** Switches how far Claude may go without asking; a running answer follows at once. */
+export function setMode(chatId: string, mode: PermissionMode) {
+  updateChat(chatId, (chat) => ({ ...chat, mode }));
   persist(chatId);
-  void api.chatAutoEdits(chatId, on).catch(() => {});
+  void api.chatMode(chatId, mode).catch(() => {});
+}
+
+/** Carries out the plan of the last answer in the given mode. */
+export async function implementPlan(chatId: string, mode: PermissionMode) {
+  setMode(chatId, mode);
+  await sendMessage(chatId, t("plan.go"), []);
 }
 
 type EngineEvent =
@@ -410,6 +427,7 @@ type EngineEvent =
   | ({ type: "permission"; chatId: string } & PermissionRequest)
   | { type: "permissionGone"; chatId: string; id: string }
   | ({ type: "change"; chatId: string } & PermissionRequest)
+  | { type: "mode"; chatId: string; mode: PermissionMode; reason?: "autoUnavailable" }
   | {
       type: "done";
       chatId: string;
@@ -455,6 +473,7 @@ export async function compactChat(id: string) {
       web: chat.web,
       costSoFar: chat.messages.reduce((sum, message) => sum + (message.costUsd ?? 0), 0),
       projectDir: chat.projectDir ?? null,
+      mode: chat.mode ?? DEFAULT_MODE,
     });
   } catch (error) {
     updateChat(id, (current) =>
@@ -525,6 +544,15 @@ function onEngineEvent(event: EngineEvent) {
             : message,
         ),
       );
+      return;
+    case "mode":
+      updateChat(event.chatId, (chat) => {
+        const next = { ...chat, mode: event.mode };
+        return event.reason === "autoUnavailable"
+          ? withNote(next, { id: crypto.randomUUID(), role: "note", text: "note.autoUnavailable" })
+          : next;
+      });
+      persist(event.chatId);
       return;
     case "change": {
       // A change that ran without asking (edits allowed for the whole chat).

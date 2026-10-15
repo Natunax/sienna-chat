@@ -1,15 +1,24 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
-import { formatUsd, type Chat, type OutgoingAttachment, type PermissionDecision, type PermissionRequest } from "../api";
+import {
+  DEFAULT_MODE,
+  formatUsd,
+  type Chat,
+  type OutgoingAttachment,
+  type PermissionDecision,
+  type PermissionMode,
+  type PermissionRequest,
+} from "../api";
 import { t, useLanguage, type TextKey } from "../i18n";
 import {
   answerPermission,
   compactChat,
+  implementPlan,
   projectFor,
   redoLast,
   rewindPoint,
   sendMessage,
-  setAutoEdits,
+  setMode,
   stopMessage,
   updateChat,
   useProjects,
@@ -99,6 +108,13 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
     (request: PermissionRequest, decision: PermissionDecision) => answerPermission(chat.id, request, decision),
     [chat.id],
   );
+  const implement = useCallback(
+    (mode: PermissionMode) => {
+      stuck.current = true;
+      void implementPlan(chat.id, mode);
+    },
+    [chat.id, stuck],
+  );
 
   const send = (text: string, attachments: OutgoingAttachment[]) => {
     stuck.current = true;
@@ -164,8 +180,8 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
       context={chat.context}
       compacting={Boolean(chat.compacting)}
       onCompact={chat.sessionId && !streaming ? () => void compactChat(chat.id) : undefined}
-      autoEdits={Boolean(chat.autoEdits)}
-      onAutoEdits={chat.projectDir ? (on) => setAutoEdits(chat.id, on) : undefined}
+      mode={chat.mode ?? DEFAULT_MODE}
+      onMode={chat.projectDir ? (mode) => setMode(chat.id, mode) : undefined}
       onProject={(picked) =>
         updateChat(chat.id, (current) => ({
           ...current,
@@ -224,6 +240,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
                 onRedo={canRedo && index >= lastQuestion ? redo : undefined}
                 onPermission={index === chat.messages.length - 1 ? answer : undefined}
                 projectDir={chat.projectDir}
+                onImplement={index === chat.messages.length - 1 && !streaming ? implement : undefined}
               />
             ))
           )}

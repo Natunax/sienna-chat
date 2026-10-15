@@ -22,6 +22,14 @@ pub(crate) const MODELS: [&str; 4] = [
     "claude-fable-5-1",
 ];
 const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+/// The permission modes of a project chat, as in Claude Code.
+const MODES: [&str; 5] = [
+    "auto",
+    "default",
+    "acceptEdits",
+    "plan",
+    "bypassPermissions",
+];
 /// Images and PDFs arrive as base64, text files (code, Markdown, CSV) as text.
 const MEDIA_TYPES: [&str; 6] = [
     "image/png",
@@ -65,9 +73,13 @@ struct SendRequest {
     /// The project folder Claude works in for this chat.
     #[serde(default)]
     project_dir: Option<String>,
-    /// File changes in the project run without asking first.
-    #[serde(default)]
-    auto_edits: bool,
+    /// How far Claude may go without asking in a project chat (see MODES).
+    #[serde(default = "default_mode")]
+    mode: String,
+}
+
+fn default_mode() -> String {
+    "auto".into()
 }
 
 /// The Mac's preferred language, for the window's own translations. Errors
@@ -144,6 +156,7 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
             .is_some_and(|id| !store::valid_id(id))
         || !MODELS.contains(&request.model.as_str())
         || !EFFORTS.contains(&request.effort.as_str())
+        || !MODES.contains(&request.mode.as_str())
     {
         return Err("error.invalidRequest".into());
     }
@@ -200,7 +213,7 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         "rewind": request.rewind,
         "rewindTo": request.rewind_to,
         "projectDir": project_dir,
-        "autoEdits": request.auto_edits,
+        "mode": request.mode,
         "attachments": request.attachments.iter().map(|file| json!({
             "name": file.name.chars().take(200).collect::<String>(),
             "mediaType": file.media_type,
@@ -222,6 +235,8 @@ struct CompactRequest {
     cost_so_far: f64,
     #[serde(default)]
     project_dir: Option<String>,
+    #[serde(default = "default_mode")]
+    mode: String,
 }
 
 /// Summarizes a chat's conversation so far to free context.
@@ -235,6 +250,7 @@ fn chat_compact(
         || !request.session_id.as_deref().is_some_and(store::valid_id)
         || !MODELS.contains(&request.model.as_str())
         || !EFFORTS.contains(&request.effort.as_str())
+        || !MODES.contains(&request.mode.as_str())
     {
         return Err("error.invalidRequest".into());
     }
@@ -257,6 +273,7 @@ fn chat_compact(
         "web": request.web,
         "costSoFar": request.cost_so_far,
         "projectDir": project_dir,
+        "mode": request.mode,
     })
     .to_string();
     state.engine.send(&app, &state.store, &line).map(|_| ())
@@ -353,13 +370,13 @@ fn chat_permission(chat_id: String, id: String, decision: String, state: State<A
     }
 }
 
-/// Lets file changes in a project chat run without asking, or asks again.
+/// Switches a project chat's mode, also while an answer runs.
 #[tauri::command]
-fn chat_auto_edits(chat_id: String, on: bool, state: State<AppState>) {
-    if store::valid_id(&chat_id) {
+fn chat_mode(chat_id: String, mode: String, state: State<AppState>) {
+    if store::valid_id(&chat_id) && MODES.contains(&mode.as_str()) {
         state
             .engine
-            .notify(&json!({ "type": "autoEdits", "chatId": chat_id, "on": on }).to_string());
+            .notify(&json!({ "type": "mode", "chatId": chat_id, "mode": mode }).to_string());
     }
 }
 
@@ -410,7 +427,7 @@ pub fn run() {
             chat_stop,
             chat_permission,
             project_open_file,
-            chat_auto_edits,
+            chat_mode,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build the app");

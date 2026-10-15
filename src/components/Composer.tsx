@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
-import { type Chat, type Effort, type ModelId, type OutgoingAttachment, type Project } from "../api";
+import { type Chat, type Effort, type ModelId, type OutgoingAttachment, type PermissionMode, type Project } from "../api";
 import { addProject } from "../store";
 import { PICKER_ACCEPT, readAttachment, TEXT_MEDIA_TYPE } from "../attachments";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { errorText, t } from "../i18n";
 import { ContextMeter } from "./ContextMeter";
+import { ModeMenu } from "./ModeMenu";
 import { ModelMenu } from "./ModelMenu";
 import { PlusMenu } from "./PlusMenu";
 import {
@@ -13,7 +14,6 @@ import {
   DocumentIcon,
   FolderIcon,
   GlobeIcon,
-  PencilIcon,
   StopIcon,
 } from "./icons";
 
@@ -43,10 +43,9 @@ interface Props {
   /** Missing until the chat has an answer, or while one streams. */
   onCompact?: () => void;
   compacting: boolean;
-  /** File changes run without asking first. */
-  autoEdits: boolean;
-  /** Missing outside project chats. */
-  onAutoEdits?: (on: boolean) => void;
+  mode: PermissionMode;
+  /** Missing outside project chats, where Claude cannot change anything. */
+  onMode?: (mode: PermissionMode) => void;
 }
 
 function folderName(path: string): string {
@@ -61,7 +60,7 @@ function fileLabel(name: string): string {
 
 export function Composer(props: Props) {
   const { settings, onSettings, streaming, onSend, onStop, autoFocusKey, pendingFiles, onFilesTaken } = props;
-  const { project, projectLocked, onProject, context, onCompact, compacting, autoEdits, onAutoEdits } = props;
+  const { project, projectLocked, onProject, context, onCompact, compacting, mode, onMode } = props;
   const [text, setText] = useState("");
   const [files, setFiles] = useState<OutgoingAttachment[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -148,8 +147,7 @@ export function Composer(props: Props) {
     });
   };
 
-  const showAutoEdits = Boolean(project && autoEdits && onAutoEdits);
-  const chips = settings.web || project || showAutoEdits || files.length > 0;
+  const chips = settings.web || project || files.length > 0;
 
   return (
     <div className="composer-wrap">
@@ -191,21 +189,6 @@ export function Composer(props: Props) {
                 )}
               </span>
             )}
-            {showAutoEdits && (
-              <span className="chip is-accent">
-                <PencilIcon size={13} />
-                <span className="chip-text">{t("composer.autoEdits")}</span>
-                <button
-                  type="button"
-                  className="chip-remove"
-                  onClick={() => onAutoEdits?.(false)}
-                  aria-label={t("composer.autoEditsOff")}
-                  title={t("composer.autoEditsOff")}
-                >
-                  <CloseIcon size={11} />
-                </button>
-              </span>
-            )}
             {files.map((file, index) => (
               <span key={index} className="chip chip-file">
                 {file.previewUrl ? (
@@ -235,8 +218,6 @@ export function Composer(props: Props) {
             onWeb={() => onSettings({ web: !settings.web })}
             onAttach={() => picker.current?.click()}
             onProject={projectLocked ? undefined : () => void pickProject()}
-            autoEdits={autoEdits}
-            onAutoEdits={project ? onAutoEdits : undefined}
           />
           <input
             ref={picker}
@@ -287,7 +268,10 @@ export function Composer(props: Props) {
       </div>
       {/* The model sits below the box, as in Claude Code. */}
       <div className="composer-footer">
-        <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
+        <div className="composer-footer-start">
+          {project && onMode && <ModeMenu mode={mode} onChange={onMode} />}
+          <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
+        </div>
         {context && context.window > 0 && (
           <ContextMeter
             used={context.used}
