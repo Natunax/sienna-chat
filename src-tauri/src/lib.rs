@@ -7,7 +7,7 @@ use engine::Engine;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
-use store::{ChatSummary, Store, Usage};
+use store::{ChatSummary, Project, Store, Usage};
 use tauri::{AppHandle, Manager, RunEvent, State};
 
 struct AppState {
@@ -227,6 +227,28 @@ fn chat_title(
     state.engine.send(&app, &state.store, &line).map(|_| ())
 }
 
+#[tauri::command(async)]
+fn projects_list(state: State<AppState>) -> Vec<Project> {
+    state.store.projects()
+}
+
+/// Adds a folder as a project after the same checks a chat folder gets.
+#[tauri::command(async)]
+fn project_add(id: String, path: String, state: State<AppState>) -> Result<Project, String> {
+    let dir = project::validate(&path)?;
+    state.store.add_project(&id, &dir)
+}
+
+#[tauri::command(async)]
+fn project_rename(id: String, name: String, state: State<AppState>) -> Result<(), String> {
+    state.store.rename_project(&id, &name)
+}
+
+#[tauri::command(async)]
+fn project_remove(id: String, state: State<AppState>) -> Result<(), String> {
+    state.store.remove_project(&id)
+}
+
 /// Checks a folder picked as a chat's project and returns its canonical path.
 #[tauri::command(async)]
 fn project_check(path: String) -> Result<String, String> {
@@ -281,6 +303,10 @@ pub fn run() {
             chat_send,
             chat_title,
             project_check,
+            projects_list,
+            project_add,
+            project_rename,
+            project_remove,
             chat_stop,
         ])
         .build(tauri::generate_context!())

@@ -4,7 +4,7 @@
 
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import type { Chat, ChatSummary } from "./api";
+import type { Chat, ChatSummary, Project } from "./api";
 
 const now = Date.now();
 const day = 86_400_000;
@@ -107,6 +107,17 @@ const summaries: ChatSummary[] = [
   { id: "44444444-4444-4444-8444-444444444444", title: sampleText.others[2], updatedAt: now - 20 * day },
 ];
 
+const projects: Project[] = [
+  { id: "77777777-7777-4777-8777-777777777777", name: "acme-shop", path: "/Users/demo/code/acme-shop", createdAt: now },
+  { id: "88888888-8888-4888-8888-888888888888", name: "quokka-api", path: "/Users/demo/code/quokka-api", createdAt: now },
+];
+summaries.push({
+  id: "99999999-9999-4999-8999-999999999999",
+  title: english ? "How does login work?" : "Wie funktioniert der Login?",
+  updatedAt: now - 2 * 3_600_000,
+  projectId: projects[0].id,
+});
+
 const answer = sampleText.answer;
 
 function streamAnswer(chatId: string) {
@@ -160,6 +171,19 @@ export function installDevMock() {
           };
         case "plugin:dialog|open":
           return "/Users/demo/code/acme-shop";
+        case "projects_list":
+          return projects;
+        case "project_add": {
+          const { id, path } = payload as { id: string; path: string };
+          const existing = projects.find((entry) => entry.path === path);
+          if (existing) return existing;
+          const project = { id, path, name: path.split("/").pop() ?? path, createdAt: Date.now() };
+          projects.push(project);
+          return project;
+        }
+        case "project_rename":
+        case "project_remove":
+          return null;
         case "project_check":
           return (payload as { path: string }).path;
         case "chat_title":

@@ -2,7 +2,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { formatUsd, type Chat, type OutgoingAttachment } from "../api";
 import { t, useLanguage, type TextKey } from "../i18n";
-import { redoLast, rewindPoint, sendMessage, stopMessage, updateChat } from "../store";
+import { redoLast, rewindPoint, sendMessage, stopMessage, updateChat, useProjects } from "../store";
 import { Composer, type ComposerSettings } from "./Composer";
 import { SidebarIcon } from "./icons";
 import { MessageView } from "./MessageView";
@@ -62,6 +62,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
   const streaming = Boolean(last?.streaming);
   const empty = chat.messages.length === 0;
   const language = useLanguage();
+  const project = useProjects().find((entry) => entry.id === chat.projectId);
 
   const settings: ComposerSettings = { model: chat.model, effort: chat.effort, web: chat.web };
 
@@ -144,7 +145,10 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
       project={chat.projectDir ?? null}
       // A chat's session lives in its folder, so the folder is set before the first message.
       projectLocked={!empty}
-      onProject={(projectDir) => updateChat(chat.id, (current) => ({ ...current, projectDir }))}
+      // Removing the folder also takes the chat out of its project.
+      onProject={(projectDir) =>
+        updateChat(chat.id, (current) => ({ ...current, projectDir, projectId: projectDir ? current.projectId : null }))
+      }
     />
   );
 
@@ -162,6 +166,12 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
           </button>
         )}
         <h1 className="chat-title" data-tauri-drag-region>
+          {project && (
+            <span className="chat-project" data-tauri-drag-region>
+              {project.name}
+              {!empty && <span className="chat-project-sep"> / </span>}
+            </span>
+          )}
           {empty ? "" : chat.title}
         </h1>
         {chat.costUsd > 0 && (
@@ -171,31 +181,29 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
         )}
       </header>
 
-      {empty ? (
-        <div className="hero">
-          <div className="hero-inner">
-            <h2 className="hero-title">{t(greeting(new Date().getHours()))}</h2>
-            {composer}
-            <p className="hero-hint">{t("chat.heroHint")}</p>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="scroller" ref={scroller} onClick={onClick}>
-            <div className="thread" ref={content}>
-              {chat.messages.map((message, index) => (
-                <MessageView
-                  // Messages are memoized; a new key redraws them in the new language.
-                  key={`${message.id}:${language}`}
-                  message={message}
-                  onRedo={canRedo && index >= lastQuestion ? redo : undefined}
-                />
-              ))}
+      {/* The scroller exists from the start, so following the first answer works too. */}
+      <div className="scroller" ref={scroller} onClick={onClick}>
+        <div className="thread" ref={content}>
+          {empty ? (
+            <div className="hero">
+              <h2 className="hero-title">{t(greeting(new Date().getHours()))}</h2>
+              <p className="hero-hint">
+                {project ? t("chat.projectHint", { name: project.name }) : t("chat.heroHint")}
+              </p>
             </div>
-          </div>
-          <div className="dock">{composer}</div>
-        </>
-      )}
+          ) : (
+            chat.messages.map((message, index) => (
+              <MessageView
+                // Messages are memoized; a new key redraws them in the new language.
+                key={`${message.id}:${language}`}
+                message={message}
+                onRedo={canRedo && index >= lastQuestion ? redo : undefined}
+              />
+            ))
+          )}
+        </div>
+      </div>
+      <div className="dock">{composer}</div>
 
       {dragging && (
         <div className="drop-overlay" aria-hidden="true">

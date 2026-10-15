@@ -3,7 +3,7 @@
 
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useSyncExternalStore } from "react";
-import { api, type Chat, type ChatSummary, type Message, type Usage } from "./api";
+import { api, type Chat, type ChatSummary, type Message, type Project, type Usage } from "./api";
 import { t } from "./i18n";
 
 type Listener = () => void;
@@ -12,6 +12,7 @@ const chats = new Map<string, Chat>();
 const chatListeners = new Map<string, Set<Listener>>();
 let summaries: ChatSummary[] = [];
 let usage: Usage | null = null;
+let projects: Project[] = [];
 const globalListeners = new Set<Listener>();
 
 function notifyChat(id: string) {
@@ -53,6 +54,42 @@ export function useUsage(): Usage | null {
   return useSyncExternalStore(subscribeGlobal, () => usage);
 }
 
+export function useProjects(): Project[] {
+  return useSyncExternalStore(subscribeGlobal, () => projects);
+}
+
+export function getProject(id: string | null | undefined): Project | undefined {
+  return id ? projects.find((project) => project.id === id) : undefined;
+}
+
+export async function refreshProjects() {
+  projects = await api.projectsList();
+  notifyGlobal();
+}
+
+/** Adds a folder as a project; returns it, or throws an error code. */
+export async function addProject(path: string): Promise<Project> {
+  const project = await api.projectAdd(crypto.randomUUID(), path);
+  if (!projects.some((entry) => entry.id === project.id)) projects = [...projects, project];
+  notifyGlobal();
+  return project;
+}
+
+export async function renameProject(id: string, name: string) {
+  const clean = name.trim();
+  if (!clean) return;
+  await api.projectRename(id, clean);
+  projects = projects.map((project) => (project.id === id ? { ...project, name: clean } : project));
+  notifyGlobal();
+}
+
+/** Takes a project off the list; its chats stay and move to the other chats. */
+export async function removeProject(id: string) {
+  await api.projectRemove(id);
+  projects = projects.filter((project) => project.id !== id);
+  notifyGlobal();
+}
+
 export function getChat(id: string) {
   return chats.get(id);
 }
@@ -63,7 +100,13 @@ function putChat(chat: Chat) {
 }
 
 function upsertSummary(chat: Chat, keepPlace = false) {
-  const entry = { id: chat.id, title: chat.title, updatedAt: chat.updatedAt, pinned: chat.pinned };
+  const entry = {
+    id: chat.id,
+    title: chat.title,
+    updatedAt: chat.updatedAt,
+    pinned: chat.pinned,
+    projectId: chat.projectId ?? undefined,
+  };
   if (keepPlace && summaries.some((summary) => summary.id === chat.id)) {
     summaries = summaries.map((summary) => (summary.id === chat.id ? entry : summary));
     notifyGlobal();
@@ -104,7 +147,7 @@ export async function loadChat(id: string): Promise<Chat> {
   return clean;
 }
 
-export function createChat(defaults: Pick<Chat, "model" | "effort" | "web">): Chat {
+export function createChat(defaults: Pick<Chat, "model" | "effort" | "web">, project?: Project): Chat {
   const now = Date.now();
   const chat: Chat = {
     id: crypto.randomUUID(),
@@ -115,6 +158,8 @@ export function createChat(defaults: Pick<Chat, "model" | "effort" | "web">): Ch
     costUsd: 0,
     messages: [],
     ...defaults,
+    projectId: project?.id ?? null,
+    projectDir: project?.path ?? null,
   };
   chats.set(chat.id, chat);
   return chat;

@@ -19,6 +19,18 @@ pub struct ChatSummary {
     pub updated_at: i64,
     #[serde(default)]
     pub pinned: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+}
+
+/// A folder the user added as a project; its chats may read it.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub created_at: i64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -55,6 +67,13 @@ pub fn valid_id(id: &str) -> bool {
 
 fn current_month() -> String {
     chrono::Local::now().format("%Y-%m").to_string()
+}
+
+fn project_of(chat: &Value) -> Option<String> {
+    chat.get("projectId")
+        .and_then(Value::as_str)
+        .filter(|id| valid_id(id))
+        .map(str::to_string)
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -125,6 +144,7 @@ impl Store {
                         .unwrap_or("Chat")
                         .to_string(),
                     pinned: chat.get("pinned").and_then(Value::as_bool).unwrap_or(false),
+                    project_id: project_of(&chat),
                     updated_at: chat.get("updatedAt").and_then(Value::as_i64).unwrap_or(0),
                 })
             })
@@ -172,6 +192,7 @@ impl Store {
             title,
             updated_at,
             pinned: chat.get("pinned").and_then(Value::as_bool).unwrap_or(false),
+            project_id: project_of(chat),
         });
         self.write_index(&list)
     }
@@ -209,6 +230,77 @@ impl Store {
             let _ = fs::remove_file(dir.join(format!("{session}.jsonl")));
             let _ = fs::remove_dir_all(dir.join(session));
         }
+    }
+
+    fn projects_path(&self) -> PathBuf {
+        self.root.join("projects.json")
+    }
+
+    fn read_projects(&self) -> Vec<Project> {
+        fs::read(self.projects_path())
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default()
+    }
+
+    fn write_projects(&self, projects: &[Project]) -> Result<(), String> {
+        let bytes = serde_json::to_vec(projects).map_err(|_| "error.saveFailed".to_string())?;
+        write_atomic(&self.projects_path(), &bytes)
+    }
+
+    pub fn projects(&self) -> Vec<Project> {
+        let _guard = self.guard();
+        self.read_projects()
+    }
+
+    /// Adds a checked, canonical folder; a folder that is already a project
+    /// returns the existing one.
+    pub fn add_project(&self, id: &str, path: &Path) -> Result<Project, String> {
+        if !valid_id(id) {
+            return Err("error.invalidRequest".into());
+        }
+        let _guard = self.guard();
+        let mut projects = self.read_projects();
+        let path = path.display().to_string();
+        if let Some(existing) = projects.iter().find(|project| project.path == path) {
+            return Ok(existing.clone());
+        }
+        let name = Path::new(&path)
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.clone());
+        let project = Project {
+            id: id.to_string(),
+            name,
+            path,
+            created_at: chrono::Local::now().timestamp_millis(),
+        };
+        projects.push(project.clone());
+        self.write_projects(&projects)?;
+        Ok(project)
+    }
+
+    pub fn rename_project(&self, id: &str, name: &str) -> Result<(), String> {
+        let name: String = name.trim().chars().take(80).collect();
+        if name.is_empty() {
+            return Err("error.invalidRequest".into());
+        }
+        let _guard = self.guard();
+        let mut projects = self.read_projects();
+        let project = projects
+            .iter_mut()
+            .find(|project| project.id == id)
+            .ok_or("error.invalidRequest")?;
+        project.name = name;
+        self.write_projects(&projects)
+    }
+
+    /// Removes a project from the list only; its folder and chats stay.
+    pub fn remove_project(&self, id: &str) -> Result<(), String> {
+        let _guard = self.guard();
+        let mut projects = self.read_projects();
+        projects.retain(|project| project.id != id);
+        self.write_projects(&projects)
     }
 
     pub fn usage(&self) -> Usage {

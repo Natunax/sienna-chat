@@ -29,6 +29,7 @@ Every request goes to Anthropic with **your API key**, is billed to **your API o
 - **Streaming chat** with Markdown, tables, syntax-highlighted code blocks and a copy button
 - **Thinking summary** you can expand while the model reasons
 - **Web search** as a toggle; answers cite their sources as links that open in your browser
+- **Projects**: add a folder as a project in the sidebar; its chats are listed under it and every new chat there can read that folder, as in Claude Code
 - **Project folders**: give a chat a folder and ask about its code ("How does login work?", "Where is X used?"). Claude can read and search that folder, nothing else, and cannot change files or run commands; the project's `CLAUDE.md` is included
 - **Model and effort choice** per chat: Haiku 5.5, Sonnet 5.5 (default), Opus 5.5 or Fable 5.1, and five effort levels from low to max on a slider
 - **Attachments** by button, drag and drop or paste: images, PDFs and text files such as code, Markdown, CSV, JSON or logs (up to 512 KB each, sent as text with the file name)

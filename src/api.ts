@@ -66,6 +66,15 @@ export interface Chat {
   pinned?: boolean;
   /** A folder Claude may read and search in this chat. */
   projectDir?: string | null;
+  /** The project the chat belongs to in the sidebar. */
+  projectId?: string | null;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  path: string;
+  createdAt: number;
 }
 
 export interface ChatSummary {
@@ -73,6 +82,7 @@ export interface ChatSummary {
   title: string;
   updatedAt: number;
   pinned?: boolean;
+  projectId?: string;
 }
 
 export interface Usage {
@@ -113,6 +123,10 @@ export const api = {
     projectDir?: string | null;
   }) => invoke<number>("chat_send", { request }),
   projectCheck: (path: string) => invoke<string>("project_check", { path }),
+  projectsList: () => invoke<Project[]>("projects_list"),
+  projectAdd: (id: string, path: string) => invoke<Project>("project_add", { id, path }),
+  projectRename: (id: string, name: string) => invoke<void>("project_rename", { id, name }),
+  projectRemove: (id: string) => invoke<void>("project_remove", { id }),
   chatTitle: (chatId: string, text: string) => invoke<void>("chat_title", { chatId, text }),
 };
 
