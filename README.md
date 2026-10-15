@@ -59,8 +59,10 @@ git clone https://github.com/Natunax/sienna-chat.git
 cd sienna-chat
 npm install
 npm run sidecar:install
-npm run tauri build
+npm run app
 ```
+
+`npm run app` signs the app with an Apple code signing certificate if your Mac has one (for example the "Apple Development" certificate Xcode creates), so macOS treats every new build as the same app and your Keychain approval sticks. Without a certificate it builds unsigned, and macOS asks for Keychain access again after each rebuild.
 
 Move `src-tauri/target/release/bundle/macos/Sienna.app` to `/Applications` and open it. On first launch the app asks for your API key and stores it in the Keychain.
 
