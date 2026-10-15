@@ -2,11 +2,14 @@ import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "
 import { formatUsd, type Message } from "../api";
 import { storedErrorText, t, type TextKey } from "../i18n";
 import { loadHighlighter, renderBlocks } from "../markdown";
-import { AlertIcon, CheckIcon, ChevronRightIcon, CopyIcon, DocumentIcon, GlobeIcon, PencilIcon, RetryIcon, SparkIcon } from "./icons";
+import { AlertIcon, CheckIcon, ChevronRightIcon, CopyIcon, DocumentIcon, GlobeIcon, PencilIcon, RetryIcon, SearchIcon, SparkIcon } from "./icons";
 
 const TOOL_LABELS: Record<string, TextKey> = {
   WebSearch: "message.searching",
   WebFetch: "message.reading",
+  Read: "message.readFile",
+  Grep: "message.grep",
+  Glob: "message.glob",
 };
 
 function Markdown({ text, final }: { text: string; final: boolean }) {
@@ -202,7 +205,7 @@ function MessageViewImpl({ message, onRedo }: Props) {
         <div className="tools">
           {message.tools.map((tool, index) => (
             <span key={index} className="tool-chip">
-              <GlobeIcon size={13} />
+              {tool.name.startsWith("Web") ? <GlobeIcon size={13} /> : <SearchIcon size={13} />}
               <span className="tool-name">{TOOL_LABELS[tool.name] ? t(TOOL_LABELS[tool.name]) : tool.name}</span>
               {tool.detail && <span className="tool-detail">{tool.detail}</span>}
             </span>

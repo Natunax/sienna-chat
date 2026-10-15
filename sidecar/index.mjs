@@ -11,6 +11,7 @@ import { deleteSession, query } from "@anthropic-ai/claude-agent-sdk";
 import { createInterface } from "node:readline";
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { READ_TOOLS, projectGuard, projectPrompt } from "./project.mjs";
 
 const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
 // The packaged app ships the engine as one bundled file plus the Claude Code
@@ -129,11 +130,14 @@ class ChatSession {
         includePartialMessages: true,
         settingSources: [],
         strictMcpConfig: true,
-        tools: config.web ? WEB_TOOLS : [],
-        allowedTools: config.web ? WEB_TOOLS : [],
+        tools: toolsFor(config),
+        allowedTools: toolsFor(config),
         permissionMode: "dontAsk",
-        systemPrompt: SYSTEM_PROMPT,
-        cwd: workDir,
+        hooks: config.projectDir ? projectGuard(config.projectDir, config.web ? WEB_TOOLS : []) : undefined,
+        // Text is sent as typed: no `@path` file expansion, no slash commands.
+        verbatimPrompts: true,
+        systemPrompt: config.projectDir ? SYSTEM_PROMPT + projectPrompt(config.projectDir) : SYSTEM_PROMPT,
+        cwd: config.projectDir ?? workDir,
         env: childEnv,
         pathToClaudeCodeExecutable: claudeBinary,
         resume: config.sessionId ?? undefined,
@@ -146,8 +150,18 @@ class ChatSession {
     this.pump();
   }
 
+  /** Shows paths inside the project folder relative to it. */
+  relative(text) {
+    const root = this.config.projectDir;
+    return root && text.startsWith(root + "/") ? text.slice(root.length + 1) : text;
+  }
+
   sameConfig(config) {
-    return this.config.effort === config.effort && this.config.web === config.web;
+    return (
+      this.config.effort === config.effort &&
+      this.config.web === config.web &&
+      this.config.projectDir === config.projectDir
+    );
   }
 
   send(content) {
@@ -190,7 +204,7 @@ class ChatSession {
           // After a rewind the old transcript still holds the dropped turn.
           const replaced = this.config.replacesSession;
           if (replaced && replaced !== message.session_id) {
-            deleteSession(replaced, { dir: workDir }).catch(() => {});
+            deleteSession(replaced, { dir: this.config.projectDir ?? workDir }).catch(() => {});
           }
         }
         return;
@@ -216,7 +230,7 @@ class ChatSession {
             type: "tool",
             chatId: this.chatId,
             name: block.name,
-            detail: String(input.query ?? input.url ?? ""),
+            detail: this.relative(String(input.query ?? input.url ?? input.pattern ?? input.file_path ?? "")),
           });
         }
         return;
@@ -325,6 +339,10 @@ function toContent(text, attachments) {
   return blocks;
 }
 
+function toolsFor(config) {
+  return [...(config.projectDir ? READ_TOOLS : []), ...(config.web ? WEB_TOOLS : [])];
+}
+
 async function onSend(command) {
   const config = {
     model: command.model,
@@ -332,6 +350,8 @@ async function onSend(command) {
     web: Boolean(command.web),
     sessionId: command.sessionId ?? null,
     costSoFar: Number(command.costSoFar) || 0,
+    // Already checked and made canonical by the Rust shell.
+    projectDir: typeof command.projectDir === "string" && command.projectDir ? command.projectDir : null,
     rewindTo: null,
     replacesSession: null,
   };
@@ -387,6 +407,7 @@ async function onTitle(command) {
       strictMcpConfig: true,
       permissionMode: "dontAsk",
       persistSession: false,
+      verbatimPrompts: true,
       systemPrompt: TITLE_PROMPT,
       cwd: workDir,
       env: childEnv,

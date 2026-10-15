@@ -1,5 +1,6 @@
 mod engine;
 mod keychain;
+mod project;
 mod store;
 
 use engine::Engine;
@@ -56,6 +57,9 @@ struct SendRequest {
     #[serde(default)]
     rewind: bool,
     rewind_to: Option<String>,
+    /// A folder Claude may read and search in this chat.
+    #[serde(default)]
+    project_dir: Option<String>,
 }
 
 /// The Mac's preferred language, for the window's own translations. Errors
@@ -169,6 +173,13 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         return Err("error.budgetReached".into());
     }
 
+    let project_dir = request
+        .project_dir
+        .as_deref()
+        .map(project::validate)
+        .transpose()?
+        .map(|dir| dir.display().to_string());
+
     let line = json!({
         "type": "send",
         "chatId": request.chat_id,
@@ -180,6 +191,7 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         "costSoFar": request.cost_so_far,
         "rewind": request.rewind,
         "rewindTo": request.rewind_to,
+        "projectDir": project_dir,
         "attachments": request.attachments.iter().map(|file| json!({
             "name": file.name.chars().take(200).collect::<String>(),
             "mediaType": file.media_type,
@@ -210,6 +222,12 @@ fn chat_title(
     state.engine.send(&app, &state.store, &line).map(|_| ())
 }
 
+/// Checks a folder picked as a chat's project and returns its canonical path.
+#[tauri::command(async)]
+fn project_check(path: String) -> Result<String, String> {
+    project::validate(&path).map(|dir| dir.display().to_string())
+}
+
 #[tauri::command]
 fn chat_stop(chat_id: String, state: State<AppState>) {
     if store::valid_id(&chat_id) {
@@ -235,6 +253,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(navigation_guard())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let root = app.path().app_data_dir()?;
             app.manage(AppState {
@@ -256,6 +275,7 @@ pub fn run() {
             budget_set,
             chat_send,
             chat_title,
+            project_check,
             chat_stop,
         ])
         .build(tauri::generate_context!())

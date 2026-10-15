@@ -197,6 +197,7 @@ async function dispatch(chat: Chat, kept: Message[], text: string, attachments: 
       costSoFar: sessionCost,
       rewind,
       rewindTo: rewindTo ?? null,
+      projectDir: next.projectDir ?? null,
     });
     updateChat(id, (current) =>
       updateLastAssistant(current, (message) => (message.id === reply.id ? { ...message, engine } : message)),

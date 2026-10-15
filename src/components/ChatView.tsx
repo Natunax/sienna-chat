@@ -133,6 +133,10 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
       autoFocusKey={chat.id}
       pendingFiles={dropped}
       onFilesTaken={() => setDropped([])}
+      project={chat.projectDir ?? null}
+      // A chat's session lives in its folder, so the folder is set before the first message.
+      projectLocked={!empty}
+      onProject={(projectDir) => updateChat(chat.id, (current) => ({ ...current, projectDir }))}
     />
   );
 

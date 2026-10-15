@@ -8,11 +8,13 @@
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
     "app": "sh scripts/build-app.sh",
+    "test": "node --test sidecar/",
     "sidecar:install": "npm --prefix sidecar install --no-audit --no-fund",
     "engine:build": "esbuild sidecar/index.mjs --bundle --platform=node --format=esm --target=node20 --minify --legal-comments=none --outfile=sidecar/dist/engine.mjs --banner:js=\"import { createRequire as __siennaRequire } from 'node:module'; const require = __siennaRequire(import.meta.url);\""
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-dialog": "^2.8.3",
     "@tauri-apps/plugin-opener": "^2.7.2",
     "dompurify": "^3.4.17",
     "highlight.js": "^11.12.0",

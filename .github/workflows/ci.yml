@@ -28,6 +28,7 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx vite build
       - run: node --check sidecar/index.mjs
+      - run: npm test
       # The Tauri build checks that the bundled engine exists.
       - run: npm run engine:build
 
@@ -39,3 +40,4 @@ jobs:
           workspaces: src-tauri
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+      - run: cargo test --manifest-path src-tauri/Cargo.toml

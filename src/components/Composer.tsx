@@ -1,8 +1,20 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { EFFORTS, MODELS, type Effort, type ModelId, type OutgoingAttachment } from "../api";
 import { PICKER_ACCEPT, readAttachment, TEXT_MEDIA_TYPE } from "../attachments";
-import { t } from "../i18n";
-import { ArrowUpIcon, CheckIcon, ChevronDownIcon, CloseIcon, DocumentIcon, GlobeIcon, PaperclipIcon, StopIcon } from "./icons";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { api } from "../api";
+import { errorText, t } from "../i18n";
+import {
+  ArrowUpIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  DocumentIcon,
+  FolderIcon,
+  GlobeIcon,
+  PaperclipIcon,
+  StopIcon,
+} from "./icons";
 
 export interface ComposerSettings {
   model: ModelId;
@@ -19,6 +31,15 @@ interface Props {
   autoFocusKey: string;
   pendingFiles: File[];
   onFilesTaken: () => void;
+  /** The folder Claude may read in this chat, if any. */
+  project: string | null;
+  /** The folder is fixed once the chat has messages. */
+  projectLocked: boolean;
+  onProject: (dir: string | null) => void;
+}
+
+function folderName(path: string): string {
+  return path.split("/").filter(Boolean).pop() ?? path;
 }
 
 /** A short type label for a text file chip, such as RS, MD or CSV. */
@@ -104,6 +125,7 @@ function ModelMenu({ settings, onSettings }: Pick<Props, "settings" | "onSetting
 
 export function Composer(props: Props) {
   const { settings, onSettings, streaming, onSend, onStop, autoFocusKey, pendingFiles, onFilesTaken } = props;
+  const { project, projectLocked, onProject } = props;
   const [text, setText] = useState("");
   const [files, setFiles] = useState<OutgoingAttachment[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -138,6 +160,17 @@ export function Composer(props: Props) {
     void addFiles(pendingFiles);
     onFilesTaken();
   }, [pendingFiles]);
+
+  const pickProject = async () => {
+    setNotice(null);
+    const picked = await openDialog({ directory: true, multiple: false, title: t("composer.projectTitle") });
+    if (typeof picked !== "string") return;
+    try {
+      onProject(await api.projectCheck(picked));
+    } catch (reason) {
+      setNotice(errorText(reason));
+    }
+  };
 
   const canSend = !streaming && (text.trim().length > 0 || files.length > 0);
 
@@ -247,6 +280,37 @@ export function Composer(props: Props) {
             <GlobeIcon size={15} />
             {t("composer.web")}
           </button>
+          {project ? (
+            <span className={`pill is-on project-pill${projectLocked ? " is-locked" : ""}`}>
+              <span
+                className="project-name"
+                title={t(projectLocked ? "composer.projectLocked" : "composer.projectActive", {
+                  name: folderName(project),
+                })}
+              >
+                <FolderIcon size={15} />
+                {folderName(project)}
+              </span>
+              {!projectLocked && (
+                <button
+                  type="button"
+                  className="project-remove"
+                  onClick={() => onProject(null)}
+                  aria-label={t("composer.projectRemove")}
+                  title={t("composer.projectRemove")}
+                >
+                  <CloseIcon size={12} />
+                </button>
+              )}
+            </span>
+          ) : (
+            !projectLocked && (
+              <button type="button" className="pill" onClick={() => void pickProject()} title={t("composer.projectPick")}>
+                <FolderIcon size={15} />
+                {t("composer.project")}
+              </button>
+            )
+          )}
           <ModelMenu settings={settings} onSettings={onSettings} />
         </div>
         {streaming ? (

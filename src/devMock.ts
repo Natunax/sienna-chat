@@ -158,6 +158,10 @@ export function installDevMock() {
             budget: 100,
             byModel: { "claude-sonnet-5-5": 9.85, "claude-opus-5-5": 2.31, "claude-haiku-5-5": 0.24 },
           };
+        case "plugin:dialog|open":
+          return "/Users/demo/code/acme-shop";
+        case "project_check":
+          return (payload as { path: string }).path;
         case "chat_title":
           setTimeout(
             () => void emit("engine", { type: "title", chatId: payload?.chatId, title: sampleText.generated }),

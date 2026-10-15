@@ -50,6 +50,12 @@ const de = {
   "composer.attachHint": "Bild, PDF oder Textdatei anhängen",
   "composer.web": "Websuche",
   "composer.webHint": "Claude darf im Web suchen",
+  "composer.project": "Ordner",
+  "composer.projectPick": "Projektordner wählen: Claude darf ihn lesen und durchsuchen",
+  "composer.projectActive": "Claude darf {name} lesen und durchsuchen, aber nichts ändern",
+  "composer.projectLocked": "Claude liest {name}. Für einen anderen Ordner einen neuen Chat starten.",
+  "composer.projectRemove": "Ordner entfernen",
+  "composer.projectTitle": "Projektordner wählen",
   "composer.modelHint": "Modell und Gründlichkeit",
   "composer.effort": "Gründlichkeit",
   "composer.send": "Senden",
@@ -82,6 +88,9 @@ const de = {
   "message.send": "Senden",
   "message.searching": "Sucht im Web",
   "message.reading": "Liest Seite",
+  "message.readFile": "Liest",
+  "message.grep": "Durchsucht",
+  "message.glob": "Sucht Dateien",
   "code.copy": "Kopieren",
   "code.copied": "Kopiert",
   "code.copyLabel": "Code kopieren",
@@ -148,6 +157,8 @@ const de = {
   "error.rateLimited": "Zu viele Anfragen. Bitte gleich noch einmal versuchen.",
   "error.overloaded": "Claude ist gerade überlastet. Bitte gleich noch einmal versuchen.",
   "error.answerFailed": "Die Antwort ist fehlgeschlagen.",
+  "error.projectInvalid":
+    "Dieser Ordner geht nicht. Wähl einen Ordner in deinem Benutzerordner, nicht den Benutzerordner selbst und keinen versteckten.",
 };
 
 export type TextKey = keyof typeof de;
@@ -197,6 +208,12 @@ const en: Record<TextKey, string> = {
   "composer.attachHint": "Attach an image, PDF or text file",
   "composer.web": "Web search",
   "composer.webHint": "Let Claude search the web",
+  "composer.project": "Folder",
+  "composer.projectPick": "Choose a project folder for Claude to read and search",
+  "composer.projectActive": "Claude may read and search {name}, but not change anything",
+  "composer.projectLocked": "Claude reads {name}. Start a new chat for another folder.",
+  "composer.projectRemove": "Remove folder",
+  "composer.projectTitle": "Choose a project folder",
   "composer.modelHint": "Model and effort",
   "composer.effort": "Effort",
   "composer.send": "Send",
@@ -229,6 +246,9 @@ const en: Record<TextKey, string> = {
   "message.send": "Send",
   "message.searching": "Searching the web",
   "message.reading": "Reading page",
+  "message.readFile": "Reading",
+  "message.grep": "Searching",
+  "message.glob": "Finding files",
   "code.copy": "Copy",
   "code.copied": "Copied",
   "code.copyLabel": "Copy code",
@@ -294,6 +314,8 @@ const en: Record<TextKey, string> = {
   "error.rateLimited": "Too many requests. Please try again in a moment.",
   "error.overloaded": "Claude is overloaded right now. Please try again in a moment.",
   "error.answerFailed": "The answer failed.",
+  "error.projectInvalid":
+    "This folder cannot be used. Choose a folder inside your home folder, not the home folder itself and not a hidden one.",
 };
 
 let texts: Record<TextKey, string> = de;

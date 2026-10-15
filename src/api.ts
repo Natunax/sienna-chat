@@ -59,6 +59,8 @@ export interface Chat {
   titleRequested?: boolean;
   /** Pinned chats stay on top of the sidebar. */
   pinned?: boolean;
+  /** A folder Claude may read and search in this chat. */
+  projectDir?: string | null;
 }
 
 export interface ChatSummary {
@@ -103,7 +105,9 @@ export const api = {
     costSoFar: number;
     rewind?: boolean;
     rewindTo?: string | null;
+    projectDir?: string | null;
   }) => invoke<number>("chat_send", { request }),
+  projectCheck: (path: string) => invoke<string>("project_check", { path }),
   chatTitle: (chatId: string, text: string) => invoke<void>("chat_title", { chatId, text }),
 };
 

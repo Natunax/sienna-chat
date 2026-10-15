@@ -107,6 +107,12 @@ export const PinIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const FolderIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M2.75 6.25a2 2 0 0 1 2-2h3.1l1.8 1.9h5.6a2 2 0 0 1 2 2v6.6a2 2 0 0 1-2 2H4.75a2 2 0 0 1-2-2z" />
+  </Icon>
+);
+
 export const CloseIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="m5.5 5.5 9 9M14.5 5.5l-9 9" />

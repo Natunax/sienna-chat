@@ -29,6 +29,7 @@ Every request goes to Anthropic with **your API key**, is billed to **your API o
 - **Streaming chat** with Markdown, tables, syntax-highlighted code blocks and a copy button
 - **Thinking summary** you can expand while the model reasons
 - **Web search** as a toggle; answers cite their sources as links that open in your browser
+- **Project folders**: give a chat a folder and ask about its code ("How does login work?", "Where is X used?"). Claude can read and search that folder, nothing else, and cannot change files or run commands; the project's `CLAUDE.md` is included
 - **Model and effort choice** per chat: Sonnet 5.5 (default), Opus 5.5, Haiku 5.5; low, medium or high effort
 - **Attachments** by button, drag and drop or paste: images, PDFs and text files such as code, Markdown, CSV, JSON or logs (up to 512 KB each, sent as text with the file name)
 - **Costs you can see**: per answer, per chat (header), per month (sidebar) and per model (settings)
@@ -99,7 +100,7 @@ flowchart LR
 
 - **The key stays in the Keychain.** It is never written to a file, a log or the UI. It reaches the engine process only through its environment.
 - **No subscription fallback.** Without a key the Agent SDK would quietly use a logged-in Claude subscription. The engine refuses to start without an API key and runs with its own `CLAUDE_CONFIG_DIR` and no setting sources, so your Claude Code login, settings, hooks, plugins and memory are never loaded.
-- **The model gets no tools on your Mac.** The only tool is `WebSearch`, and only while the web toggle is on. No shell, no file access. `WebFetch` is left out on purpose: a page the model reads could otherwise tell it to fetch an attacker's URL with parts of your conversation in it.
+- **The model gets almost no tools on your Mac.** In a normal chat the only tool is `WebSearch`, and only while the web toggle is on. With a project folder it may also use `Read`, `Grep` and `Glob`, and a hook checks every call against the folder (symbolic links resolved), so nothing outside it can be read. There is no shell and no write access. The folder must be inside your home folder (not the home folder itself, not a hidden one like `~/.ssh`). The project's `CLAUDE.md` is read by Sienna itself; Claude Code's project settings, which could run hooks, are never loaded. `@path` mentions in messages are not expanded. `WebFetch` is left out on purpose: a page the model reads could otherwise tell it to fetch an attacker's URL with parts of your conversation in it.
 - **API keys only.** The app refuses OAuth tokens (`sk-ant-oat…`) and admin keys, and the engine stops a turn if the SDK reports any credential source other than the API key.
 - **Rendered answers are sanitized** (marked + DOMPurify), the WebView runs under a strict Content Security Policy, remote images are not loaded, a navigation guard keeps the window on the app, and only `http`/`https` links open, in your default browser.
 - **Your data:** chats and the monthly spend are JSON files in `~/Library/Application Support/io.github.natunax.sienna/`. The Agent SDK keeps its own transcript of each chat in `claude-config/` there; deleting a chat deletes both. Requests go only to Anthropic.
