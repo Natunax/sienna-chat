@@ -383,17 +383,28 @@ a:focus-visible {
 }
 
 .chat-row-confirm {
-  display: inline-grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   height: 24px;
-}
-
-.chat-row-confirm {
-  padding: 0 8px;
-  background: var(--danger);
-  color: #fff;
+  padding: 0 8px 0 6px;
+  border-radius: 6px;
+  background: var(--danger-soft);
+  color: var(--danger);
   font-size: 12px;
   font-weight: 600;
+  animation: pop 140ms ease-out both;
+  transition: background-color 120ms, color 120ms;
+}
+
+.chat-row-confirm:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* The title ends before the confirm button instead of running under it. */
+.chat-row.is-confirming .chat-row-main {
+  padding-right: 84px;
 }
 
 .chat-row.is-renaming {

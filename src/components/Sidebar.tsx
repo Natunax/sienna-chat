@@ -79,7 +79,7 @@ function ChatRow({ chat, active, onSelect, onDelete, onRename, onPin }: {
   }
 
   return (
-    <li className={`chat-row${active ? " is-active" : ""}`}>
+    <li className={`chat-row${active ? " is-active" : ""}${confirming ? " is-confirming" : ""}`}>
       <button
         type="button"
         className="chat-row-main"
@@ -92,7 +92,16 @@ function ChatRow({ chat, active, onSelect, onDelete, onRename, onPin }: {
         {chat.title}
       </button>
       {confirming ? (
-        <button type="button" className="chat-row-confirm" onClick={onDelete}>
+        <button
+          type="button"
+          className="chat-row-confirm"
+          onClick={onDelete}
+          // Escape or clicking elsewhere cancels; the button has focus so ↩ confirms.
+          onKeyDown={(event) => event.key === "Escape" && setConfirming(false)}
+          onBlur={() => setConfirming(false)}
+          autoFocus
+        >
+          <TrashIcon size={13} />
           {t("sidebar.confirmDelete")}
         </button>
       ) : (
