@@ -101,6 +101,13 @@ export const PencilIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const TerminalIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.25" />
+    <path d="m6 8 2.25 2L6 12M10.5 12.5H14" />
+  </Icon>
+);
+
 export const PinIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M7.5 3.5h5M8.5 3.5v4.2L5.8 11h8.4l-2.7-3.3V3.5M10 11v5.5" />

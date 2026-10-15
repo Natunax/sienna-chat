@@ -21,10 +21,42 @@ export const EFFORTS: { id: Effort; name: TextKey }[] = [
   { id: "max", name: "effort.max" },
 ];
 
+/** A file change as Claude made it: the replaced text and the new text. */
+export interface FileChange {
+  before: string;
+  after: string;
+  /** Write made a new file. */
+  created?: boolean;
+}
+
 export interface ToolUse {
+  /** The SDK's tool use id; older chats have none. */
+  id?: string;
   name: string;
   detail: string;
+  /** The user declined the change or command. */
+  denied?: boolean;
+  failed?: boolean;
+  /** A command's output, the end of it if long. */
+  output?: string;
+  change?: FileChange;
 }
+
+/** A change or command waiting for the user's approval. */
+export interface PermissionRequest {
+  id: string;
+  toolUseId: string | null;
+  tool: "Edit" | "Write" | "Bash";
+  path?: string;
+  before?: string | null;
+  after?: string;
+  created?: boolean;
+  replaceAll?: boolean;
+  command?: string;
+  description?: string;
+}
+
+export type PermissionDecision = "allow" | "always" | "deny";
 
 export interface AttachmentMeta {
   name: string;
@@ -46,6 +78,8 @@ export interface Message {
   engine?: number;
   /** SDK message id at the end of this answer's turn; a rewind cuts back to it. */
   turnEnd?: string | null;
+  /** Changes and commands this answer waits on; never saved. */
+  permissions?: PermissionRequest[];
   /** For a note about a compaction: how it was triggered and the tokens before and after. */
   compaction?: { trigger: "manual" | "auto"; before: number | null; after: number | null };
 }
@@ -81,6 +115,8 @@ export interface Chat {
   context?: { used: number; window: number; categories?: ContextCategory[] } | null;
   /** The conversation is being summarized right now. */
   compacting?: boolean;
+  /** File changes in the project run without asking first. */
+  autoEdits?: boolean;
 }
 
 export interface Project {
@@ -135,7 +171,11 @@ export const api = {
     rewind?: boolean;
     rewindTo?: string | null;
     projectDir?: string | null;
+    autoEdits?: boolean;
   }) => invoke<number>("chat_send", { request }),
+  chatPermission: (chatId: string, id: string, decision: PermissionDecision) =>
+    invoke<void>("chat_permission", { chatId, id, decision }),
+  chatAutoEdits: (chatId: string, on: boolean) => invoke<void>("chat_auto_edits", { chatId, on }),
   projectCheck: (path: string) => invoke<string>("project_check", { path }),
   projectsList: () => invoke<Project[]>("projects_list"),
   projectAdd: (id: string, path: string) => invoke<Project>("project_add", { id, path }),

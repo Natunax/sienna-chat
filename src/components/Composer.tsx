@@ -13,6 +13,7 @@ import {
   DocumentIcon,
   FolderIcon,
   GlobeIcon,
+  PencilIcon,
   StopIcon,
 } from "./icons";
 
@@ -42,6 +43,10 @@ interface Props {
   /** Missing until the chat has an answer, or while one streams. */
   onCompact?: () => void;
   compacting: boolean;
+  /** File changes run without asking first. */
+  autoEdits: boolean;
+  /** Missing outside project chats. */
+  onAutoEdits?: (on: boolean) => void;
 }
 
 function folderName(path: string): string {
@@ -56,7 +61,7 @@ function fileLabel(name: string): string {
 
 export function Composer(props: Props) {
   const { settings, onSettings, streaming, onSend, onStop, autoFocusKey, pendingFiles, onFilesTaken } = props;
-  const { project, projectLocked, onProject, context, onCompact, compacting } = props;
+  const { project, projectLocked, onProject, context, onCompact, compacting, autoEdits, onAutoEdits } = props;
   const [text, setText] = useState("");
   const [files, setFiles] = useState<OutgoingAttachment[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -143,7 +148,8 @@ export function Composer(props: Props) {
     });
   };
 
-  const chips = settings.web || project || files.length > 0;
+  const showAutoEdits = Boolean(project && autoEdits && onAutoEdits);
+  const chips = settings.web || project || showAutoEdits || files.length > 0;
 
   return (
     <div className="composer-wrap">
@@ -185,6 +191,21 @@ export function Composer(props: Props) {
                 )}
               </span>
             )}
+            {showAutoEdits && (
+              <span className="chip is-accent">
+                <PencilIcon size={13} />
+                <span className="chip-text">{t("composer.autoEdits")}</span>
+                <button
+                  type="button"
+                  className="chip-remove"
+                  onClick={() => onAutoEdits?.(false)}
+                  aria-label={t("composer.autoEditsOff")}
+                  title={t("composer.autoEditsOff")}
+                >
+                  <CloseIcon size={11} />
+                </button>
+              </span>
+            )}
             {files.map((file, index) => (
               <span key={index} className="chip chip-file">
                 {file.previewUrl ? (
@@ -214,6 +235,8 @@ export function Composer(props: Props) {
             onWeb={() => onSettings({ web: !settings.web })}
             onAttach={() => picker.current?.click()}
             onProject={projectLocked ? undefined : () => void pickProject()}
+            autoEdits={autoEdits}
+            onAutoEdits={project ? onAutoEdits : undefined}
           />
           <input
             ref={picker}

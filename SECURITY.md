@@ -15,6 +15,7 @@ In scope, for example:
 - the API key leaving the macOS Keychain other than to the chat engine process
 - requests billed to anything other than the configured API key
 - script execution or navigation in the app window through a model answer
-- reading or writing files outside the app's data folder
+- reading files outside the app's data folder and the chat's project folder
+- a file change or command running without the user's approval, or a change landing outside the project folder
 
 Out of scope: what the Claude models answer, and bugs in the Claude Agent SDK or Tauri themselves (report those upstream).

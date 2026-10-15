@@ -20,7 +20,7 @@ after(() => rmSync(base, { recursive: true, force: true }));
 
 const check = projectGuard(root, ["WebSearch"]).PreToolUse[0].hooks[0];
 
-test("allows reading and searching inside the project folder only", async () => {
+test("reads inside the project folder, asks before changes and commands", async () => {
   const cases = [
     ["Read", { file_path: join(root, "src", "main.rs") }, "allow"],
     ["Read", { file_path: "src/main.rs" }, "allow"],
@@ -32,9 +32,16 @@ test("allows reading and searching inside the project folder only", async () => 
     ["Read", { file_path: join(root, "link", "key.txt") }, "deny"],
     ["Glob", { pattern: "*", path: join(root, "link") }, "deny"],
     ["Grep", { pattern: "root", path: "/etc" }, "deny"],
-    ["Bash", { command: "ls" }, "deny"],
-    ["Write", { file_path: join(root, "new.txt"), content: "x" }, "deny"],
-    ["Edit", { file_path: join(root, "src", "main.rs") }, "deny"],
+    ["Bash", { command: "ls" }, "ask"],
+    ["Write", { file_path: join(root, "new.txt"), content: "x" }, "ask"],
+    ["Edit", { file_path: join(root, "src", "main.rs") }, "ask"],
+    ["Edit", { file_path: "src/main.rs" }, "ask"],
+    ["Write", { file_path: join(base, "outside", "key.txt"), content: "x" }, "deny"],
+    ["Write", { file_path: join(root, "link", "new.txt"), content: "x" }, "deny"],
+    ["Edit", { file_path: join(root, ".git", "hooks", "pre-commit") }, "deny"],
+    ["Write", { file_path: join(root, "src", "missing", "new.rs"), content: "x" }, "ask"],
+    ["WebFetch", { url: "https://example.com" }, "deny"],
+    ["NotebookEdit", { notebook_path: join(root, "a.ipynb") }, "deny"],
   ];
   for (const [tool, input, expected] of cases) {
     const result = await check({ tool_name: tool, tool_input: input });

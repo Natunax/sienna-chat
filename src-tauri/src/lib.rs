@@ -62,9 +62,12 @@ struct SendRequest {
     #[serde(default)]
     rewind: bool,
     rewind_to: Option<String>,
-    /// A folder Claude may read and search in this chat.
+    /// The project folder Claude works in for this chat.
     #[serde(default)]
     project_dir: Option<String>,
+    /// File changes in the project run without asking first.
+    #[serde(default)]
+    auto_edits: bool,
 }
 
 /// The Mac's preferred language, for the window's own translations. Errors
@@ -197,6 +200,7 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         "rewind": request.rewind,
         "rewindTo": request.rewind_to,
         "projectDir": project_dir,
+        "autoEdits": request.auto_edits,
         "attachments": request.attachments.iter().map(|file| json!({
             "name": file.name.chars().take(200).collect::<String>(),
             "mediaType": file.media_type,
@@ -315,6 +319,30 @@ fn chat_stop(chat_id: String, state: State<AppState>) {
     }
 }
 
+/// The user's answer to a change or command Claude asked to run.
+#[tauri::command]
+fn chat_permission(chat_id: String, id: String, decision: String, state: State<AppState>) {
+    if store::valid_id(&chat_id)
+        && store::valid_id(&id)
+        && ["allow", "always", "deny"].contains(&decision.as_str())
+    {
+        state.engine.notify(
+            &json!({ "type": "permission", "chatId": chat_id, "id": id, "decision": decision })
+                .to_string(),
+        );
+    }
+}
+
+/// Lets file changes in a project chat run without asking, or asks again.
+#[tauri::command]
+fn chat_auto_edits(chat_id: String, on: bool, state: State<AppState>) {
+    if store::valid_id(&chat_id) {
+        state
+            .engine
+            .notify(&json!({ "type": "autoEdits", "chatId": chat_id, "on": on }).to_string());
+    }
+}
+
 /// The window may only show the app itself. A link in an answer that slips
 /// past the click handler must not turn the window into a browser.
 fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
@@ -360,6 +388,8 @@ pub fn run() {
             project_rename,
             project_remove,
             chat_stop,
+            chat_permission,
+            chat_auto_edits,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build the app");

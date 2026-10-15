@@ -38,6 +38,10 @@
   --hl-comment: rgba(28, 25, 23, 0.45);
   --hl-title: #2b5fb8;
   --hl-type: #7c4bc4;
+  --diff-add: rgba(46, 140, 72, 0.12);
+  --diff-add-text: #24733b;
+  --diff-remove: rgba(196, 55, 42, 0.1);
+  --diff-remove-text: #b03224;
 
   --radius: 10px;
   --header-h: 52px;
@@ -77,6 +81,10 @@
     --hl-comment: rgba(255, 252, 248, 0.42);
     --hl-title: #8fb8ff;
     --hl-type: #c7a3ff;
+    --diff-add: rgba(103, 200, 120, 0.14);
+    --diff-add-text: #8fd69d;
+    --diff-remove: rgba(255, 107, 94, 0.14);
+    --diff-remove-text: #ff9a90;
   }
 }
 
@@ -877,6 +885,244 @@ a:focus-visible {
   text-overflow: ellipsis;
 }
 
+.tool-chip .tool-detail {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.tool-chip.is-button {
+  padding-right: 8px;
+  transition: background-color 120ms;
+}
+
+.tool-chip.is-button:hover,
+.tool-chip.is-open {
+  background: var(--fill-hover);
+}
+
+.tool-chevron {
+  flex-shrink: 0;
+  color: var(--label-3);
+  transition: transform 160ms ease;
+}
+
+.tool-chip.is-open .tool-chevron {
+  transform: rotate(90deg);
+}
+
+.tool-state {
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.tool-chip.is-denied {
+  color: var(--label-3);
+}
+
+.tool-chip.is-denied .tool-detail {
+  text-decoration: line-through;
+}
+
+.tool-chip.is-failed .tool-state {
+  color: var(--danger);
+}
+
+.tool-panel {
+  margin: 0 0 14px;
+}
+
+.tool-output {
+  max-height: 280px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--code-bg);
+  color: var(--label-2);
+  font: 12px/1.55 var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* A change as git shows it. */
+.diff {
+  overflow: hidden;
+  border-radius: 9px;
+  background: var(--code-bg);
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+  font: 12px/1.6 var(--font-mono);
+}
+
+.diff-body {
+  max-height: 340px;
+  overflow: auto;
+  padding: 6px 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.diff-empty {
+  padding: 10px 12px;
+  color: var(--label-3);
+}
+
+.diff-line {
+  display: flex;
+  min-width: max-content;
+  padding-right: 12px;
+}
+
+.diff-line.is-add {
+  background: var(--diff-add);
+}
+
+.diff-line.is-remove {
+  background: var(--diff-remove);
+}
+
+.diff-no {
+  flex-shrink: 0;
+  width: 38px;
+  padding-right: 8px;
+  color: var(--label-3);
+  text-align: right;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.diff-sign {
+  flex-shrink: 0;
+  width: 22px;
+  text-align: center;
+  color: var(--label-3);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.diff-line.is-add .diff-sign {
+  color: var(--diff-add-text);
+}
+
+.diff-line.is-remove .diff-sign {
+  color: var(--diff-remove-text);
+}
+
+.diff-text {
+  white-space: pre;
+  color: var(--label);
+}
+
+.diff-gap {
+  padding: 3px 12px 3px 22px;
+  color: var(--label-3);
+  font: 11px/1.6 var(--font);
+}
+
+.diff-body .diff-gap {
+  margin: 2px 0;
+  background: var(--fill);
+}
+
+/* A change or command waiting for the user's answer. */
+.permission {
+  margin: 14px 0 6px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-composer);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.permission-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.permission-icon {
+  flex-shrink: 0;
+  color: var(--accent-text);
+}
+
+.permission-title {
+  font-weight: 600;
+}
+
+.permission-stats {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  font: 500 12px/1 var(--font-mono);
+}
+
+.permission-stats .is-add {
+  color: var(--diff-add-text);
+}
+
+.permission-stats .is-remove {
+  color: var(--diff-remove-text);
+}
+
+.permission-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.permission-path {
+  overflow: hidden;
+  color: var(--label-2);
+  font: 12px/1.4 var(--font-mono);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.permission-text {
+  margin: 0;
+  color: var(--label-2);
+}
+
+.permission-command {
+  max-height: 200px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--code-bg);
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+  font: 12.5px/1.55 var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.permission-command code::before {
+  content: "$ ";
+  color: var(--label-3);
+}
+
+.permission-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* The approving buttons stay together on the right, also when they wrap. */
+.permission-grant {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
 .caret {
   display: inline-block;
   width: 8px;
@@ -1568,6 +1814,11 @@ a:focus-visible {
   color: var(--label-2);
   font-size: 12px;
   font-weight: 500;
+}
+
+.chip.is-accent {
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 
 .chip:not(:has(.chip-remove)) {

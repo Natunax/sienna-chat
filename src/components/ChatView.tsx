@@ -1,8 +1,19 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
-import { formatUsd, type Chat, type OutgoingAttachment } from "../api";
+import { formatUsd, type Chat, type OutgoingAttachment, type PermissionDecision, type PermissionRequest } from "../api";
 import { t, useLanguage, type TextKey } from "../i18n";
-import { compactChat, projectFor, redoLast, rewindPoint, sendMessage, stopMessage, updateChat, useProjects } from "../store";
+import {
+  answerPermission,
+  compactChat,
+  projectFor,
+  redoLast,
+  rewindPoint,
+  sendMessage,
+  setAutoEdits,
+  stopMessage,
+  updateChat,
+  useProjects,
+} from "../store";
 import { Composer, type ComposerSettings } from "./Composer";
 import { SidebarIcon } from "./icons";
 import { MessageView } from "./MessageView";
@@ -84,6 +95,10 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
     [chat.id, stuck],
   );
   const lastQuestion = chat.messages.length - 2;
+  const answer = useCallback(
+    (request: PermissionRequest, decision: PermissionDecision) => answerPermission(chat.id, request, decision),
+    [chat.id],
+  );
 
   const send = (text: string, attachments: OutgoingAttachment[]) => {
     stuck.current = true;
@@ -149,6 +164,8 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
       context={chat.context}
       compacting={Boolean(chat.compacting)}
       onCompact={chat.sessionId && !streaming ? () => void compactChat(chat.id) : undefined}
+      autoEdits={Boolean(chat.autoEdits)}
+      onAutoEdits={chat.projectDir ? (on) => setAutoEdits(chat.id, on) : undefined}
       onProject={(picked) =>
         updateChat(chat.id, (current) => ({
           ...current,
@@ -205,6 +222,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
                 key={`${message.id}:${language}`}
                 message={message}
                 onRedo={canRedo && index >= lastQuestion ? redo : undefined}
+                onPermission={index === chat.messages.length - 1 ? answer : undefined}
               />
             ))
           )}

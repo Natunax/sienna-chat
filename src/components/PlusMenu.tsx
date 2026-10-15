@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { t } from "../i18n";
-import { CheckIcon, FolderIcon, GlobeIcon, PaperclipIcon, PlusIcon } from "./icons";
+import { CheckIcon, FolderIcon, GlobeIcon, PaperclipIcon, PencilIcon, PlusIcon } from "./icons";
 
 interface Props {
   web: boolean;
@@ -8,10 +8,13 @@ interface Props {
   onAttach: () => void;
   /** Missing once the chat has messages: the folder is fixed then. */
   onProject?: () => void;
+  autoEdits: boolean;
+  /** Only in project chats: let file changes run without asking. */
+  onAutoEdits?: (on: boolean) => void;
 }
 
-/** The composer's + button: attach a file, pick a project folder, toggle web search. */
-export function PlusMenu({ web, onWeb, onAttach, onProject }: Props) {
+/** The composer's + button: attach a file, pick a project folder, toggle web search and edits without asking. */
+export function PlusMenu({ web, onWeb, onAttach, onProject, autoEdits, onAutoEdits }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -70,6 +73,20 @@ export function PlusMenu({ web, onWeb, onAttach, onProject }: Props) {
             {t("composer.web")}
             {web && <CheckIcon size={14} className="plus-check" />}
           </button>
+          {onAutoEdits && (
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={autoEdits}
+              className="plus-item"
+              title={t("permission.alwaysHint")}
+              onClick={run(() => onAutoEdits(!autoEdits))}
+            >
+              <PencilIcon size={15} />
+              {t("composer.autoEdits")}
+              {autoEdits && <CheckIcon size={14} className="plus-check" />}
+            </button>
+          )}
         </div>
       )}
     </div>

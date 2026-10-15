@@ -155,6 +155,69 @@ function streamAnswer(chatId: string) {
   }, 900);
 }
 
+// A project chat: Claude reads, asks to change a file, then to run the tests.
+let waitingOn: ((decision: string) => void) | null = null;
+
+function ask(chatId: string, request: Record<string, unknown>): Promise<string> {
+  void emit("engine", { type: "permission", chatId, ...request });
+  return new Promise((resolve) => {
+    waitingOn = (decision) => {
+      void emit("engine", { type: "permissionGone", chatId, id: request.id });
+      resolve(decision);
+    };
+  });
+}
+
+async function streamCodeAnswer(chatId: string) {
+  const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  void emit("engine", { type: "session", chatId, sessionId: "55555555-5555-4555-8555-555555555555" });
+  await pause(500);
+  void emit("engine", { type: "tool", chatId, id: "t1", name: "Read", detail: "src/cart.ts" });
+  await pause(400);
+  void emit("engine", { type: "tool", chatId, id: "t2", name: "Edit", detail: "src/cart.ts" });
+  const edit = await ask(chatId, {
+    id: crypto.randomUUID(),
+    toolUseId: "t2",
+    tool: "Edit",
+    path: "src/cart.ts",
+    before: "export function total(items: Item[]) {\n  return items.reduce((sum, item) => sum + item.price, 0);\n}",
+    after:
+      "export function total(items: Item[]) {\n  return items.reduce((sum, item) => sum + item.price * item.quantity, 0);\n}",
+  });
+  if (edit === "deny") {
+    void emit("engine", { type: "toolResult", chatId, id: "t2", failed: true, output: "" });
+    void emit("engine", { type: "delta", chatId, text: english ? "Okay, I left the file as it is. How should I go on?" : "Gut, ich lasse die Datei, wie sie ist. Wie soll ich weitermachen?", thinking: "" });
+  } else {
+    void emit("engine", { type: "tool", chatId, id: "t3", name: "Bash", detail: "npm test -- cart" });
+    const run = await ask(chatId, {
+      id: crypto.randomUUID(),
+      toolUseId: "t3",
+      tool: "Bash",
+      command: "npm test -- cart",
+      description: english ? "Run the cart tests" : "Warenkorb-Tests ausführen",
+    });
+    if (run === "deny") void emit("engine", { type: "toolResult", chatId, id: "t3", failed: true, output: "" });
+    else
+      void emit("engine", {
+        type: "toolResult",
+        chatId,
+        id: "t3",
+        failed: false,
+        output: " ✓ cart › total counts the quantity (3 ms)\n ✓ cart › empty cart is 0 (1 ms)\n\nTests: 2 passed, 2 total",
+      });
+    void emit("engine", {
+      type: "delta",
+      chatId,
+      text: english
+        ? "`total` now multiplies by `quantity`, and the cart tests pass."
+        : "`total` rechnet jetzt mit `quantity`, und die Warenkorb-Tests laufen durch.",
+      thinking: "",
+    });
+  }
+  await pause(200);
+  void emit("engine", { type: "done", chatId, costUsd: 0.021, turnEnd: crypto.randomUUID(), error: null });
+}
+
 export function installDevMock() {
   mockIPC(
     (cmd, args) => {
@@ -214,8 +277,15 @@ export function installDevMock() {
             600,
           );
           return null;
-        case "chat_send":
-          streamAnswer((payload?.request as { chatId: string }).chatId);
+        case "chat_send": {
+          const request = payload?.request as { chatId: string; projectDir?: string | null };
+          if (request.projectDir) void streamCodeAnswer(request.chatId);
+          else streamAnswer(request.chatId);
+          return null;
+        }
+        case "chat_permission":
+          waitingOn?.((payload as { decision: string }).decision);
+          waitingOn = null;
           return null;
         default:
           return null;

@@ -8,8 +8,12 @@ import {
   type Chat,
   type ChatSummary,
   type ContextCategory,
+  type FileChange,
   type Message,
+  type PermissionDecision,
+  type PermissionRequest,
   type Project,
+  type ToolUse,
   type Usage,
 } from "./api";
 import { t } from "./i18n";
@@ -163,7 +167,9 @@ export async function loadChat(id: string): Promise<Chat> {
   const chat = await api.chatLoad(id);
   // A chat saved while an answer streamed must not show a spinner forever.
   const messages = chat.messages.map((message) =>
-    message.streaming ? { ...message, streaming: false, error: message.error ?? "error.interrupted" } : message,
+    message.streaming
+      ? { ...message, streaming: false, permissions: undefined, error: message.error ?? "error.interrupted" }
+      : message,
   );
   const clean = { ...chat, messages, compacting: false };
   chats.set(id, clean);
@@ -195,7 +201,10 @@ export function updateChat(id: string, change: (chat: Chat) => Chat) {
 
 function persist(id: string) {
   const chat = chats.get(id);
-  if (chat && chat.messages.length) void api.chatSave(chat).catch(() => {});
+  if (!chat || !chat.messages.length) return;
+  // Open approvals belong to the running engine, not to the saved chat.
+  const messages = chat.messages.map((message) => (message.permissions ? { ...message, permissions: undefined } : message));
+  void api.chatSave({ ...chat, messages }).catch(() => {});
 }
 
 export async function deleteChat(id: string) {
@@ -266,6 +275,7 @@ async function dispatch(chat: Chat, kept: Message[], text: string, attachments: 
       rewind,
       rewindTo: rewindTo ?? null,
       projectDir: next.projectDir ?? null,
+      autoEdits: Boolean(next.autoEdits),
     });
     updateChat(id, (current) =>
       updateLastAssistant(current, (message) => (message.id === reply.id ? { ...message, engine } : message)),
@@ -344,10 +354,62 @@ export function stopMessage(id: string) {
   void api.chatStop(id);
 }
 
+// A stored change keeps at most this much of each side, so chats stay small.
+const MAX_STORED_CHANGE = 20_000;
+
+function storedChange(request: PermissionRequest): FileChange {
+  return {
+    before: (request.before ?? "").slice(0, MAX_STORED_CHANGE),
+    after: (request.after ?? "").slice(0, MAX_STORED_CHANGE),
+    created: request.created || undefined,
+  };
+}
+
+/** Changes the tool entry with this id in the chat's last answer. */
+function updateTool(chat: Chat, toolId: string | null | undefined, change: (tool: ToolUse) => ToolUse): Chat {
+  if (!toolId) return chat;
+  return updateLastAssistant(chat, (message) =>
+    message.tools?.some((tool) => tool.id === toolId)
+      ? { ...message, tools: message.tools.map((tool) => (tool.id === toolId ? change(tool) : tool)) }
+      : message,
+  );
+}
+
+/** The user's answer to a change or command Claude wants to run. */
+export function answerPermission(chatId: string, request: PermissionRequest, decision: PermissionDecision) {
+  updateChat(chatId, (chat) => {
+    let next = updateLastAssistant(chat, (message) => ({
+      ...message,
+      permissions: message.permissions?.filter((entry) => entry.id !== request.id),
+    }));
+    next = updateTool(next, request.toolUseId, (tool) =>
+      decision === "deny"
+        ? { ...tool, denied: true }
+        : request.tool === "Bash"
+          ? tool
+          : { ...tool, change: storedChange(request) },
+    );
+    if (decision === "always" && request.tool !== "Bash") next = { ...next, autoEdits: true };
+    return next;
+  });
+  void api.chatPermission(chatId, request.id, decision).catch(() => {});
+}
+
+/** Lets file changes in a project chat run without asking, or asks again. */
+export function setAutoEdits(chatId: string, on: boolean) {
+  updateChat(chatId, (chat) => ({ ...chat, autoEdits: on }));
+  persist(chatId);
+  void api.chatAutoEdits(chatId, on).catch(() => {});
+}
+
 type EngineEvent =
   | { type: "session"; chatId: string; sessionId: string }
   | { type: "delta"; chatId: string; text: string; thinking: string }
-  | { type: "tool"; chatId: string; name: string; detail: string }
+  | { type: "tool"; chatId: string; id?: string; name: string; detail: string }
+  | { type: "toolResult"; chatId: string; id: string; failed: boolean; output: string }
+  | ({ type: "permission"; chatId: string } & PermissionRequest)
+  | { type: "permissionGone"; chatId: string; id: string }
+  | ({ type: "change"; chatId: string } & PermissionRequest)
   | {
       type: "done";
       chatId: string;
@@ -407,7 +469,7 @@ function failStreaming(generation: number, reason: string) {
   for (const chat of chats.values()) {
     const last = chat.messages[chat.messages.length - 1];
     if (last?.streaming && last.engine === generation) {
-      putChat(updateLastAssistant(chat, (message) => ({ ...message, streaming: false, error: reason })));
+      putChat(updateLastAssistant(chat, (message) => ({ ...message, streaming: false, permissions: undefined, error: reason })));
       persist(chat.id);
     }
   }
@@ -431,15 +493,51 @@ function onEngineEvent(event: EngineEvent) {
       updateChat(event.chatId, (chat) =>
         updateLastAssistant(chat, (message) => ({
           ...message,
-          tools: [...(message.tools ?? []), { name: event.name, detail: event.detail }],
+          tools: [...(message.tools ?? []), { id: event.id, name: event.name, detail: event.detail }],
         })),
       );
       return;
+    case "toolResult":
+      updateChat(event.chatId, (chat) =>
+        updateTool(chat, event.id, (tool) => ({
+          ...tool,
+          failed: event.failed && !tool.denied,
+          output: event.output || tool.output,
+        })),
+      );
+      return;
+    case "permission": {
+      const { type: _type, chatId: _chatId, ...request } = event;
+      updateChat(event.chatId, (chat) =>
+        updateLastAssistant(chat, (message) =>
+          message.streaming
+            ? { ...message, permissions: [...(message.permissions ?? []).filter((entry) => entry.id !== request.id), request] }
+            : message,
+        ),
+      );
+      return;
+    }
+    case "permissionGone":
+      updateChat(event.chatId, (chat) =>
+        updateLastAssistant(chat, (message) =>
+          message.permissions?.some((entry) => entry.id === event.id)
+            ? { ...message, permissions: message.permissions.filter((entry) => entry.id !== event.id) }
+            : message,
+        ),
+      );
+      return;
+    case "change": {
+      // A change that ran without asking (edits allowed for the whole chat).
+      const { type: _type, chatId: _chatId, ...request } = event;
+      updateChat(event.chatId, (chat) => updateTool(chat, request.toolUseId, (tool) => ({ ...tool, change: storedChange(request) })));
+      return;
+    }
     case "done":
       updateChat(event.chatId, (chat) => ({
         ...updateLastAssistant(chat, (message) => ({
           ...message,
           streaming: false,
+          permissions: undefined,
           costUsd: (message.costUsd ?? 0) + event.costUsd,
           turnEnd: event.turnEnd ?? null,
           error: event.error,

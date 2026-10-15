@@ -1,9 +1,23 @@
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { formatUsd, type Message } from "../api";
+import { formatUsd, type Message, type PermissionDecision, type PermissionRequest, type ToolUse } from "../api";
 import { storedErrorText, t, type TextKey } from "../i18n";
 import { loadHighlighter, renderBlocks } from "../markdown";
 import { shortTokens } from "./ContextMeter";
-import { AlertIcon, CheckIcon, ChevronRightIcon, CopyIcon, DocumentIcon, GlobeIcon, PencilIcon, RetryIcon, SearchIcon, SparkIcon } from "./icons";
+import { DiffView } from "./DiffView";
+import {
+  AlertIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  DocumentIcon,
+  GlobeIcon,
+  PencilIcon,
+  RetryIcon,
+  SearchIcon,
+  SparkIcon,
+  TerminalIcon,
+} from "./icons";
+import { PermissionCard } from "./PermissionCard";
 
 const TOOL_LABELS: Record<string, TextKey> = {
   WebSearch: "message.searching",
@@ -11,7 +25,69 @@ const TOOL_LABELS: Record<string, TextKey> = {
   Read: "message.readFile",
   Grep: "message.grep",
   Glob: "message.glob",
+  Edit: "tool.edit",
+  Write: "tool.write",
+  Bash: "tool.bash",
 };
+
+function ToolIcon({ name }: { name: string }) {
+  if (name.startsWith("Web")) return <GlobeIcon size={13} />;
+  if (name === "Bash") return <TerminalIcon size={13} />;
+  if (name === "Edit") return <PencilIcon size={13} />;
+  if (name === "Write") return <DocumentIcon size={13} />;
+  return <SearchIcon size={13} />;
+}
+
+/** The tools an answer used; changes and command output open below the row. */
+function Tools({ tools }: { tools: ToolUse[] }) {
+  const [open, setOpen] = useState<number | null>(null);
+  const shown = open === null ? undefined : tools[open];
+  return (
+    <>
+      <div className="tools">
+        {tools.map((tool, index) => {
+          const state = tool.denied ? " is-denied" : tool.failed ? " is-failed" : "";
+          const body = (
+            <>
+              <ToolIcon name={tool.name} />
+              <span className="tool-name">{TOOL_LABELS[tool.name] ? t(TOOL_LABELS[tool.name]) : tool.name}</span>
+              {tool.detail && <span className="tool-detail">{tool.detail}</span>}
+              {tool.denied && <span className="tool-state">{t("tool.denied")}</span>}
+              {!tool.denied && tool.failed && <span className="tool-state">{t("tool.failed")}</span>}
+            </>
+          );
+          const expandable = Boolean(tool.change || tool.output !== undefined);
+          return expandable ? (
+            <button
+              key={index}
+              type="button"
+              className={`tool-chip is-button${state}${open === index ? " is-open" : ""}`}
+              aria-expanded={open === index}
+              onClick={() => setOpen(open === index ? null : index)}
+            >
+              {body}
+              <ChevronRightIcon size={12} className="tool-chevron" />
+            </button>
+          ) : (
+            <span key={index} className={`tool-chip${state}`}>
+              {body}
+            </span>
+          );
+        })}
+      </div>
+      {shown?.change && (
+        <div className="tool-panel">
+          <DiffView before={shown.change.before} after={shown.change.after} numbered={shown.name === "Write"} />
+        </div>
+      )}
+      {shown && !shown.change && shown.output !== undefined && (
+        <pre className="tool-panel tool-output">
+          <code>{shown.output || t("tool.noOutput")}</code>
+        </pre>
+      )}
+    </>
+  );
+}
 
 function Markdown({ text, final }: { text: string; final: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -147,9 +223,10 @@ interface Props {
   message: Message;
   /** Set on the last question and answer when they can be replaced. */
   onRedo?: (text?: string) => void;
+  onPermission?: (request: PermissionRequest, decision: PermissionDecision) => void;
 }
 
-function MessageViewImpl({ message, onRedo }: Props) {
+function MessageViewImpl({ message, onRedo, onPermission }: Props) {
   const [editing, setEditing] = useState(false);
 
   if (message.role === "note") {
@@ -213,23 +290,17 @@ function MessageViewImpl({ message, onRedo }: Props) {
   }
 
   const streaming = Boolean(message.streaming);
-  const waiting = streaming && !message.text;
+  const waiting = streaming && !message.text && !message.permissions?.length;
   return (
     <div className="msg msg-assistant" aria-busy={streaming}>
       {(message.thinking || waiting) && <Thinking text={message.thinking ?? ""} active={waiting} />}
-      {message.tools?.length ? (
-        <div className="tools">
-          {message.tools.map((tool, index) => (
-            <span key={index} className="tool-chip">
-              {tool.name.startsWith("Web") ? <GlobeIcon size={13} /> : <SearchIcon size={13} />}
-              <span className="tool-name">{TOOL_LABELS[tool.name] ? t(TOOL_LABELS[tool.name]) : tool.name}</span>
-              {tool.detail && <span className="tool-detail">{tool.detail}</span>}
-            </span>
-          ))}
-        </div>
-      ) : null}
+      {message.tools?.length ? <Tools tools={message.tools} /> : null}
       {message.text && <Markdown text={message.text} final={!streaming} />}
-      {streaming && message.text && <span className="caret" aria-hidden="true" />}
+      {streaming && message.text && !message.permissions?.length && <span className="caret" aria-hidden="true" />}
+      {onPermission &&
+        message.permissions?.map((request) => (
+          <PermissionCard key={request.id} request={request} onAnswer={onPermission} />
+        ))}
       {message.error && (
         <div className="msg-error" role="alert">
           <AlertIcon size={15} />

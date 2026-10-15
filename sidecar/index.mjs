@@ -6,12 +6,17 @@
 // query was closed (app restart, settings change) is picked up again with
 // `resume` and its session id. Regenerating or editing the last exchange
 // resumes the session cut back to the turn before it (`resumeSessionAt`).
+//
+// In a project chat Claude may also change files and run commands. Each such
+// call waits in `canUseTool` until the user approves or declines it in the
+// window (a "permission" event out, a "permission" command back).
 
 import { deleteSession, query } from "@anthropic-ai/claude-agent-sdk";
 import { createInterface } from "node:readline";
-import { mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { READ_TOOLS, projectGuard, projectPrompt } from "./project.mjs";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, readFileSync, statSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
+import { EDIT_TOOLS, READ_TOOLS, RUN_TOOLS, projectGuard, projectPrompt } from "./project.mjs";
 
 const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
 // The packaged app ships the engine as one bundled file plus the Claude Code
@@ -38,8 +43,23 @@ mkdirSync(workDir, { recursive: true });
 // The SDK's session helpers (deleteSession) read the config dir from here.
 process.env.CLAUDE_CONFIG_DIR = configDir;
 
+// Commands Claude runs in a project need the usual developer tools; a GUI
+// app's PATH has none of them.
+const home = process.env.HOME ?? "";
+const toolPath = [
+  "/opt/homebrew/bin",
+  "/opt/homebrew/sbin",
+  "/usr/local/bin",
+  `${home}/.cargo/bin`,
+  `${home}/.local/bin`,
+  `${home}/.volta/bin`,
+  process.env.PATH,
+]
+  .filter(Boolean)
+  .join(":");
+
 const childEnv = {
-  PATH: process.env.PATH,
+  PATH: toolPath,
   HOME: process.env.HOME,
   LANG: process.env.LANG ?? "de_DE.UTF-8",
   TMPDIR: process.env.TMPDIR,
@@ -66,6 +86,9 @@ const TITLE_PROMPT = [
   "Reply with the title only: at most six words, no quotation marks, no final period, in the language of the conversation.",
 ].join("\n");
 const DELTA_FLUSH_MS = 32;
+// What an approval card and a stored change show at most, per side.
+const MAX_CHANGE_CHARS = 200_000;
+const MAX_OUTPUT_CHARS = 8000;
 // Every live chat keeps a Claude Code process of its own. Idle chats are
 // closed and picked up again with `resume` on their next message.
 const MAX_LIVE_SESSIONS = 3;
@@ -124,6 +147,10 @@ class ChatSession {
     this.keptAssistantUuid = null;
     this.lastAssistantUuid = null;
     this.closed = false;
+    /** Approvals the window still has to answer, by request id. */
+    this.permissions = new Map();
+    /** Commands' tool use ids, to report their output. */
+    this.commandIds = new Set();
     this.query = query({
       prompt: this.inbox,
       options: {
@@ -134,8 +161,10 @@ class ChatSession {
         settingSources: [],
         strictMcpConfig: true,
         tools: toolsFor(config),
-        allowedTools: toolsFor(config),
-        permissionMode: "dontAsk",
+        // Changes and commands are not pre-approved: they go to canUseTool.
+        allowedTools: allowedFor(config),
+        permissionMode: config.projectDir ? "default" : "dontAsk",
+        canUseTool: config.projectDir ? (tool, input, options) => this.askUser(tool, input, options) : undefined,
         hooks: config.projectDir ? projectGuard(config.projectDir, config.web ? WEB_TOOLS : []) : undefined,
         systemPrompt: config.projectDir ? SYSTEM_PROMPT + projectPrompt(config.projectDir) : SYSTEM_PROMPT,
         cwd: config.projectDir ?? workDir,
@@ -169,6 +198,87 @@ class ChatSession {
         });
       })
       .catch(() => {});
+  }
+
+  /**
+   * Asks the window whether a change or command may run, and waits for the
+   * answer. Edits run without asking once the user allowed all of them for
+   * this chat.
+   */
+  askUser(tool, input, { signal, toolUseID }) {
+    const denied = (message) => ({ behavior: "deny", message });
+    if (!EDIT_TOOLS.includes(tool) && !RUN_TOOLS.includes(tool)) {
+      return Promise.resolve(denied("This tool is not available in Sienna."));
+    }
+    if (EDIT_TOOLS.includes(tool) && this.config.autoEdits) {
+      emit({ type: "change", chatId: this.chatId, id: randomUUID(), toolUseId: toolUseID ?? null, ...this.describe(tool, input) });
+      return Promise.resolve({ behavior: "allow", updatedInput: input });
+    }
+    const id = randomUUID();
+    this.flush();
+    emit({ type: "permission", chatId: this.chatId, id, toolUseId: toolUseID ?? null, ...this.describe(tool, input) });
+    return new Promise((done) => {
+      const finish = (decision) => {
+        if (!this.permissions.delete(id)) return;
+        emit({ type: "permissionGone", chatId: this.chatId, id });
+        if (decision === "allow" || decision === "always") {
+          if (decision === "always" && EDIT_TOOLS.includes(tool)) this.config.autoEdits = true;
+          done({ behavior: "allow", updatedInput: input });
+        } else {
+          done(denied("The user declined this. Do not try it another way; ask how they want to go on."));
+        }
+      };
+      this.permissions.set(id, finish);
+      signal?.addEventListener("abort", () => finish("deny"), { once: true });
+    });
+  }
+
+  answer(id, decision) {
+    this.permissions.get(id)?.(decision);
+  }
+
+  /** What the approval card shows: the file and its change, or the command. */
+  describe(tool, input) {
+    if (tool === "Bash") {
+      return {
+        tool,
+        command: String(input.command ?? "").slice(0, MAX_CHANGE_CHARS),
+        description: String(input.description ?? "").slice(0, 300),
+      };
+    }
+    const path = String(input.file_path ?? "");
+    if (tool === "Edit") {
+      return {
+        tool,
+        path: this.relative(path),
+        before: String(input.old_string ?? "").slice(0, MAX_CHANGE_CHARS),
+        after: String(input.new_string ?? "").slice(0, MAX_CHANGE_CHARS),
+        replaceAll: Boolean(input.replace_all),
+      };
+    }
+    return {
+      tool,
+      path: this.relative(path),
+      before: this.currentText(path),
+      after: String(input.content ?? "").slice(0, MAX_CHANGE_CHARS),
+      created: this.currentText(path) === null,
+    };
+  }
+
+  /** A file's text before Write replaces it; null if there is none yet. */
+  currentText(path) {
+    const absolute = isAbsolute(path) ? path : resolve(this.config.projectDir, path);
+    try {
+      if (statSync(absolute).size > MAX_CHANGE_CHARS * 4) return "";
+      return readFileSync(absolute, "utf8").slice(0, MAX_CHANGE_CHARS);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Declines whatever still waits for an answer, e.g. when the answer is stopped. */
+  dropPermissions() {
+    for (const finish of [...this.permissions.values()]) finish("deny");
   }
 
   /** Shows paths inside the project folder relative to it. */
@@ -277,11 +387,30 @@ class ChatSession {
           if (block.type !== "tool_use") continue;
           this.flush();
           const input = block.input ?? {};
+          if (RUN_TOOLS.includes(block.name)) this.commandIds.add(block.id);
           emit({
             type: "tool",
             chatId: this.chatId,
+            id: block.id,
             name: block.name,
-            detail: this.relative(String(input.query ?? input.url ?? input.pattern ?? input.file_path ?? "")),
+            detail: this.relative(
+              String(input.command ?? input.query ?? input.url ?? input.pattern ?? input.file_path ?? ""),
+            ).slice(0, 500),
+          });
+        }
+        return;
+      case "user":
+        // Tool results: a command's output, and whether a tool failed or was declined.
+        for (const block of Array.isArray(message.message?.content) ? message.message.content : []) {
+          if (block.type !== "tool_result") continue;
+          const command = this.commandIds.delete(block.tool_use_id);
+          if (!command && !block.is_error) continue;
+          emit({
+            type: "toolResult",
+            chatId: this.chatId,
+            id: block.tool_use_id,
+            failed: Boolean(block.is_error),
+            output: command ? resultText(block.content).slice(-MAX_OUTPUT_CHARS) : "",
           });
         }
         return;
@@ -357,6 +486,7 @@ class ChatSession {
 
   async interrupt() {
     this.interrupted = true;
+    this.dropPermissions();
     try {
       await this.query.interrupt();
     } catch {
@@ -368,6 +498,7 @@ class ChatSession {
     if (this.closed) return;
     this.closed = true;
     clearTimeout(this.idleTimer);
+    this.dropPermissions();
     this.flush();
     this.inbox.close();
     try {
@@ -414,7 +545,20 @@ function toContent(text, attachments) {
 }
 
 function toolsFor(config) {
+  const project = config.projectDir ? [...READ_TOOLS, ...EDIT_TOOLS, ...RUN_TOOLS] : [];
+  return [...project, ...(config.web ? WEB_TOOLS : [])];
+}
+
+/** The tools that run without asking; changes and commands are not among them. */
+function allowedFor(config) {
   return [...(config.projectDir ? READ_TOOLS : []), ...(config.web ? WEB_TOOLS : [])];
+}
+
+/** A tool result's text, whether it came as a string or as content blocks. */
+function resultText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((block) => (block?.type === "text" ? block.text : "")).join("\n");
 }
 
 async function onSend(command) {
@@ -426,6 +570,7 @@ async function onSend(command) {
     costSoFar: Number(command.costSoFar) || 0,
     // Already checked and made canonical by the Rust shell.
     projectDir: typeof command.projectDir === "string" && command.projectDir ? command.projectDir : null,
+    autoEdits: Boolean(command.autoEdits),
     rewindTo: null,
     replacesSession: null,
   };
@@ -452,6 +597,7 @@ async function onSend(command) {
     session.config.model = config.model;
     await session.query.setModel(config.model);
   }
+  session.config.autoEdits = config.autoEdits;
   // Re-inserting keeps the map ordered from least to most recently used.
   sessions.delete(command.chatId);
   sessions.set(command.chatId, session);
@@ -547,6 +693,14 @@ function onCommand(line) {
     case "interrupt":
       sessions.get(command.chatId)?.interrupt();
       return;
+    case "permission":
+      sessions.get(command.chatId)?.answer(command.id, command.decision);
+      return;
+    case "autoEdits": {
+      const session = sessions.get(command.chatId);
+      if (session) session.config.autoEdits = Boolean(command.on);
+      return;
+    }
     case "title":
       onTitle(command).catch(() => {});
       return;
