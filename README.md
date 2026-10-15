@@ -1,63 +1,86 @@
 <div align="center">
 
-<img src="src-tauri/icons/128x128@2x.png" width="96" height="96" alt="" />
+<img src="src-tauri/icons/128x128@2x.png" width="96" height="96" alt="Sienna app icon" />
 
 # Sienna
 
-**A small, fast, native-feeling Mac app for chatting with Claude models through your own Anthropic API key.**
+**A native-feeling Mac app for Claude on your own Anthropic API key: chat, research and agentic coding, with every cent visible.**
 
-Streaming answers · web search with sources · images and PDFs · cost per answer · monthly budget cap · key in the macOS Keychain
+[![CI](https://github.com/Natunax/sienna-chat/actions/workflows/ci.yml/badge.svg)](https://github.com/Natunax/sienna-chat/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-b5552f.svg)](LICENSE)
+![macOS on Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-333.svg)
+![Built with Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db.svg)
+
+[Features](#features) · [Install](#install) · [Using Sienna](#using-sienna) · [Security](#privacy-and-security) · [Development](#development) · [Contributing](#contributing)
 
 </div>
 
 <p align="center">
-  <img src="docs/screenshot-dark.png" width="49%" alt="Sienna in dark mode" />
-  <img src="docs/screenshot-light.png" width="49%" alt="Sienna in light mode" />
+  <img src="docs/screenshot-dark.png" width="49%" alt="A chat with a code answer in dark mode" />
+  <img src="docs/screenshot-light.png" width="49%" alt="A project chat in light mode, waiting for approval of a file change shown as a diff" />
 </p>
 
 > [!NOTE]
 > Sienna is an independent open source project. It is not made, endorsed or supported by Anthropic. "Claude" and "Anthropic" are trademarks of Anthropic, used here only to say which service the app talks to.
 
-## Why
+## Why Sienna
 
-Anthropic gives some accounts a monthly **API credit** that covers the Claude API, the Claude Agent SDK, Managed Agents and the Playground, but **not** Claude Code sessions or the Claude apps. Sienna puts that credit to use for everyday chatting and research, so your Claude subscription stays free for the work only it can do.
+Some Anthropic accounts get a monthly **API credit** for the Claude API, the Agent SDK, Managed Agents and the Playground, but **not** for Claude Code or the Claude apps. Sienna turns that credit into a daily tool: a fast chat for questions and research, and a coding agent in your project folders built on the same engine as Claude Code.
 
-Every request goes to Anthropic with **your API key**, is billed to **your API organization**, and nothing in between collects data. Chats stay on your Mac.
+- **Your key, your bill.** Requests go straight to Anthropic with your API key and are billed to your API organization. Nothing in between collects data, and chats stay on your Mac.
+- **Costs in plain sight.** Every answer shows what it cost, and a monthly budget stops the app before it runs away.
+- **More than a wrapper.** Branch a chat from any answer, compare two models side by side, undo an answer's file changes, let a test command check Claude's work. These are things the Agent SDK can do and Claude Code's interface doesn't offer.
 
 ## Features
 
-- **Streaming chat** with Markdown, tables, syntax-highlighted code blocks and a copy button
-- **Thinking summary** you can expand while the model reasons
-- **Web search** as a toggle; answers cite their sources as links that open in your browser
-- **Projects**: add a folder as a project in the sidebar; its chats are listed under it and every new chat there works in that folder, as in Claude Code
-- **Project folders**: give a chat a folder and ask about its code ("How does login work?", "Where is X used?"). Claude reads and searches that folder freely; the project's `CLAUDE.md` is included
-- **Changes and commands, with modes as in Claude Code**: in a project chat Claude can change files and run commands. A mode menu below the input sets how far it goes without asking: Auto (default; Claude Code's auto mode checks each step and asks when unsure), Manual (every change shows as a diff and every command in full, and runs only after you click Allow), Accept edits, Plan (read only, ends with a plan you can carry out with one click) and, after a confirmation, Bypass permissions. The chat keeps every change and the commands' output
-- **Undo an answer's changes**: one click on an answer undoes the file changes Claude made from there on (file checkpoints)
-- **Check after changes**: set a command per project (Sienna suggests one, such as `npm test` or `cargo test`). It runs after every answer that changed files; when it fails, Claude is sent back to fix it, at most twice
-- **Branches**: continue a chat from any answer in a new branch; the original stays as it was, and branches are listed below it
-- **Compare models**: send each question to a second model as well; both answers appear side by side with their costs, and either can be continued in a branch. In project chats the second model only reads
-- **Templates**: a changelog from Git, a review of the uncommitted changes and a task list arrive in a fixed format (structured output) and are drawn as clean lists you can copy as Markdown
-- **Model and effort choice** per chat: Haiku 5.5, Sonnet 5.5 (default), Opus 5.5 or Fable 5.1, and five effort levels from low to max on a slider
-- **Attachments** by button, drag and drop or paste: images, PDFs and text files such as code, Markdown, CSV, JSON or logs (up to 512 KB each, sent as text with the file name)
-- **Context at a glance**: a ring below the composer shows how full the context window is; click it for the breakdown and to compact the conversation now. Automatic compaction shows as a line in the chat
-- **Costs you can see**: per answer, per chat (header), per month (sidebar) and per model (settings)
-- **Monthly budget cap**: once reached, the app stops sending
-- **Regenerate or edit** the last exchange; the conversation resumes from the turn before it
-- **Copy** any answer with one click
-- **Chat history** grouped by day, with search, pinning, delete and rename (double-click or F2); titles are written by Haiku after the first answer
-- **Native Mac look**: sidebar with the system material, light and dark mode, reduced motion and transparency respected
-- **Keyboard first**: ⌘N new chat, ⌘, settings, ⌘\ sidebar, ⌘. stop, ↩ send, ⇧↩ new line
+**Chat**
+- Streaming answers with Markdown, tables and highlighted code, and an expandable summary of the model's thinking
+- Web search as a toggle, with sources as links that open in your browser
+- Images, PDFs and text files (code, Markdown, CSV, JSON, logs) by button, drag and drop or paste
+- Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.1 per chat, with five effort levels from low to max
+- Regenerate or edit the last question, copy any answer, and chat titles written by Haiku
 
-The interface is in English or German. It follows your Mac's language, or the one you pick in the settings (⌘,).
+**Coding in a project folder**
+- Add a folder as a project; its chats read and search it, and its `CLAUDE.md` is included
+- Claude edits files and runs commands. Changes show as a diff and commands in full, and a click on a file path opens it in your editor
+- Permission modes as in Claude Code: **Auto** (default), **Manual**, **Accept edits**, **Plan** and, behind a confirmation, **Bypass permissions**
+- Plan mode only reads and ends with a plan you carry out in one click
+
+**Beyond Claude Code**
+- **Branches:** continue from any answer in a new chat; the original stays untouched
+- **Compare models:** each question also goes to a second model, and the answers show side by side with their costs
+- **Undo an answer:** one click restores the files Claude changed from that answer on (file checkpoints)
+- **Check after changes:** a project command such as `npm test` runs when an answer changed files; if it fails, Claude fixes it
+- **Templates with structured output:** a changelog from Git, a review of uncommitted changes and a task list arrive as data. Every finding or task starts a follow-up in one click
+- **Slash commands:** `/tasks`, `/review` and `/changelog` (German: `/aufgaben`)
+
+**Control and comfort**
+- Costs per answer, per chat, per month and per model, plus a monthly budget cap
+- A context meter with a breakdown and "compact now"; automatic compaction is noted in the chat
+- Chat history with search (⌘K), pinning, renaming and branches nested under their chat
+- Native Mac look: the system sidebar material, light and dark mode, and respect for reduced motion and transparency
+- English and German, following your Mac or the language you pick in Settings
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/modes.png" alt="The permission mode menu: Auto, Manual, Accept edits, Plan and Bypass permissions" /></td>
+    <td width="33%"><img src="docs/compare.png" alt="Sonnet 5.5 and Opus 5.5 answering the same question side by side" /></td>
+    <td width="33%"><img src="docs/review.png" alt="A review template answer with findings ranked by severity" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Permission modes, as in Claude Code</sub></td>
+    <td align="center"><sub>Two models, one question</sub></td>
+    <td align="center"><sub>A review as structured output</sub></td>
+  </tr>
+</table>
 
 ## Install
 
-There are no signed releases yet; build it yourself (about three minutes).
+There are no signed releases yet, so you build Sienna yourself. It takes about three minutes.
 
-**Requirements**
-
+**You need**
 - macOS on Apple Silicon
-- [Node.js](https://nodejs.org) 20 or later, for example `brew install node`
+- [Node.js](https://nodejs.org) 20 or later (`brew install node`)
 - [Rust](https://rustup.rs) and the Xcode Command Line Tools (`xcode-select --install`)
 - An Anthropic API key from the [Claude Console](https://platform.claude.com/settings/keys)
 
@@ -71,12 +94,42 @@ npm run sidecar:install
 npm run app
 ```
 
-`npm run app` signs the app with an Apple code signing certificate if your Mac has one (for example the "Apple Development" certificate Xcode creates), so macOS treats every new build as the same app and your Keychain approval sticks. Without a certificate it builds unsigned, and macOS asks for Keychain access again after each rebuild.
+Move `src-tauri/target/release/bundle/macos/Sienna.app` to `/Applications` and open it. On first launch Sienna asks for your API key and stores it in the macOS Keychain.
 
-Move `src-tauri/target/release/bundle/macos/Sienna.app` to `/Applications` and open it. On first launch the app asks for your API key and stores it in the Keychain.
+`npm run app` signs the build with an Apple code signing certificate if your Mac has one (for example the "Apple Development" certificate Xcode creates). macOS then treats every build as the same app, and your Keychain approval sticks. Without a certificate the build is unsigned, and macOS asks for Keychain access again after each rebuild.
 
 > [!TIP]
-> Set a **spend limit** in the Claude Console (Settings → Billing) in addition to the budget in the app. The app's budget is a convenience; the Console limit is enforced by Anthropic.
+> Also set a **spend limit** in the Claude Console (Settings → Billing). The budget in Sienna is a convenience; the Console limit is enforced by Anthropic.
+
+## Using Sienna
+
+**Projects.** Click **+** next to *Projects* in the sidebar, or choose *Choose a project folder* in the composer's **+** menu. Every chat in a project works in that folder.
+
+**Permission modes.** The mode sits below the input on the left; press 1–4 while its menu is open.
+
+| Mode | Runs without asking | Asks first |
+| --- | --- | --- |
+| Auto | What Claude Code's auto mode judges safe, in the macOS sandbox | Anything it is unsure about |
+| Manual | Reading and searching | Every file change and every command |
+| Accept edits | File changes | Commands |
+| Plan | Reading only; the answer is a plan | Nothing, because nothing is changed |
+| Bypass permissions | Everything, in the macOS sandbox | Only destructive commands |
+
+Destructive commands (`sudo`, recursive `rm`, `git push`, `git reset --hard` and the like) ask in every mode.
+
+**Keyboard**
+
+| Keys | Action |
+| --- | --- |
+| ⌘N | New chat |
+| ⌘K or ⌘F | Search chats |
+| ⌘\ | Show or hide the sidebar |
+| ⌘, | Settings |
+| ↩ / ⇧↩ | Send / new line |
+| ⌘. | Stop the answer |
+| ⌘↩ / Esc | Allow / decline an approval |
+| / | Commands |
+| F2 | Rename a chat or project |
 
 ## How it works
 
@@ -90,36 +143,50 @@ flowchart LR
     Keychain[("macOS Keychain")] -. "API key" .-> Rust
 ```
 
-1. The UI sends a message with `chat_send`. The Rust shell checks the model, effort, attachments and the monthly budget, then writes one JSON line to the engine.
-2. The engine (`sidecar/index.mjs`) keeps **one live Agent SDK query per chat** in streaming-input mode, so a follow-up message does not start a new process. It batches text deltas every 32 ms to keep the UI smooth.
-3. Rust forwards the events to the window and books the cost of each finished answer.
-4. At most three chats keep a live engine session; an idle one closes after ten minutes and resumes from its saved session when you write again.
-5. Answers are rendered block by block: a new piece of text re-renders only the paragraph still being written.
+1. The UI sends a message with `chat_send`. The Rust shell checks the model, effort, mode, attachments and the monthly budget, then writes one JSON line to the engine.
+2. The engine keeps **one live Agent SDK query per chat** in streaming-input mode, so a follow-up does not start a new process. Text deltas are batched every 32 ms.
+3. In project chats a PreToolUse hook checks every tool call against the folder and the mode. Changes and commands that need approval wait in `canUseTool` until you answer in the window.
+4. Rust forwards events to the window and books the cost of each answer from the session's running total.
+5. At most three chats keep a live session; an idle one closes after ten minutes and resumes when you write again.
 
 | Path | What it is |
 | --- | --- |
-| `src/` | React UI: `store.ts` holds chats and the stream, `components/` the views |
-| `src-tauri/src/` | Rust shell: `lib.rs` commands, `engine.rs` engine process, `keychain.rs`, `store.rs` |
+| `src/` | React UI: `store.ts` holds chats and routes engine events, `components/` the views, `i18n.ts` the texts, `diff.ts` the line diff |
+| `src-tauri/src/` | Rust shell: `lib.rs` commands, `engine.rs` engine process, `store.rs` storage, `project.rs` folder checks, `keychain.rs` |
 | `sidecar/index.mjs` | Chat engine on the Claude Agent SDK, bundled into `sidecar/dist/engine.mjs` for the app |
-| `src/i18n.ts` | Interface texts in English and German |
+| `sidecar/project.mjs` | The guard for project folders, modes and destructive commands, tested in `project.test.mjs` |
+| `sidecar/templates.mjs` | JSON schemas of the templates |
 | `src/devMock.ts` | Browser preview with sample data, only in `npm run dev` |
 
 ## Privacy and security
 
-- **The key stays in the Keychain.** It is never written to a file, a log or the UI. It reaches the engine process only through its environment.
-- **No subscription fallback.** Without a key the Agent SDK would quietly use a logged-in Claude subscription. The engine refuses to start without an API key and runs with its own `CLAUDE_CONFIG_DIR` and no setting sources, so your Claude Code login, settings, hooks, plugins and memory are never loaded.
-- **The model gets almost no tools on your Mac.** In a normal chat the only tool is `WebSearch`, and only while the web toggle is on. With a project folder it may also use `Read`, `Grep` and `Glob`; a hook checks every path, search pattern and glob against the folder (symbolic links resolved, `~` and variables refused), so these tools read nothing outside it. `Edit` and `Write` are limited to the folder the same way (never inside a `.git` folder), and whether they and `Bash` ask first depends on the chat's mode.
-- **Commands are the one wide door.** `Bash` runs with your user's rights in the project folder. In Auto and Bypass permissions it runs in macOS's sandbox: writes stay in the project folder, and credentials (`~/.ssh`, `~/.aws`, keychains, shell history and the like) and Sienna's own data cannot be read; other files outside the folder can. In Manual and Accept edits mode there is no sandbox, and every command asks first. Destructive commands (`sudo`, recursive `rm`, `find -delete`, `git push`, `git reset --hard`, `git clean -f`, a download piped into a shell, also behind quotes, `env`, `xargs` or `bash -c`) ask in every mode; this guards against accidents, not against a determined attacker, so read what you allow. Commands never see your API key. A project's check command runs outside the sandbox; when Claude changed files you did not approve one by one, Sienna asks before running it.
-- **Projects and their instructions.** The folder must be inside your home folder (not the home folder itself, not a hidden one like `~/.ssh`, not `~/Library`). The project's `CLAUDE.md` is read by Sienna itself, only as a regular file inside the folder; Claude Code's project settings, which could run hooks, are never loaded. `@path` mentions and slash commands in messages are not expanded; the only command Sienna sends is its own `/compact`. `WebFetch` is left out on purpose: a page the model reads could otherwise tell it to fetch an attacker's URL with parts of your conversation in it.
-- **API keys only.** The app refuses OAuth tokens (`sk-ant-oat…`) and admin keys, and the engine stops a turn if the SDK reports any credential source other than the API key.
-- **Rendered answers are sanitized** (marked + DOMPurify), the WebView runs under a strict Content Security Policy, remote images are not loaded, a navigation guard keeps the window on the app, and only `http`/`https` links open, in your default browser.
-- **Your data:** chats and the monthly spend are JSON files in `~/Library/Application Support/io.github.natunax.sienna/`. The Agent SDK keeps its own transcript of each chat in `claude-config/` there; deleting a chat deletes both. Requests go only to Anthropic.
+Sienna lets a language model change files and run commands on your Mac, so the boundaries are deliberate and documented. In short:
 
-Found a vulnerability? See [SECURITY.md](SECURITY.md).
+- **Your key stays in the Keychain.** It is never written to a file, a log or the UI, and commands Claude runs never see it.
+- **No subscription fallback.** The engine refuses to start without an API key. It runs with its own config directory and no setting sources, so your Claude Code login, settings, hooks, plugins and memory are never loaded. It also stops a turn if the SDK reports any credential other than the API key.
+- **Reading is limited to the project folder.** A hook checks every path, search pattern and glob, resolves symbolic links, and refuses `~` and variables. `Edit` and `Write` are limited the same way and never touch a `.git` folder.
+- **Commands are the one wide door.** `Bash` runs with your user's rights in the project folder.
+  - In Auto and Bypass permissions it runs in macOS's sandbox: writes stay in the folder, and credentials (`~/.ssh`, `~/.aws`, keychains, shell history and the like) and Sienna's own data cannot be read.
+  - In Manual and Accept edits mode every command asks first.
+  - Destructive commands ask in every mode, also behind quotes, `env`, `xargs` or `bash -c`. This guards against accidents, not a determined attacker, so read what you allow.
+- **The check command runs outside the sandbox.** After changes you did not approve one by one, Sienna asks before running it.
+- **Folders and instructions.**
+  - Project folders must be inside your home folder, and not in a hidden folder or `~/Library`.
+  - `CLAUDE.md` is read only as a regular file inside the folder.
+  - `@path` mentions and slash commands are never expanded.
+  - `WebFetch` is left out, so a web page cannot make the model fetch an attacker's URL.
+- **The window is locked down.**
+  - Answers are sanitized (marked + DOMPurify) and shown under a strict Content Security Policy. Remote images are not loaded.
+  - Links show their target and open only `http` and `https`, in your browser.
+- **Your data stays on your Mac.** Chats and spending live in `~/Library/Application Support/io.github.natunax.sienna/`, readable only by you. Deleting a chat also deletes the SDK's transcript of it. Requests go only to Anthropic.
+
+Found a vulnerability? Please report it privately; see [SECURITY.md](SECURITY.md).
 
 ## Costs
 
-Sienna counts only its own requests, from the token usage the API reports, priced by the Agent SDK. These are estimates. The Claude Console shows everything your organization spends, including other keys and the Playground, and is the source of truth. Rough guide per question and answer: Haiku well under a cent, Sonnet one to a few cents, Opus about twice Sonnet, more with web search or long chats.
+Sienna counts only its own requests, from the usage the API reports, priced by the Agent SDK. These are estimates; the Claude Console shows everything your organization spends and is the source of truth.
+
+As a rough guide per question and answer: Haiku costs well under a cent, Sonnet one to a few cents, and Opus about twice Sonnet. Web search, long chats, comparisons and high effort cost more.
 
 ## Development
 
@@ -127,24 +194,39 @@ Sienna counts only its own requests, from the token usage the API reports, price
 npm install
 npm run sidecar:install
 npm run tauri dev     # the app with hot reload
-npm run dev           # browser preview with sample chats, no key needed
+npm run dev           # browser preview with sample data, no key needed
 ```
 
-`http://localhost:1430/?demo=chat` opens the sample chat in the browser preview, `?onboarding` shows the key setup and `?lang=en` switches to English.
+In the browser preview, `http://localhost:1430/?demo=chat` opens a sample chat, `?onboarding` shows the key setup and `?lang=en` switches to English. Project chats in the preview simulate an agent that reads, asks to edit and runs tests.
 
-Checks:
+**Checks** (CI runs these on every push and pull request):
 
 ```bash
 npx tsc --noEmit
+npm test                                    # guard tests: folders, modes, risky commands
+cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 ```
 
+## Contributing
+
+Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first. In short:
+- open an issue before large changes
+- keep pull requests focused
+- run the checks above
+- report security problems privately
+
 ## Limitations
 
-- macOS on Apple Silicon only; Node.js must be installed (looked up in Homebrew, `/usr/local`, Volta and `~/.local/bin`).
-- The app bundle is about 245 MB: the chat engine is bundled into one 1 MB file, the rest is the Claude Code binary the Agent SDK runs, which cannot be made smaller.
-- Not signed or notarized; macOS may ask you to confirm the first launch.
+- macOS on Apple Silicon only. Node.js must be installed (Sienna looks in Homebrew, `/usr/local`, Volta and `~/.local/bin`).
+- The app is about 245 MB. The engine itself is a 1 MB file; the rest is the Claude Code binary the Agent SDK runs.
+- Not signed or notarized for distribution yet; macOS may ask you to confirm the first launch.
+- Costs are the SDK's estimates, not Anthropic's invoice.
+
+## Acknowledgements
+
+Built with [Tauri](https://tauri.app), [React](https://react.dev), the [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview), [marked](https://marked.js.org), [DOMPurify](https://github.com/cure53/DOMPurify) and [highlight.js](https://highlightjs.org).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © 2026 Oliver Dressler
