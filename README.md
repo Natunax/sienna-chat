@@ -31,9 +31,11 @@ Every request goes to Anthropic with **your API key**, is billed to **your API o
 - **Web search** as a toggle; answers cite their sources as links that open in your browser
 - **Model and effort choice** per chat: Sonnet 5.5 (default), Opus 5.5, Haiku 5.5; low, medium or high effort
 - **Images and PDFs** by button, drag and drop or paste
-- **Costs you can see**: per answer (hover), per chat (header) and per month (sidebar)
+- **Costs you can see**: per answer, per chat (header), per month (sidebar) and per model (settings)
 - **Monthly budget cap**: once reached, the app stops sending
-- **Chat history** grouped by day, with search and delete
+- **Regenerate or edit** the last exchange; the conversation resumes from the turn before it
+- **Copy** any answer with one click
+- **Chat history** grouped by day, with search, delete and rename (double-click or F2); titles are written by Haiku after the first answer
 - **Native Mac look**: sidebar with the system material, light and dark mode, reduced motion and transparency respected
 - **Keyboard first**: ⌘N new chat, ⌘, settings, ⌘\ sidebar, ⌘. stop, ↩ send, ⇧↩ new line
 
