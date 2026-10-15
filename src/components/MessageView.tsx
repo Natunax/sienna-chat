@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "
 import { formatUsd, type Message } from "../api";
 import { storedErrorText, t, type TextKey } from "../i18n";
 import { loadHighlighter, renderBlocks } from "../markdown";
+import { shortTokens } from "./ContextMeter";
 import { AlertIcon, CheckIcon, ChevronRightIcon, CopyIcon, DocumentIcon, GlobeIcon, PencilIcon, RetryIcon, SearchIcon, SparkIcon } from "./icons";
 
 const TOOL_LABELS: Record<string, TextKey> = {
@@ -150,6 +151,21 @@ interface Props {
 
 function MessageViewImpl({ message, onRedo }: Props) {
   const [editing, setEditing] = useState(false);
+
+  if (message.role === "note") {
+    const compaction = message.compaction;
+    const figures =
+      compaction?.before && compaction.after ? ` · ${shortTokens(compaction.before)} → ${shortTokens(compaction.after)}` : "";
+    return (
+      <div className={`note${message.error ? " is-error" : ""}`} role="note">
+        <span>
+          {message.error
+            ? storedErrorText(message.error)
+            : `${t(compaction?.trigger === "auto" ? "note.compactedAuto" : "note.compactedManual")}${figures}`}
+        </span>
+      </div>
+    );
+  }
 
   if (message.role === "user") {
     if (editing && onRedo) {

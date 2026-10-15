@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
-import { type Effort, type ModelId, type OutgoingAttachment, type Project } from "../api";
+import { type Chat, type Effort, type ModelId, type OutgoingAttachment, type Project } from "../api";
 import { addProject } from "../store";
 import { PICKER_ACCEPT, readAttachment, TEXT_MEDIA_TYPE } from "../attachments";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -38,7 +38,10 @@ interface Props {
   /** A picked folder becomes (or finds) a project; `null` takes the chat out of it. */
   onProject: (project: Project | null) => void;
   /** Context window use after the last answer, when known. */
-  context?: { used: number; window: number } | null;
+  context?: Chat["context"];
+  /** Missing until the chat has an answer, or while one streams. */
+  onCompact?: () => void;
+  compacting: boolean;
 }
 
 function folderName(path: string): string {
@@ -53,7 +56,7 @@ function fileLabel(name: string): string {
 
 export function Composer(props: Props) {
   const { settings, onSettings, streaming, onSend, onStop, autoFocusKey, pendingFiles, onFilesTaken } = props;
-  const { project, projectLocked, onProject, context } = props;
+  const { project, projectLocked, onProject, context, onCompact, compacting } = props;
   const [text, setText] = useState("");
   const [files, setFiles] = useState<OutgoingAttachment[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -262,7 +265,15 @@ export function Composer(props: Props) {
       {/* The model sits below the box, as in Claude Code. */}
       <div className="composer-footer">
         <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
-        {context && context.window > 0 && <ContextMeter used={context.used} window={context.window} />}
+        {context && context.window > 0 && (
+          <ContextMeter
+            used={context.used}
+            window={context.window}
+            categories={context.categories}
+            onCompact={onCompact}
+            compacting={compacting}
+          />
+        )}
       </div>
     </div>
   );

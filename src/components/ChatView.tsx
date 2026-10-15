@@ -2,7 +2,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { formatUsd, type Chat, type OutgoingAttachment } from "../api";
 import { t, useLanguage, type TextKey } from "../i18n";
-import { projectFor, redoLast, rewindPoint, sendMessage, stopMessage, updateChat, useProjects } from "../store";
+import { compactChat, projectFor, redoLast, rewindPoint, sendMessage, stopMessage, updateChat, useProjects } from "../store";
 import { Composer, type ComposerSettings } from "./Composer";
 import { SidebarIcon } from "./icons";
 import { MessageView } from "./MessageView";
@@ -59,7 +59,8 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
   const [dropped, setDropped] = useState<File[]>([]);
   const { scroller, content, stuck } = useStickToBottom(chat.id);
   const last = chat.messages[chat.messages.length - 1];
-  const streaming = Boolean(last?.streaming);
+  // While the conversation is being compacted, nothing new can be sent.
+  const streaming = Boolean(last?.streaming) || Boolean(chat.compacting);
   const empty = chat.messages.length === 0;
   const language = useLanguage();
   const project = projectFor(chat, useProjects());
@@ -146,6 +147,8 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
       // A chat's session lives in its folder, so the folder is set before the first message.
       projectLocked={!empty}
       context={chat.context}
+      compacting={Boolean(chat.compacting)}
+      onCompact={chat.sessionId && !streaming ? () => void compactChat(chat.id) : undefined}
       onProject={(picked) =>
         updateChat(chat.id, (current) => ({
           ...current,
@@ -204,6 +207,11 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
                 onRedo={canRedo && index >= lastQuestion ? redo : undefined}
               />
             ))
+          )}
+          {chat.compacting && (
+            <div className="note is-active" role="status">
+              <span>{t("note.compacting")}</span>
+            </div>
           )}
         </div>
       </div>

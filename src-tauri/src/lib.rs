@@ -207,6 +207,57 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
     state.engine.send(&app, &state.store, &line)
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CompactRequest {
+    chat_id: String,
+    session_id: Option<String>,
+    model: String,
+    effort: String,
+    web: bool,
+    cost_so_far: f64,
+    #[serde(default)]
+    project_dir: Option<String>,
+}
+
+/// Summarizes a chat's conversation so far to free context.
+#[tauri::command(async)]
+fn chat_compact(
+    request: CompactRequest,
+    app: AppHandle,
+    state: State<AppState>,
+) -> Result<(), String> {
+    if !store::valid_id(&request.chat_id)
+        || !request.session_id.as_deref().is_some_and(store::valid_id)
+        || !MODELS.contains(&request.model.as_str())
+        || !EFFORTS.contains(&request.effort.as_str())
+    {
+        return Err("error.invalidRequest".into());
+    }
+    let usage = state.store.usage();
+    if usage.usd >= usage.budget {
+        return Err("error.budgetReached".into());
+    }
+    let project_dir = request
+        .project_dir
+        .as_deref()
+        .map(project::validate)
+        .transpose()?
+        .map(|dir| dir.display().to_string());
+    let line = json!({
+        "type": "compact",
+        "chatId": request.chat_id,
+        "sessionId": request.session_id,
+        "model": request.model,
+        "effort": request.effort,
+        "web": request.web,
+        "costSoFar": request.cost_so_far,
+        "projectDir": project_dir,
+    })
+    .to_string();
+    state.engine.send(&app, &state.store, &line).map(|_| ())
+}
+
 /// Asks the engine for a short title once a chat has its first answer.
 #[tauri::command(async)]
 fn chat_title(
@@ -302,6 +353,7 @@ pub fn run() {
             budget_set,
             chat_send,
             chat_title,
+            chat_compact,
             project_check,
             projects_list,
             project_add,

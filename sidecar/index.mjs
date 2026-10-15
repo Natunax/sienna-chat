@@ -119,6 +119,9 @@ class ChatSession {
     this.busy = false;
     this.interrupted = false;
     this.failReason = null;
+    this.compacting = false;
+    this.compactFailed = false;
+    this.keptAssistantUuid = null;
     this.lastAssistantUuid = null;
     this.closed = false;
     this.query = query({
@@ -134,8 +137,6 @@ class ChatSession {
         allowedTools: toolsFor(config),
         permissionMode: "dontAsk",
         hooks: config.projectDir ? projectGuard(config.projectDir, config.web ? WEB_TOOLS : []) : undefined,
-        // Text is sent as typed: no `@path` file expansion, no slash commands.
-        verbatimPrompts: true,
         systemPrompt: config.projectDir ? SYSTEM_PROMPT + projectPrompt(config.projectDir) : SYSTEM_PROMPT,
         cwd: config.projectDir ?? workDir,
         env: childEnv,
@@ -156,7 +157,16 @@ class ChatSession {
       .getContextUsage({ detail: "summary" })
       .then((usage) => {
         if (!usage?.rawMaxTokens) return;
-        emit({ type: "context", chatId: this.chatId, used: usage.totalTokens, window: usage.rawMaxTokens });
+        const categories = (usage.categories ?? [])
+          .filter((entry) => entry.kind !== "deferred" && entry.tokens > 0)
+          .map((entry) => ({ name: String(entry.name), tokens: entry.tokens, kind: entry.kind }));
+        emit({
+          type: "context",
+          chatId: this.chatId,
+          used: usage.totalTokens,
+          window: usage.rawMaxTokens,
+          categories,
+        });
       })
       .catch(() => {});
   }
@@ -182,6 +192,23 @@ class ChatSession {
     this.inbox.push({
       type: "user",
       message: { role: "user", content },
+      parent_tool_use_id: null,
+      // The user's text goes in as typed: no `@path` file expansion, no slash commands.
+      client_composed: true,
+    });
+  }
+
+  /** Summarizes the conversation so far; the only command Sienna ever sends. */
+  compact() {
+    clearTimeout(this.idleTimer);
+    this.busy = true;
+    this.compacting = true;
+    this.interrupted = false;
+    // Compaction writes its own messages; rewinding stays tied to the last answer.
+    this.keptAssistantUuid = this.lastAssistantUuid;
+    this.inbox.push({
+      type: "user",
+      message: { role: "user", content: "/compact" },
       parent_tool_use_id: null,
     });
   }
@@ -217,6 +244,19 @@ class ChatSession {
           if (replaced && replaced !== message.session_id) {
             deleteSession(replaced, { dir: this.config.projectDir ?? workDir }).catch(() => {});
           }
+        } else if (message.subtype === "status" && message.status === "compacting") {
+          emit({ type: "compacting", chatId: this.chatId });
+        } else if (message.subtype === "status" && message.compact_result === "failed") {
+          this.compactFailed = true;
+        } else if (message.subtype === "compact_boundary") {
+          const meta = message.compact_metadata ?? {};
+          emit({
+            type: "compacted",
+            chatId: this.chatId,
+            trigger: meta.trigger === "manual" ? "manual" : "auto",
+            before: meta.pre_tokens ?? null,
+            after: meta.post_tokens ?? null,
+          });
         }
         return;
       case "stream_event": {
@@ -253,6 +293,22 @@ class ChatSession {
         this.costBase = total;
         this.turnHasText = false;
         this.busy = false;
+        if (this.compacting) {
+          this.compacting = false;
+          this.lastAssistantUuid = this.keptAssistantUuid;
+          const failed = this.compactFailed || message.is_error;
+          this.compactFailed = false;
+          emit({
+            type: "compactDone",
+            chatId: this.chatId,
+            costUsd: turnCost,
+            model: this.config.model,
+            error: failed ? "error.compactFailed" : null,
+          });
+          this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
+          this.reportContext();
+          return;
+        }
         // A stopped answer ends with an error result; that is not a failure.
         const failed = message.is_error && !this.interrupted;
         emit({
@@ -282,7 +338,11 @@ class ChatSession {
       failure = error;
     } finally {
       // The process ended in the middle of an answer: the UI must not wait for it.
-      if (this.busy) {
+      if (this.busy && this.compacting) {
+        this.busy = false;
+        this.compacting = false;
+        emit({ type: "compactDone", chatId: this.chatId, costUsd: 0, error: "error.compactFailed" });
+      } else if (this.busy) {
         this.busy = false;
         this.flush();
         const error = this.interrupted
@@ -398,6 +458,28 @@ async function onSend(command) {
   session.send(toContent(command.text, command.attachments));
 }
 
+/** Compacts a chat's session, opening it first (from its session id) if needed. */
+async function onCompact(command) {
+  let session = sessions.get(command.chatId);
+  if (session?.busy) return;
+  if (!session) {
+    if (!command.sessionId) return;
+    evictIdleSessions();
+    session = new ChatSession(command.chatId, {
+      model: command.model,
+      effort: command.effort,
+      web: Boolean(command.web),
+      sessionId: command.sessionId,
+      costSoFar: Number(command.costSoFar) || 0,
+      projectDir: typeof command.projectDir === "string" && command.projectDir ? command.projectDir : null,
+      rewindTo: null,
+      replacesSession: null,
+    });
+    sessions.set(command.chatId, session);
+  }
+  session.compact();
+}
+
 /** Makes room for one more live session by closing the oldest idle ones. */
 function evictIdleSessions() {
   for (const [chatId, session] of sessions) {
@@ -467,6 +549,11 @@ function onCommand(line) {
       return;
     case "title":
       onTitle(command).catch(() => {});
+      return;
+    case "compact":
+      onCompact(command).catch((error) =>
+        emit({ type: "compactDone", chatId: command.chatId, costUsd: 0, error: describeError(error) }),
+      );
       return;
     case "close":
       sessions.get(command.chatId)?.close();

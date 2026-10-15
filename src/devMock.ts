@@ -55,9 +55,19 @@ const sample: Chat = {
   model: "claude-sonnet-5-5",
   effort: "medium",
   web: false,
-  sessionId: null,
   costUsd: 0.0184,
-  context: { used: 18_400, window: 200_000 },
+  sessionId: "55555555-5555-4555-8555-555555555555",
+  context: {
+    used: 18_400,
+    window: 200_000,
+    categories: [
+      { name: "System prompt", tokens: 2_100, kind: "used" },
+      { name: "System tools", tokens: 3_300, kind: "used" },
+      { name: "Messages", tokens: 13_000, kind: "used" },
+      { name: "Autocompact buffer", tokens: 33_000, kind: "buffer" },
+      { name: "Free space", tokens: 148_600, kind: "free" },
+    ],
+  },
   messages: [
     { id: "m1", role: "user", text: sampleText.question },
     {
@@ -189,6 +199,15 @@ export function installDevMock() {
           return null;
         case "project_check":
           return (payload as { path: string }).path;
+        case "chat_compact": {
+          const chatId = (payload?.request as { chatId: string }).chatId;
+          void emit("engine", { type: "compacting", chatId });
+          setTimeout(() => {
+            void emit("engine", { type: "compacted", chatId, trigger: "manual", before: 18_400, after: 4_200 });
+            void emit("engine", { type: "compactDone", chatId, costUsd: 0.004, error: null });
+          }, 1500);
+          return null;
+        }
         case "chat_title":
           setTimeout(
             () => void emit("engine", { type: "title", chatId: payload?.chatId, title: sampleText.generated }),

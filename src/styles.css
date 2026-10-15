@@ -1310,10 +1310,19 @@ a:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: 26px;
   padding: 0 8px;
+  border-radius: 7px;
   font-size: 12px;
   color: var(--label-3);
   font-variant-numeric: tabular-nums;
+  transition: background-color 120ms, color 120ms;
+}
+
+.context-meter:hover,
+.context-meter[aria-expanded="true"] {
+  background: var(--fill-hover);
+  color: var(--label-2);
 }
 
 .context-meter svg {
@@ -1338,6 +1347,158 @@ a:focus-visible {
 
 .context-meter.is-high .context-fill {
   stroke: var(--danger);
+}
+
+/* The details open upward from the right end of the row below the composer;
+   more specific than `.menu`, which anchors menus on the left. */
+.menu.context-panel {
+  left: auto;
+  right: 0;
+  width: 280px;
+  padding: 14px 14px 12px;
+}
+
+.context-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.context-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.context-percent {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-total {
+  margin: 2px 0 10px;
+  font-size: 12px;
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fill-active);
+  overflow: hidden;
+}
+
+.context-segment {
+  min-width: 2px;
+  height: 100%;
+}
+
+.context-segment + .context-segment {
+  box-shadow: inset 1px 0 0 var(--surface-raised);
+}
+
+.is-messages {
+  background: var(--accent);
+}
+
+.is-other {
+  background: var(--label-3);
+}
+
+.context-rows {
+  margin: 10px 0 0;
+}
+
+.context-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 12px;
+}
+
+.context-row dt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--label-2);
+}
+
+.context-row dd {
+  margin: 0;
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+.context-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--label-3);
+}
+
+.context-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 0.5px solid var(--separator-strong);
+}
+
+.context-actions .secondary-button {
+  height: 28px;
+  font-size: 12px;
+}
+
+.context-actions .secondary-button:disabled {
+  opacity: 0.5;
+}
+
+.context-hint {
+  font-size: 11.5px;
+  color: var(--label-3);
+}
+
+/* A line in the thread, such as a context compaction. */
+.note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 26px;
+  font-size: 12px;
+  color: var(--label-3);
+}
+
+.note::before,
+.note::after {
+  content: "";
+  flex: 1;
+  height: 0.5px;
+  background: var(--separator-strong);
+}
+
+.note.is-error {
+  color: var(--danger);
+}
+
+.note.is-active span {
+  animation: pulse-text 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-text {
+  50% {
+    opacity: 0.45;
+  }
 }
 
 /* Below the box the menu opens upward from the left edge. */

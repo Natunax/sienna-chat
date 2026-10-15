@@ -33,7 +33,8 @@ export interface AttachmentMeta {
 
 export interface Message {
   id: string;
-  role: "user" | "assistant";
+  /** "note" is a line in the thread, such as a context compaction; never sent to Claude. */
+  role: "user" | "assistant" | "note";
   text: string;
   thinking?: string;
   tools?: ToolUse[];
@@ -45,6 +46,14 @@ export interface Message {
   engine?: number;
   /** SDK message id at the end of this answer's turn; a rewind cuts back to it. */
   turnEnd?: string | null;
+  /** For a note about a compaction: how it was triggered and the tokens before and after. */
+  compaction?: { trigger: "manual" | "auto"; before: number | null; after: number | null };
+}
+
+export interface ContextCategory {
+  name: string;
+  tokens: number;
+  kind: "used" | "free" | "buffer";
 }
 
 export interface Chat {
@@ -69,7 +78,9 @@ export interface Chat {
   /** The project the chat belongs to in the sidebar. */
   projectId?: string | null;
   /** Context window use after the last answer, in tokens. */
-  context?: { used: number; window: number } | null;
+  context?: { used: number; window: number; categories?: ContextCategory[] } | null;
+  /** The conversation is being summarized right now. */
+  compacting?: boolean;
 }
 
 export interface Project {
@@ -131,6 +142,15 @@ export const api = {
   projectRename: (id: string, name: string) => invoke<void>("project_rename", { id, name }),
   projectRemove: (id: string) => invoke<void>("project_remove", { id }),
   chatTitle: (chatId: string, text: string) => invoke<void>("chat_title", { chatId, text }),
+  chatCompact: (request: {
+    chatId: string;
+    sessionId: string | null;
+    model: ModelId;
+    effort: Effort;
+    web: boolean;
+    costSoFar: number;
+    projectDir: string | null;
+  }) => invoke<void>("chat_compact", { request }),
 };
 
 let formatters: { locale: string; coarse: Intl.NumberFormat; fine: Intl.NumberFormat } | null = null;

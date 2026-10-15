@@ -3,7 +3,15 @@
 
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useSyncExternalStore } from "react";
-import { api, type Chat, type ChatSummary, type Message, type Project, type Usage } from "./api";
+import {
+  api,
+  type Chat,
+  type ChatSummary,
+  type ContextCategory,
+  type Message,
+  type Project,
+  type Usage,
+} from "./api";
 import { t } from "./i18n";
 
 type Listener = () => void;
@@ -157,7 +165,7 @@ export async function loadChat(id: string): Promise<Chat> {
   const messages = chat.messages.map((message) =>
     message.streaming ? { ...message, streaming: false, error: message.error ?? "error.interrupted" } : message,
   );
-  const clean = { ...chat, messages };
+  const clean = { ...chat, messages, compacting: false };
   chats.set(id, clean);
   return clean;
 }
@@ -349,10 +357,50 @@ type EngineEvent =
       error: string | null;
     }
   | { type: "title"; chatId: string; title: string }
-  | { type: "context"; chatId: string; used: number; window: number }
+  | { type: "context"; chatId: string; used: number; window: number; categories?: ContextCategory[] }
+  | { type: "compacting"; chatId: string }
+  | { type: "compacted"; chatId: string; trigger: "manual" | "auto"; before: number | null; after: number | null }
+  | { type: "compactDone"; chatId: string; costUsd: number; error: string | null }
   | { type: "fatal"; message: string; generation: number }
   | { type: "exit"; generation: number }
   | { type: "ready" };
+
+/**
+ * Adds a note to the thread: before an answer that is still streaming (an
+ * automatic compaction runs before it), otherwise at the end. Answers before
+ * a compaction can no longer be rewound to, so their marks are dropped.
+ */
+function withNote(chat: Chat, note: Message): Chat {
+  const messages = chat.messages.map((message) => (message.turnEnd ? { ...message, turnEnd: null } : message));
+  const last = messages[messages.length - 1];
+  if (last?.streaming) messages.splice(messages.length - 1, 0, note);
+  else messages.push(note);
+  return { ...chat, messages };
+}
+
+/** Summarizes the chat's conversation to free context. */
+export async function compactChat(id: string) {
+  const chat = chats.get(id);
+  if (!chat || !chat.sessionId || chat.compacting) return;
+  if (chat.messages[chat.messages.length - 1]?.streaming) return;
+  putChat({ ...chat, compacting: true });
+  try {
+    await api.chatCompact({
+      chatId: id,
+      sessionId: chat.sessionId,
+      model: chat.model,
+      effort: chat.effort,
+      web: chat.web,
+      costSoFar: chat.messages.reduce((sum, message) => sum + (message.costUsd ?? 0), 0),
+      projectDir: chat.projectDir ?? null,
+    });
+  } catch (error) {
+    updateChat(id, (current) =>
+      withNote({ ...current, compacting: false }, { id: crypto.randomUUID(), role: "note", text: "", error: errorCode(error) }),
+    );
+    persist(id);
+  }
+}
 
 /** Fails the answers a stopped engine was streaming, and only those. */
 function failStreaming(generation: number, reason: string) {
@@ -398,6 +446,7 @@ function onEngineEvent(event: EngineEvent) {
         })),
         sessionId: event.sessionId ?? chat.sessionId,
         costUsd: chat.costUsd + event.costUsd,
+        compacting: false,
         updatedAt: Date.now(),
       }));
       persist(event.chatId);
@@ -407,7 +456,30 @@ function onEngineEvent(event: EngineEvent) {
       }
       return;
     case "context":
-      updateChat(event.chatId, (chat) => ({ ...chat, context: { used: event.used, window: event.window } }));
+      updateChat(event.chatId, (chat) => ({
+        ...chat,
+        context: { used: event.used, window: event.window, categories: event.categories },
+      }));
+      persist(event.chatId);
+      return;
+    case "compacting":
+      updateChat(event.chatId, (chat) => ({ ...chat, compacting: true }));
+      return;
+    case "compacted":
+      // An automatic compaction has no compactDone; the boundary marks its end.
+      updateChat(event.chatId, (chat) => withNote({ ...chat, compacting: false }, {
+        id: crypto.randomUUID(),
+        role: "note",
+        text: "",
+        compaction: { trigger: event.trigger, before: event.before, after: event.after },
+      }));
+      persist(event.chatId);
+      return;
+    case "compactDone":
+      updateChat(event.chatId, (chat) => {
+        const next = { ...chat, compacting: false, costUsd: chat.costUsd + event.costUsd };
+        return event.error ? withNote(next, { id: crypto.randomUUID(), role: "note", text: "", error: event.error }) : next;
+      });
       persist(event.chatId);
       return;
     case "title": {
