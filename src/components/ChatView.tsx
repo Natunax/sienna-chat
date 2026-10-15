@@ -211,6 +211,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
       onCompare={(model) => setCompareModel(chat.id, model)}
       check={project?.check ?? null}
       onCheck={project ? (command) => void setProjectCheck(project.id, command) : undefined}
+      conversation={chat.messages.some((message) => message.role === "assistant" && !message.streaming)}
       onTemplate={(id, text) => {
         stuck.current = true;
         void runTemplate(chat.id, id, text);

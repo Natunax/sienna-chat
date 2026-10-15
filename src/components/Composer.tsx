@@ -66,6 +66,26 @@ interface Props {
   check: string | null;
   onCheck?: (command: string) => void;
   onTemplate: (id: TemplateId, text: string) => void;
+  /** The chat has an answer, so templates about the conversation make sense. */
+  conversation: boolean;
+}
+
+type TemplateState = {
+  id: TemplateId;
+  name: string;
+  short: string;
+  command: string;
+  prompt: string;
+  /** Why it cannot run here; null when it can. */
+  blocked: string | null;
+  /** Shown at all in this chat (the quick prompts bar hides what cannot run). */
+  fits: boolean;
+};
+
+/** The text typed after a leading slash, while it is still one word. */
+function slashQuery(text: string): string | null {
+  const match = /^\/(\S*)$/.exec(text);
+  return match ? match[1].toLowerCase() : null;
 }
 
 /** The model to compare with: the next one after `from`, never the chat's own. */
@@ -89,7 +109,9 @@ function fileLabel(name: string): string {
 export function Composer(props: Props) {
   const { settings, onSettings, streaming, onSend, onStop, autoFocusKey, pendingFiles, onFilesTaken } = props;
   const { project, projectLocked, onProject, context, onCompact, compacting, mode, onMode } = props;
-  const { compareModel, onCompare, check, onCheck, onTemplate } = props;
+  const { compareModel, onCompare, check, onCheck, onTemplate, conversation } = props;
+  const [slashActive, setSlashActive] = useState(0);
+  const [slashClosed, setSlashClosed] = useState(false);
   const [checkDraft, setCheckDraft] = useState<string | null>(null);
   const comparing = compareModel && compareModel !== settings.model ? compareModel : null;
 
@@ -155,6 +177,42 @@ export function Composer(props: Props) {
     }
   };
 
+  // One view of the templates for the + menu, the quick prompts and the slash commands.
+  const templates: TemplateState[] = TEMPLATES.map((entry) => {
+    const outOfPlace = entry.project && !project;
+    const early = entry.conversation && !conversation;
+    return {
+      id: entry.id,
+      name: t(entry.name),
+      short: t(entry.short),
+      command: t(entry.command),
+      prompt: t(entry.prompt),
+      fits: !outOfPlace && !early,
+      blocked: outOfPlace ? t("slash.projectOnly") : early ? t("slash.afterAnswer") : streaming ? t("slash.busy") : null,
+    };
+  });
+  const runTemplate = (template: TemplateState) => {
+    if (template.blocked) return;
+    onTemplate(template.id, template.prompt);
+    setText("");
+  };
+  const quick = templates.filter((template) => template.fits);
+
+  // Slash commands: a leading "/" and one word open the list above the input.
+  const query = slashQuery(text);
+  const matches =
+    query === null
+      ? []
+      : templates.filter((template) => template.command.startsWith(query) || template.id.startsWith(query));
+  const slashOpen = matches.length > 0 && !slashClosed;
+  const active = Math.min(slashActive, matches.length - 1);
+
+  // The first command that can run here is marked when the list opens or narrows.
+  useEffect(() => {
+    setSlashActive(Math.max(0, matches.findIndex((template) => !template.blocked)));
+    if (query === null) setSlashClosed(false);
+  }, [query]);
+
   const canSend = !streaming && (text.trim().length > 0 || files.length > 0);
 
   const submit = () => {
@@ -167,6 +225,24 @@ export function Composer(props: Props) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashOpen && !event.nativeEvent.isComposing) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        setSlashActive((active + step + matches.length) % matches.length);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSlashClosed(true);
+        return;
+      }
+      if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+        event.preventDefault();
+        runTemplate(matches[active]);
+        return;
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       submit();
@@ -193,7 +269,49 @@ export function Composer(props: Props) {
 
   return (
     <div className="composer-wrap">
+      {quick.length > 0 && (
+        <div className="quick-bar" role="toolbar" aria-label={t("quick.label")}>
+          <span className="quick-label">{t("quick.label")}</span>
+          <div className="quick-items">
+            {quick.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                className="quick-item"
+                disabled={Boolean(template.blocked)}
+                title={template.blocked ?? template.name}
+                onClick={() => runTemplate(template)}
+              >
+                {template.short}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="composer">
+        {slashOpen && (
+          <div className="slash-menu" role="listbox" id="slash-menu" aria-label={t("slash.label")}>
+            {matches.map((template, index) => (
+              <button
+                key={template.id}
+                type="button"
+                role="option"
+                id={`slash-${template.id}`}
+                aria-selected={index === active}
+                aria-disabled={Boolean(template.blocked)}
+                className={`slash-item${index === active ? " is-active" : ""}${template.blocked ? " is-blocked" : ""}`}
+                // The input keeps focus, so typing can go on.
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setSlashActive(index)}
+                onClick={() => runTemplate(template)}
+              >
+                <span className="slash-command">/{template.command}</span>
+                <span className="slash-name">{template.name}</span>
+                {template.blocked && <span className="slash-reason">{template.blocked}</span>}
+              </button>
+            ))}
+          </div>
+        )}
         {chips && (
           <div className="composer-chips">
             {settings.web && (
@@ -330,11 +448,9 @@ export function Composer(props: Props) {
             comparing={Boolean(comparing)}
             onCompare={() => onCompare(comparing ? null : otherModel(settings.model, null))}
             onCheck={project && onCheck ? () => void editCheck() : undefined}
-            templates={TEMPLATES.filter((entry) => !entry.project || project).map((entry) => ({
-              id: entry.id,
-              name: t(entry.name),
-              run: () => !streaming && onTemplate(entry.id, t(entry.prompt)),
-            }))}
+            templates={templates
+              .filter((template) => template.fits)
+              .map((template) => ({ id: template.id, name: template.name, run: () => runTemplate(template) }))}
           />
           <input
             ref={picker}
@@ -357,6 +473,9 @@ export function Composer(props: Props) {
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             aria-label={t("composer.label")}
+            aria-controls={slashOpen ? "slash-menu" : undefined}
+            aria-activedescendant={slashOpen ? `slash-${matches[active]?.id}` : undefined}
+            aria-autocomplete="list"
           />
           {streaming ? (
             <button

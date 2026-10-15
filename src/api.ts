@@ -18,10 +18,45 @@ export const DEFAULT_MODE: PermissionMode = "auto";
 export type TemplateId = "changelog" | "review" | "tasks";
 
 /** Recurring tasks with a fixed answer format; the first two need a project. */
-export const TEMPLATES: { id: TemplateId; name: TextKey; prompt: TextKey; project: boolean }[] = [
-  { id: "changelog", name: "template.changelog", prompt: "template.changelogPrompt", project: true },
-  { id: "review", name: "template.review", prompt: "template.reviewPrompt", project: true },
-  { id: "tasks", name: "template.tasks", prompt: "template.tasksPrompt", project: false },
+export const TEMPLATES: {
+  id: TemplateId;
+  name: TextKey;
+  /** For the quick prompts bar. */
+  short: TextKey;
+  /** The slash command, without the slash. */
+  command: TextKey;
+  prompt: TextKey;
+  project: boolean;
+  /** Works on the conversation so far, so it needs an answer first. */
+  conversation: boolean;
+}[] = [
+  {
+    id: "tasks",
+    name: "template.tasks",
+    short: "template.tasks",
+    command: "slash.tasks",
+    prompt: "template.tasksPrompt",
+    project: false,
+    conversation: true,
+  },
+  {
+    id: "review",
+    name: "template.review",
+    short: "template.reviewShort",
+    command: "slash.review",
+    prompt: "template.reviewPrompt",
+    project: true,
+    conversation: false,
+  },
+  {
+    id: "changelog",
+    name: "template.changelog",
+    short: "template.changelogShort",
+    command: "slash.changelog",
+    prompt: "template.changelogPrompt",
+    project: true,
+    conversation: false,
+  },
 ];
 
 /** Ordered by strength (and price). */
