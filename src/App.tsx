@@ -14,6 +14,7 @@ import {
   loadChat,
   addProject,
   getProject,
+  projectFor,
   refreshProjects,
   refreshSummaries,
   removeProject,
@@ -146,7 +147,7 @@ export function App() {
           projects={projects}
           projectError={projectError}
           activeId={chat && chat.messages.length ? chat.id : null}
-          activeProjectId={chat?.projectId ?? null}
+          activeProjectId={chat ? (projectFor(chat, projects)?.id ?? null) : null}
           usage={usage}
           onSelect={(id) => void openChat(id)}
           onNew={newChat}

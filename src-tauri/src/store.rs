@@ -21,6 +21,9 @@ pub struct ChatSummary {
     pub pinned: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_id: Option<String>,
+    /// The chat's folder, so a chat can be matched to a project by path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_dir: Option<String>,
 }
 
 /// A folder the user added as a project; its chats may read it.
@@ -76,6 +79,15 @@ fn project_of(chat: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+fn dir_of(chat: &Value) -> Option<String> {
+    chat.get("projectDir")
+        .and_then(Value::as_str)
+        .map(|dir| dir.chars().take(1024).collect())
+}
+
+/// Bumped when the index gains a field; an older index is rebuilt once.
+const INDEX_VERSION: &str = "2";
+
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let tmp = path.with_extension("json.tmp");
     fs::write(&tmp, bytes)
@@ -86,10 +98,25 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
 impl Store {
     pub fn new(root: PathBuf) -> Self {
         let _ = fs::create_dir_all(root.join("chats"));
-        Self {
+        let store = Self {
             root,
             lock: Mutex::new(()),
+        };
+        store.upgrade_index();
+        store
+    }
+
+    /// Rebuilds an index written by an older version, so every entry carries
+    /// the fields of the current one.
+    fn upgrade_index(&self) {
+        let marker = self.root.join("chats").join("index.version");
+        if fs::read_to_string(&marker).ok().as_deref() == Some(INDEX_VERSION) {
+            return;
         }
+        if self.index_path().exists() {
+            self.rebuild_index();
+        }
+        let _ = fs::write(marker, INDEX_VERSION);
     }
 
     pub fn root(&self) -> &Path {
@@ -145,6 +172,7 @@ impl Store {
                         .to_string(),
                     pinned: chat.get("pinned").and_then(Value::as_bool).unwrap_or(false),
                     project_id: project_of(&chat),
+                    project_dir: dir_of(&chat),
                     updated_at: chat.get("updatedAt").and_then(Value::as_i64).unwrap_or(0),
                 })
             })
@@ -193,6 +221,7 @@ impl Store {
             updated_at,
             pinned: chat.get("pinned").and_then(Value::as_bool).unwrap_or(false),
             project_id: project_of(chat),
+            project_dir: dir_of(chat),
         });
         self.write_index(&list)
     }

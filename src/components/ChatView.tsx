@@ -2,7 +2,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { formatUsd, type Chat, type OutgoingAttachment } from "../api";
 import { t, useLanguage, type TextKey } from "../i18n";
-import { redoLast, rewindPoint, sendMessage, stopMessage, updateChat, useProjects } from "../store";
+import { projectFor, redoLast, rewindPoint, sendMessage, stopMessage, updateChat, useProjects } from "../store";
 import { Composer, type ComposerSettings } from "./Composer";
 import { SidebarIcon } from "./icons";
 import { MessageView } from "./MessageView";
@@ -62,7 +62,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
   const streaming = Boolean(last?.streaming);
   const empty = chat.messages.length === 0;
   const language = useLanguage();
-  const project = useProjects().find((entry) => entry.id === chat.projectId);
+  const project = projectFor(chat, useProjects());
 
   const settings: ComposerSettings = { model: chat.model, effort: chat.effort, web: chat.web };
 
@@ -145,9 +145,12 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
       project={chat.projectDir ?? null}
       // A chat's session lives in its folder, so the folder is set before the first message.
       projectLocked={!empty}
-      // Removing the folder also takes the chat out of its project.
-      onProject={(projectDir) =>
-        updateChat(chat.id, (current) => ({ ...current, projectDir, projectId: projectDir ? current.projectId : null }))
+      onProject={(picked) =>
+        updateChat(chat.id, (current) => ({
+          ...current,
+          projectId: picked?.id ?? null,
+          projectDir: picked?.path ?? null,
+        }))
       }
     />
   );

@@ -170,7 +170,8 @@ export function installDevMock() {
             byModel: { "claude-sonnet-5-5": 9.85, "claude-opus-5-5": 2.31, "claude-haiku-5-5": 0.24 },
           };
         case "plugin:dialog|open":
-          return "/Users/demo/code/acme-shop";
+          // Tests can set window.__nextFolder to pick a different folder.
+          return (window as { __nextFolder?: string }).__nextFolder ?? "/Users/demo/code/acme-shop";
         case "projects_list":
           return projects;
         case "project_add": {

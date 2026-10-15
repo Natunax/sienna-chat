@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { formatUsd, type ChatSummary, type Project, type Usage } from "../api";
 import { locale, t, useLanguage } from "../i18n";
+import { projectFor } from "../store";
 import {
   ChevronRightIcon,
   CloseIcon,
@@ -267,21 +268,22 @@ export function Sidebar(props: Props) {
     if (activeProjectId && !expanded.has(activeProjectId)) toggleProject(activeProjectId);
   }, [activeProjectId]);
 
-  const known = useMemo(() => new Set(projects.map((project) => project.id)), [projects]);
+  const owner = (chat: ChatSummary) => projectFor(chat, projects)?.id;
   const matches = (chat: ChatSummary) => !needle || chat.title.toLowerCase().includes(needle);
 
   const projectChats = useMemo(() => {
     const byProject = new Map<string, ChatSummary[]>();
     for (const chat of summaries) {
-      if (!chat.projectId || !known.has(chat.projectId) || !matches(chat)) continue;
-      byProject.set(chat.projectId, [...(byProject.get(chat.projectId) ?? []), chat]);
+      const projectId = owner(chat);
+      if (!projectId || !matches(chat)) continue;
+      byProject.set(projectId, [...(byProject.get(projectId) ?? []), chat]);
     }
     return byProject;
-  }, [summaries, known, needle]);
+  }, [summaries, projects, needle]);
 
   const groups = useMemo(() => {
     const now = new Date();
-    const loose = summaries.filter((chat) => !(chat.projectId && known.has(chat.projectId)) && matches(chat));
+    const loose = summaries.filter((chat) => !owner(chat) && matches(chat));
     const result: { label: string; chats: ChatSummary[] }[] = [];
     const pinned = loose.filter((chat) => chat.pinned);
     if (pinned.length) result.push({ label: t("sidebar.pinned"), chats: pinned });
@@ -294,7 +296,7 @@ export function Sidebar(props: Props) {
     }
     return result;
     // The group labels are translated, so they are rebuilt when the language changes.
-  }, [summaries, known, needle, language]);
+  }, [summaries, projects, needle, language]);
 
   const visibleProjects = projects.filter(
     (project) => !needle || project.name.toLowerCase().includes(needle) || projectChats.has(project.id),

@@ -83,6 +83,7 @@ export interface ChatSummary {
   updatedAt: number;
   pinned?: boolean;
   projectId?: string;
+  projectDir?: string;
 }
 
 export interface Usage {

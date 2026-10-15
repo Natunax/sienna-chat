@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
-import { type Effort, type ModelId, type OutgoingAttachment } from "../api";
+import { type Effort, type ModelId, type OutgoingAttachment, type Project } from "../api";
+import { addProject } from "../store";
 import { PICKER_ACCEPT, readAttachment, TEXT_MEDIA_TYPE } from "../attachments";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api } from "../api";
 import { errorText, t } from "../i18n";
 import { ModelMenu } from "./ModelMenu";
 import { PlusMenu } from "./PlusMenu";
@@ -34,7 +34,8 @@ interface Props {
   project: string | null;
   /** The folder is fixed once the chat has messages. */
   projectLocked: boolean;
-  onProject: (dir: string | null) => void;
+  /** A picked folder becomes (or finds) a project; `null` takes the chat out of it. */
+  onProject: (project: Project | null) => void;
 }
 
 function folderName(path: string): string {
@@ -96,7 +97,7 @@ export function Composer(props: Props) {
     const picked = await openDialog({ directory: true, multiple: false, title: t("composer.projectTitle") });
     if (typeof picked !== "string") return;
     try {
-      onProject(await api.projectCheck(picked));
+      onProject(await addProject(picked));
     } catch (reason) {
       setNotice(errorText(reason));
     }

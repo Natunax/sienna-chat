@@ -62,6 +62,20 @@ export function getProject(id: string | null | undefined): Project | undefined {
   return id ? projects.find((project) => project.id === id) : undefined;
 }
 
+/**
+ * The project a chat belongs to: by its project id, or, for a chat that only
+ * has a folder (picked before projects existed), by that folder's path.
+ */
+export function projectFor(
+  chat: { projectId?: string | null; projectDir?: string | null },
+  list: Project[],
+): Project | undefined {
+  return (
+    list.find((project) => project.id === chat.projectId) ??
+    (chat.projectDir ? list.find((project) => project.path === chat.projectDir) : undefined)
+  );
+}
+
 export async function refreshProjects() {
   projects = await api.projectsList();
   notifyGlobal();
@@ -106,6 +120,7 @@ function upsertSummary(chat: Chat, keepPlace = false) {
     updatedAt: chat.updatedAt,
     pinned: chat.pinned,
     projectId: chat.projectId ?? undefined,
+    projectDir: chat.projectDir ?? undefined,
   };
   if (keepPlace && summaries.some((summary) => summary.id === chat.id)) {
     summaries = summaries.map((summary) => (summary.id === chat.id ? entry : summary));
