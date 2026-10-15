@@ -32,6 +32,11 @@ Every request goes to Anthropic with **your API key**, is billed to **your API o
 - **Projects**: add a folder as a project in the sidebar; its chats are listed under it and every new chat there works in that folder, as in Claude Code
 - **Project folders**: give a chat a folder and ask about its code ("How does login work?", "Where is X used?"). Claude reads and searches that folder freely; the project's `CLAUDE.md` is included
 - **Changes and commands, with modes as in Claude Code**: in a project chat Claude can change files and run commands. A mode menu below the input sets how far it goes without asking: Auto (default; Claude Code's auto mode checks each step and asks when unsure), Manual (every change shows as a diff and every command in full, and runs only after you click Allow), Accept edits, Plan (read only, ends with a plan you can carry out with one click) and, after a confirmation, Bypass permissions. The chat keeps every change and the commands' output
+- **Undo an answer's changes**: one click on an answer undoes the file changes Claude made from there on (file checkpoints)
+- **Check after changes**: set a command per project (Sienna suggests one, such as `npm test` or `cargo test`). It runs after every answer that changed files; when it fails, Claude is sent back to fix it, at most twice
+- **Branches**: continue a chat from any answer in a new branch; the original stays as it was, and branches are listed below it
+- **Compare models**: send each question to a second model as well; both answers appear side by side with their costs, and either can be continued in a branch. In project chats the second model only reads
+- **Templates**: a changelog from Git, a review of the uncommitted changes and a task list arrive in a fixed format (structured output) and are drawn as clean lists you can copy as Markdown
 - **Model and effort choice** per chat: Haiku 5.5, Sonnet 5.5 (default), Opus 5.5 or Fable 5.1, and five effort levels from low to max on a slider
 - **Attachments** by button, drag and drop or paste: images, PDFs and text files such as code, Markdown, CSV, JSON or logs (up to 512 KB each, sent as text with the file name)
 - **Context at a glance**: a ring below the composer shows how full the context window is; click it for the breakdown and to compact the conversation now. Automatic compaction shows as a line in the chat

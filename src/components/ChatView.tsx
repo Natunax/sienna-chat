@@ -12,12 +12,17 @@ import {
 import { t, useLanguage, type TextKey } from "../i18n";
 import {
   answerPermission,
+  branchChat,
   compactChat,
   implementPlan,
   projectFor,
   redoLast,
+  revertChanges,
   rewindPoint,
+  runTemplate,
   sendMessage,
+  setCompareModel,
+  setProjectCheck,
   setMode,
   stopMessage,
   updateChat,
@@ -40,6 +45,8 @@ interface Props {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onSettingsChange: (settings: ComposerSettings) => void;
+  /** Opens another chat, such as a new branch. */
+  onOpenChat: (id: string) => void;
 }
 
 /** Keeps the view pinned to the newest text unless the reader scrolled up. */
@@ -74,13 +81,13 @@ function useStickToBottom(dependency: unknown) {
   return { scroller, content, stuck };
 }
 
-export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange }: Props) {
+export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange, onOpenChat }: Props) {
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<File[]>([]);
   const { scroller, content, stuck } = useStickToBottom(chat.id);
-  const last = chat.messages[chat.messages.length - 1];
-  // While the conversation is being compacted, nothing new can be sent.
-  const streaming = Boolean(last?.streaming) || Boolean(chat.compacting);
+  // The last answer and a second model's next to it; while the conversation
+  // is being compacted, nothing new can be sent either.
+  const streaming = chat.messages.slice(-3).some((message) => message.streaming) || Boolean(chat.compacting);
   const empty = chat.messages.length === 0;
   const language = useLanguage();
   const project = projectFor(chat, useProjects());
@@ -108,6 +115,17 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
     (request: PermissionRequest, decision: PermissionDecision) => answerPermission(chat.id, request, decision),
     [chat.id],
   );
+  const branch = useCallback(
+    (messageId: string) => {
+      const id = branchChat(chat.id, messageId);
+      if (id) onOpenChat(id);
+    },
+    [chat.id, onOpenChat],
+  );
+  const revert = useCallback((messageId: string) => void revertChanges(chat.id, messageId), [chat.id]);
+  // The chat's own last answer; a second model's may follow it.
+  let ownLast = chat.messages.length - 1;
+  while (ownLast > 0 && chat.messages[ownLast].lane) ownLast--;
   const implement = useCallback(
     (mode: PermissionMode) => {
       stuck.current = true;
@@ -182,6 +200,14 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
       onCompact={chat.sessionId && !streaming ? () => void compactChat(chat.id) : undefined}
       mode={chat.mode ?? DEFAULT_MODE}
       onMode={(mode) => setMode(chat.id, mode)}
+      compareModel={chat.compareModel ?? null}
+      onCompare={(model) => setCompareModel(chat.id, model)}
+      check={project?.check ?? null}
+      onCheck={project ? (command) => void setProjectCheck(project.id, command) : undefined}
+      onTemplate={(id, text) => {
+        stuck.current = true;
+        void runTemplate(chat.id, id, text);
+      }}
       onProject={(picked) =>
         updateChat(chat.id, (current) => ({
           ...current,
@@ -232,17 +258,38 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
               </p>
             </div>
           ) : (
-            chat.messages.map((message, index) => (
-              <MessageView
-                // Messages are memoized; a new key redraws them in the new language.
-                key={`${message.id}:${language}`}
-                message={message}
-                onRedo={canRedo && index >= lastQuestion ? redo : undefined}
-                onPermission={index === chat.messages.length - 1 ? answer : undefined}
-                projectDir={chat.projectDir}
-                onImplement={index === chat.messages.length - 1 && !streaming ? implement : undefined}
-              />
-            ))
+            chat.messages.map((message, index) => {
+              const view = (
+                <MessageView
+                  // Messages are memoized; a new key redraws them in the new language.
+                  key={`${message.id}:${language}`}
+                  message={message}
+                  onRedo={canRedo && index >= lastQuestion ? redo : undefined}
+                  onPermission={index === ownLast ? answer : undefined}
+                  projectDir={chat.projectDir}
+                  onImplement={index === ownLast && !streaming ? implement : undefined}
+                  onBranch={branch}
+                  onRevert={chat.projectDir ? revert : undefined}
+                  showModel={Boolean(message.lane || chat.messages[index + 1]?.lane)}
+                />
+              );
+              // A second model's answer stands next to the chat's own.
+              if (message.lane) return null;
+              const rival = chat.messages[index + 1];
+              if (!rival?.lane) return view;
+              return (
+                <div key={`pair:${message.id}:${language}`} className="compare-row">
+                  {view}
+                  <MessageView
+                    key={`${rival.id}:${language}`}
+                    message={rival}
+                    projectDir={chat.projectDir}
+                    onBranch={branch}
+                    showModel
+                  />
+                </div>
+              );
+            })
           )}
           {chat.compacting && (
             <div className="note is-active" role="status">

@@ -108,6 +108,45 @@ export const TerminalIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const BranchIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="6" cy="4.75" r="1.75" />
+    <circle cx="6" cy="15.25" r="1.75" />
+    <circle cx="14" cy="7.25" r="1.75" />
+    <path d="M6 6.5v7M14 9c0 3-3.5 3.25-7.4 4.9" />
+  </Icon>
+);
+
+export const UndoIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M7.5 5.25 4.25 8.5l3.25 3.25" />
+    <path d="M4.5 8.5h7a4.25 4.25 0 0 1 0 8.5H9.5" />
+  </Icon>
+);
+
+export const CompareIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="2.75" y="3.75" width="6" height="12.5" rx="1.75" />
+    <rect x="11.25" y="3.75" width="6" height="12.5" rx="1.75" />
+  </Icon>
+);
+
+export const ListIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M8 5.5h8.5M8 10h8.5M8 14.5h8.5" />
+    <circle cx="4.5" cy="5.5" r="0.6" fill="currentColor" />
+    <circle cx="4.5" cy="10" r="0.6" fill="currentColor" />
+    <circle cx="4.5" cy="14.5" r="0.6" fill="currentColor" />
+  </Icon>
+);
+
+export const ShieldCheckIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M10 2.75 4 5v4.5c0 3.6 2.5 6.5 6 7.75 3.5-1.25 6-4.15 6-7.75V5z" />
+    <path d="m7.5 10 1.75 1.75L12.75 8" />
+  </Icon>
+);
+
 export const PinIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M7.5 3.5h5M8.5 3.5v4.2L5.8 11h8.4l-2.7-3.3V3.5M10 11v5.5" />

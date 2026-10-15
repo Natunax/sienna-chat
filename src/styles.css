@@ -339,6 +339,19 @@ a:focus-visible {
   background: var(--fill-active);
 }
 
+.chat-row.is-branch .chat-row-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 22px;
+  color: var(--label-2);
+}
+
+.chat-row-branch {
+  flex-shrink: 0;
+  color: var(--label-3);
+}
+
 .chat-row-main {
   flex: 1;
   min-width: 0;
@@ -1196,7 +1209,8 @@ button.tool-toggle:hover .tool-name,
 
 .msg:hover .msg-actions,
 .msg-actions:focus-within,
-.thread > .msg:last-child .msg-actions {
+.thread > .msg:last-child .msg-actions,
+.thread > .compare-row:last-child .msg-actions {
   opacity: 1;
 }
 
@@ -1211,6 +1225,185 @@ button.tool-toggle:hover .tool-name,
 }
 
 .msg-action:hover {
+  background: var(--fill-hover);
+  color: var(--label);
+}
+
+.msg-action.is-confirm {
+  display: inline-flex;
+  gap: 5px;
+  width: auto;
+  padding: 0 9px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Two models' answers to one question, side by side. */
+.compare-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.compare-row > .msg-assistant {
+  min-width: 0;
+  padding: 12px 14px 6px;
+  border-radius: 12px;
+  background: var(--fill);
+  font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .compare-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.msg-model {
+  margin-bottom: 8px;
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* A template's answer, drawn from its data. */
+.structured {
+  display: grid;
+  gap: 10px;
+}
+
+.structured-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.structured-section h4 {
+  margin: 4px 0 4px;
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.structured-section ul,
+.structured-findings,
+.structured-tasks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.structured-section li {
+  position: relative;
+  padding: 3px 0 3px 16px;
+  line-height: 1.55;
+}
+
+.structured-section li::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0.85em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.structured-summary,
+.structured-empty {
+  margin: 0;
+  color: var(--label-2);
+}
+
+.structured-findings,
+.structured-tasks {
+  display: grid;
+  gap: 8px;
+}
+
+.finding,
+.structured-tasks li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--fill);
+}
+
+.finding-body,
+.structured-tasks li > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.finding-body p,
+.structured-tasks p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.finding-where {
+  color: var(--label-2);
+  font: 12px/1.4 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.finding-fix,
+.task-detail {
+  color: var(--label-2);
+  font-size: 13.5px;
+}
+
+.task-title {
+  font-weight: 500;
+}
+
+.severity {
+  flex-shrink: 0;
+  margin-top: 1px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.severity.is-high {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.severity.is-medium {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.severity.is-low {
+  background: var(--fill-active);
+  color: var(--label-2);
+}
+
+.structured-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 7px;
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.structured-copy:hover {
   background: var(--fill-hover);
   color: var(--label);
 }
@@ -1845,6 +2038,62 @@ button.tool-toggle:hover .tool-name,
   font-weight: 500;
 }
 
+.chip-button {
+  color: inherit;
+  font: inherit;
+}
+
+.chip-button:hover {
+  color: var(--label);
+}
+
+/* The project's check command, edited in place above the input. */
+.check-editor {
+  display: grid;
+  gap: 8px;
+  margin: 2px 2px 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--fill);
+}
+
+.check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--label-2);
+}
+
+.check-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--surface-raised);
+  box-shadow: inset 0 0 0 0.5px var(--separator-strong);
+  color: var(--label);
+  font: 13px var(--font-mono);
+  outline: none;
+}
+
+.check-input:focus {
+  box-shadow: inset 0 0 0 1px var(--focus);
+}
+
+.check-hint {
+  margin: 0;
+  color: var(--label-3);
+  font-size: 12px;
+}
+
+.check-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .chip.is-accent {
   background: var(--accent-soft);
   color: var(--accent-text);
@@ -1889,8 +2138,17 @@ button.tool-toggle:hover .tool-name,
 }
 
 .plus-menu {
-  width: 220px;
+  width: 256px;
   padding: 5px;
+}
+
+.plus-heading {
+  margin: 6px 0 2px;
+  padding: 6px 10px 2px 8px;
+  border-top: 0.5px solid var(--separator);
+  color: var(--label-3);
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .plus-item {

@@ -23,13 +23,17 @@ pub(crate) const MODELS: [&str; 4] = [
 ];
 const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 /// The permission modes of a project chat, as in Claude Code.
-const MODES: [&str; 5] = [
+/// `readonly` is internal: a second model's answer next to the chat's own.
+const MODES: [&str; 6] = [
     "auto",
     "default",
     "acceptEdits",
     "plan",
     "bypassPermissions",
+    "readonly",
 ];
+/// Answer formats of the templates (`sidecar/templates.mjs`).
+const FORMATS: [&str; 3] = ["changelog", "review", "tasks"];
 /// Images and PDFs arrive as base64, text files (code, Markdown, CSV) as text.
 const MEDIA_TYPES: [&str; 6] = [
     "image/png",
@@ -76,6 +80,24 @@ struct SendRequest {
     /// How far Claude may go without asking in a project chat (see MODES).
     #[serde(default = "default_mode")]
     mode: String,
+    /// Continue a copy of `session_id` from `rewind_to`, leaving it intact (a branch).
+    #[serde(default)]
+    fork: bool,
+    /// A second model's answer: its session closes once the answer is done.
+    #[serde(default)]
+    lane: bool,
+    /// The project's command to run after Claude changed files.
+    #[serde(default)]
+    check: Option<String>,
+    /// A template's answer format.
+    #[serde(default)]
+    format: Option<String>,
+    /// The window's id of this user message, for file checkpoints.
+    #[serde(default)]
+    user_uuid: Option<String>,
+    /// The user reverted file changes since the last message.
+    #[serde(default)]
+    reverted: bool,
 }
 
 fn default_mode() -> String {
@@ -160,6 +182,17 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
     {
         return Err("error.invalidRequest".into());
     }
+    if request
+        .user_uuid
+        .as_deref()
+        .is_some_and(|id| !store::valid_id(id))
+        || request
+            .format
+            .as_deref()
+            .is_some_and(|format| !FORMATS.contains(&format))
+    {
+        return Err("error.invalidRequest".into());
+    }
     if request.text.chars().count() > MAX_TEXT_CHARS {
         return Err("error.messageTooLong".into());
     }
@@ -214,6 +247,12 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         "rewindTo": request.rewind_to,
         "projectDir": project_dir,
         "mode": request.mode,
+        "fork": request.fork,
+        "lane": request.lane,
+        "check": request.check.as_deref().map(|check| check.chars().take(500).collect::<String>()),
+        "format": request.format,
+        "userUuid": request.user_uuid,
+        "reverted": request.reverted,
         "attachments": request.attachments.iter().map(|file| json!({
             "name": file.name.chars().take(200).collect::<String>(),
             "mediaType": file.media_type,
@@ -370,6 +409,81 @@ fn chat_permission(chat_id: String, id: String, decision: String, state: State<A
     }
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RevertRequest {
+    chat_id: String,
+    session_id: String,
+    message_id: String,
+    model: String,
+    effort: String,
+    web: bool,
+    project_dir: String,
+    mode: String,
+}
+
+/// Undoes the file changes Claude made since a user message (file checkpoints).
+#[tauri::command(async)]
+fn chat_revert_files(
+    request: RevertRequest,
+    app: AppHandle,
+    state: State<AppState>,
+) -> Result<(), String> {
+    if !store::valid_id(&request.chat_id)
+        || !store::valid_id(&request.session_id)
+        || !store::valid_id(&request.message_id)
+        || !MODELS.contains(&request.model.as_str())
+        || !EFFORTS.contains(&request.effort.as_str())
+        || !MODES.contains(&request.mode.as_str())
+    {
+        return Err("error.invalidRequest".into());
+    }
+    let project_dir = project::validate(&request.project_dir)?;
+    let line = json!({
+        "type": "rewindFiles",
+        "chatId": request.chat_id,
+        "sessionId": request.session_id,
+        "messageId": request.message_id,
+        "model": request.model,
+        "effort": request.effort,
+        "web": request.web,
+        "projectDir": project_dir.display().to_string(),
+        "mode": request.mode,
+    })
+    .to_string();
+    state.engine.send(&app, &state.store, &line).map(|_| ())
+}
+
+#[tauri::command(async)]
+fn project_set_check(id: String, check: String, state: State<AppState>) -> Result<(), String> {
+    state.store.set_project_check(&id, &check)
+}
+
+/// Suggests a check command from the files in a project folder.
+#[tauri::command(async)]
+fn project_guess_check(path: String) -> Result<String, String> {
+    let dir = project::validate(&path)?;
+    let has = |name: &str| dir.join(name).is_file();
+    let package_test = std::fs::read_to_string(dir.join("package.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .is_some_and(|package| package.pointer("/scripts/test").is_some());
+    let guess = if package_test {
+        "npm test"
+    } else if has("Cargo.toml") {
+        "cargo test"
+    } else if has("go.mod") {
+        "go test ./..."
+    } else if has("pyproject.toml") || has("pytest.ini") {
+        "pytest"
+    } else if has("Makefile") {
+        "make test"
+    } else {
+        ""
+    };
+    Ok(guess.into())
+}
+
 /// Switches a project chat's mode, also while an answer runs.
 #[tauri::command]
 fn chat_mode(chat_id: String, mode: String, state: State<AppState>) {
@@ -428,6 +542,9 @@ pub fn run() {
             chat_permission,
             project_open_file,
             chat_mode,
+            chat_revert_files,
+            project_set_check,
+            project_guess_check,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build the app");

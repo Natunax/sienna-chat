@@ -169,6 +169,7 @@ export function App() {
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen(true)}
           onSettingsChange={writeDefaults}
+          onOpenChat={(id) => void openChat(id)}
         />
       )}
       {settingsOpen && (

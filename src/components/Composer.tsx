@@ -1,5 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
-import { type Chat, type Effort, type ModelId, type OutgoingAttachment, type PermissionMode, type Project } from "../api";
+import {
+  api,
+  MODELS,
+  TEMPLATES,
+  type Chat,
+  type Effort,
+  type ModelId,
+  type OutgoingAttachment,
+  type PermissionMode,
+  type Project,
+  type TemplateId,
+} from "../api";
 import { addProject } from "../store";
 import { PICKER_ACCEPT, readAttachment, TEXT_MEDIA_TYPE } from "../attachments";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -11,7 +22,9 @@ import { PlusMenu } from "./PlusMenu";
 import {
   ArrowUpIcon,
   CloseIcon,
+  CompareIcon,
   DocumentIcon,
+  ShieldCheckIcon,
   FolderIcon,
   GlobeIcon,
   StopIcon,
@@ -46,6 +59,21 @@ interface Props {
   mode: PermissionMode;
   /** Always shown, as in Claude Code; it takes effect once the chat has a project folder. */
   onMode: (mode: PermissionMode) => void;
+  /** Each question also goes to this model. */
+  compareModel: ModelId | null;
+  onCompare: (model: ModelId | null) => void;
+  /** The project's command after changes; `onCheck` is missing outside projects. */
+  check: string | null;
+  onCheck?: (command: string) => void;
+  onTemplate: (id: TemplateId, text: string) => void;
+}
+
+/** The model to compare with: the next one after `from`, never the chat's own. */
+function otherModel(own: ModelId, from: ModelId | null): ModelId {
+  const others = MODELS.filter((entry) => entry.id !== own);
+  const at = from ? others.findIndex((entry) => entry.id === from) : -1;
+  if (at < 0) return own === "claude-opus-5-5" ? "claude-sonnet-5-5" : "claude-opus-5-5";
+  return others[(at + 1) % others.length].id;
 }
 
 function folderName(path: string): string {
@@ -61,6 +89,20 @@ function fileLabel(name: string): string {
 export function Composer(props: Props) {
   const { settings, onSettings, streaming, onSend, onStop, autoFocusKey, pendingFiles, onFilesTaken } = props;
   const { project, projectLocked, onProject, context, onCompact, compacting, mode, onMode } = props;
+  const { compareModel, onCompare, check, onCheck, onTemplate } = props;
+  const [checkDraft, setCheckDraft] = useState<string | null>(null);
+  const comparing = compareModel && compareModel !== settings.model ? compareModel : null;
+
+  const editCheck = async () => {
+    let draft = check ?? "";
+    if (!draft && project) draft = await api.projectGuessCheck(project).catch(() => "");
+    setCheckDraft(draft);
+  };
+  const saveCheck = () => {
+    if (checkDraft === null) return;
+    onCheck?.(checkDraft.trim());
+    setCheckDraft(null);
+  };
   const [text, setText] = useState("");
   const [files, setFiles] = useState<OutgoingAttachment[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -147,7 +189,7 @@ export function Composer(props: Props) {
     });
   };
 
-  const chips = settings.web || project || files.length > 0;
+  const chips = settings.web || project || comparing || (check && onCheck) || files.length > 0;
 
   return (
     <div className="composer-wrap">
@@ -189,6 +231,40 @@ export function Composer(props: Props) {
                 )}
               </span>
             )}
+            {comparing && (
+              <span className="chip">
+                <CompareIcon size={13} />
+                <button type="button" className="chip-text chip-button" onClick={() => onCompare(otherModel(settings.model, comparing))} title={t("compare.next")}>
+                  {t("compare.chip", { model: MODELS.find((entry) => entry.id === comparing)?.name ?? "" })}
+                </button>
+                <button
+                  type="button"
+                  className="chip-remove"
+                  onClick={() => onCompare(null)}
+                  aria-label={t("compare.off")}
+                  title={t("compare.off")}
+                >
+                  <CloseIcon size={11} />
+                </button>
+              </span>
+            )}
+            {check && onCheck && (
+              <span className="chip">
+                <ShieldCheckIcon size={13} />
+                <button type="button" className="chip-text chip-button" onClick={() => void editCheck()} title={t("check.edit")}>
+                  {t("check.chip", { command: check })}
+                </button>
+                <button
+                  type="button"
+                  className="chip-remove"
+                  onClick={() => onCheck("")}
+                  aria-label={t("check.off")}
+                  title={t("check.off")}
+                >
+                  <CloseIcon size={11} />
+                </button>
+              </span>
+            )}
             {files.map((file, index) => (
               <span key={index} className="chip chip-file">
                 {file.previewUrl ? (
@@ -212,12 +288,53 @@ export function Composer(props: Props) {
             ))}
           </div>
         )}
+        {checkDraft !== null && (
+          <form
+            className="check-editor"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveCheck();
+            }}
+          >
+            <label className="check-label">
+              <ShieldCheckIcon size={14} />
+              <input
+                className="check-input"
+                value={checkDraft}
+                onChange={(event) => setCheckDraft(event.target.value)}
+                onKeyDown={(event) => event.key === "Escape" && setCheckDraft(null)}
+                placeholder={t("check.placeholder")}
+                aria-label={t("check.action")}
+                spellCheck={false}
+                maxLength={500}
+                autoFocus
+              />
+            </label>
+            <p className="check-hint">{t("check.hint")}</p>
+            <div className="check-actions">
+              <button type="button" className="secondary-button" onClick={() => setCheckDraft(null)}>
+                {t("message.cancel")}
+              </button>
+              <button type="submit" className="primary-button">
+                {t("check.save")}
+              </button>
+            </div>
+          </form>
+        )}
         <div className="composer-row">
           <PlusMenu
             web={settings.web}
             onWeb={() => onSettings({ web: !settings.web })}
             onAttach={() => picker.current?.click()}
             onProject={projectLocked ? undefined : () => void pickProject()}
+            comparing={Boolean(comparing)}
+            onCompare={() => onCompare(comparing ? null : otherModel(settings.model, null))}
+            onCheck={project && onCheck ? () => void editCheck() : undefined}
+            templates={TEMPLATES.filter((entry) => !entry.project || project).map((entry) => ({
+              id: entry.id,
+              name: t(entry.name),
+              run: () => !streaming && onTemplate(entry.id, t(entry.prompt)),
+            }))}
           />
           <input
             ref={picker}

@@ -218,6 +218,30 @@ async function streamCodeAnswer(chatId: string) {
   void emit("engine", { type: "done", chatId, costUsd: 0.021, turnEnd: crypto.randomUUID(), error: null });
 }
 
+function streamTemplate(chatId: string, format: string) {
+  const data =
+    format === "review"
+      ? {
+          summary: english ? "Two things to look at before committing." : "Zwei Punkte vor dem Commit.",
+          findings: [
+            { severity: "high", file: "src/cart.ts", line: 12, issue: english ? "Quantity can be negative." : "Die Menge kann negativ sein.", fix: english ? "Clamp it at 0." : "Auf 0 begrenzen." },
+            { severity: "low", file: "src/cart.test.ts", issue: english ? "No test for an empty cart." : "Kein Test für einen leeren Warenkorb." },
+          ],
+        }
+      : format === "changelog"
+        ? {
+            title: "v0.4.0",
+            sections: [
+              { heading: english ? "Added" : "Neu", items: [english ? "Quantities in the cart" : "Mengen im Warenkorb"] },
+              { heading: english ? "Fixed" : "Behoben", items: [english ? "Total ignored the quantity" : "Summe ignorierte die Menge"] },
+            ],
+          }
+        : { tasks: [{ title: english ? "Write the shopping list" : "Einkaufsliste schreiben", priority: "high" }, { title: english ? "Book the table" : "Tisch reservieren", priority: "low", detail: english ? "Friday evening" : "Freitagabend" }] };
+  setTimeout(() => {
+    void emit("engine", { type: "done", chatId, costUsd: 0.012, turnEnd: crypto.randomUUID(), structured: data, error: null });
+  }, 900);
+}
+
 export function installDevMock() {
   mockIPC(
     (cmd, args) => {
@@ -278,11 +302,19 @@ export function installDevMock() {
           );
           return null;
         case "chat_send": {
-          const request = payload?.request as { chatId: string; projectDir?: string | null };
-          if (request.projectDir) void streamCodeAnswer(request.chatId);
+          const request = payload?.request as { chatId: string; projectDir?: string | null; lane?: boolean; format?: string | null };
+          if (request.format) streamTemplate(request.chatId, request.format);
+          else if (request.projectDir && !request.lane) void streamCodeAnswer(request.chatId);
           else streamAnswer(request.chatId);
           return null;
         }
+        case "chat_revert_files": {
+          const request = payload?.request as { chatId: string; messageId: string };
+          setTimeout(() => void emit("engine", { type: "filesReverted", chatId: request.chatId, messageId: request.messageId, files: ["src/cart.ts"], error: null }), 300);
+          return null;
+        }
+        case "project_guess_check":
+          return "npm test";
         case "chat_permission":
           waitingOn?.((payload as { decision: string }).decision);
           waitingOn = null;

@@ -15,6 +15,15 @@ export const MODES: { id: PermissionMode; name: TextKey; hint: TextKey }[] = [
 ];
 export const DEFAULT_MODE: PermissionMode = "auto";
 
+export type TemplateId = "changelog" | "review" | "tasks";
+
+/** Recurring tasks with a fixed answer format; the first two need a project. */
+export const TEMPLATES: { id: TemplateId; name: TextKey; prompt: TextKey; project: boolean }[] = [
+  { id: "changelog", name: "template.changelog", prompt: "template.changelogPrompt", project: true },
+  { id: "review", name: "template.review", prompt: "template.reviewPrompt", project: true },
+  { id: "tasks", name: "template.tasks", prompt: "template.tasksPrompt", project: false },
+];
+
 /** Ordered by strength (and price). */
 export const MODELS: { id: ModelId; name: string }[] = [
   { id: "claude-haiku-5-5", name: "Haiku 5.5" },
@@ -90,6 +99,18 @@ export interface Message {
   engine?: number;
   /** SDK message id at the end of this answer's turn; a rewind cuts back to it. */
   turnEnd?: string | null;
+  /** The model of an answer shown next to another model's. */
+  model?: ModelId;
+  /** A second model's answer to the same question; not part of the chat's session. */
+  lane?: boolean;
+  /** That answer's own session and turn end, to continue it in a branch. */
+  laneSession?: string | null;
+  laneTurnEnd?: string | null;
+  /** A template's answer: its format and the data Claude returned. */
+  format?: TemplateId;
+  structured?: unknown;
+  /** The file changes of this answer were undone. */
+  reverted?: boolean;
   /** Written in plan mode: the answer ends with a plan to carry out. */
   plan?: boolean;
   /** Changes and commands this answer waits on; never saved. */
@@ -131,6 +152,14 @@ export interface Chat {
   compacting?: boolean;
   /** How far Claude may go without asking (project chats). */
   mode?: PermissionMode;
+  /** The chat this one branched off. */
+  branchOf?: string | null;
+  /** Until the branch's first message: the session and answer it continues from. */
+  forkFrom?: { sessionId: string; at: string } | null;
+  /** Each question also goes to this model; its answer shows next to the chat's own. */
+  compareModel?: ModelId | null;
+  /** File changes were undone since the last message; Claude hears about it with the next one. */
+  reverted?: boolean;
   /** Older chats: file changes ran without asking. */
   autoEdits?: boolean;
 }
@@ -140,6 +169,8 @@ export interface Project {
   name: string;
   path: string;
   createdAt: number;
+  /** Run after Claude changed files, such as `npm test`. */
+  check?: string;
 }
 
 export interface ChatSummary {
@@ -149,6 +180,7 @@ export interface ChatSummary {
   pinned?: boolean;
   projectId?: string;
   projectDir?: string;
+  branchOf?: string;
 }
 
 export interface Usage {
@@ -187,8 +219,27 @@ export const api = {
     rewind?: boolean;
     rewindTo?: string | null;
     projectDir?: string | null;
-    mode: PermissionMode;
+    /** `readonly`: a second model's answer, which never touches the project folder. */
+    mode: PermissionMode | "readonly";
+    fork?: boolean;
+    lane?: boolean;
+    check?: string | null;
+    format?: TemplateId | null;
+    userUuid?: string;
+    reverted?: boolean;
   }) => invoke<number>("chat_send", { request }),
+  chatRevertFiles: (request: {
+    chatId: string;
+    sessionId: string;
+    messageId: string;
+    model: ModelId;
+    effort: Effort;
+    web: boolean;
+    projectDir: string;
+    mode: PermissionMode;
+  }) => invoke<void>("chat_revert_files", { request }),
+  projectSetCheck: (id: string, check: string) => invoke<void>("project_set_check", { id, check }),
+  projectGuessCheck: (path: string) => invoke<string>("project_guess_check", { path }),
   chatPermission: (chatId: string, id: string, decision: PermissionDecision) =>
     invoke<void>("chat_permission", { chatId, id, decision }),
   projectOpenFile: (projectDir: string, path: string) => invoke<void>("project_open_file", { projectDir, path }),

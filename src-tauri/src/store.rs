@@ -24,6 +24,9 @@ pub struct ChatSummary {
     /// The chat's folder, so a chat can be matched to a project by path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_dir: Option<String>,
+    /// The chat this one branched off; the sidebar lists it below that one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_of: Option<String>,
 }
 
 /// A folder the user added as a project; its chats may read it.
@@ -34,6 +37,9 @@ pub struct Project {
     pub name: String,
     pub path: String,
     pub created_at: i64,
+    /// A command run after Claude changed files, such as `npm test`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -79,6 +85,13 @@ fn project_of(chat: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+fn branch_of(chat: &Value) -> Option<String> {
+    chat.get("branchOf")
+        .and_then(Value::as_str)
+        .filter(|id| valid_id(id))
+        .map(str::to_string)
+}
+
 fn dir_of(chat: &Value) -> Option<String> {
     chat.get("projectDir")
         .and_then(Value::as_str)
@@ -86,7 +99,7 @@ fn dir_of(chat: &Value) -> Option<String> {
 }
 
 /// Bumped when the index gains a field; an older index is rebuilt once.
-const INDEX_VERSION: &str = "2";
+const INDEX_VERSION: &str = "3";
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let tmp = path.with_extension("json.tmp");
@@ -173,6 +186,7 @@ impl Store {
                     pinned: chat.get("pinned").and_then(Value::as_bool).unwrap_or(false),
                     project_id: project_of(&chat),
                     project_dir: dir_of(&chat),
+                    branch_of: branch_of(&chat),
                     updated_at: chat.get("updatedAt").and_then(Value::as_i64).unwrap_or(0),
                 })
             })
@@ -222,6 +236,7 @@ impl Store {
             pinned: chat.get("pinned").and_then(Value::as_bool).unwrap_or(false),
             project_id: project_of(chat),
             project_dir: dir_of(chat),
+            branch_of: branch_of(chat),
         });
         self.write_index(&list)
     }
@@ -231,16 +246,28 @@ impl Store {
             return Err("error.unknownChat".into());
         }
         let _guard = self.guard();
-        let session = fs::read(self.chat_path(id))
+        let chat = fs::read(self.chat_path(id))
             .ok()
-            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-            .and_then(|chat| {
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+        // The chat's own session and those of second-model answers in it.
+        let mut sessions: Vec<String> = Vec::new();
+        if let Some(chat) = &chat {
+            sessions.extend(
                 chat.get("sessionId")
                     .and_then(Value::as_str)
-                    .map(str::to_string)
-            });
-        if let Some(session) = session.filter(|session| valid_id(session)) {
-            self.delete_transcript(&session);
+                    .map(str::to_string),
+            );
+            if let Some(messages) = chat.get("messages").and_then(Value::as_array) {
+                sessions.extend(
+                    messages
+                        .iter()
+                        .filter_map(|message| message.get("laneSession").and_then(Value::as_str))
+                        .map(str::to_string),
+                );
+            }
+        }
+        for session in sessions.iter().filter(|session| valid_id(session)) {
+            self.delete_transcript(session);
         }
         let _ = fs::remove_file(self.chat_path(id));
         let mut list = self.read_index();
@@ -303,6 +330,7 @@ impl Store {
             name,
             path,
             created_at: chrono::Local::now().timestamp_millis(),
+            check: None,
         };
         projects.push(project.clone());
         self.write_projects(&projects)?;
@@ -321,6 +349,19 @@ impl Store {
             .find(|project| project.id == id)
             .ok_or("error.invalidRequest")?;
         project.name = name;
+        self.write_projects(&projects)
+    }
+
+    /// Sets the command run after Claude changed files; empty turns it off.
+    pub fn set_project_check(&self, id: &str, check: &str) -> Result<(), String> {
+        let check: String = check.trim().chars().take(500).collect();
+        let _guard = self.guard();
+        let mut projects = self.read_projects();
+        let project = projects
+            .iter_mut()
+            .find(|project| project.id == id)
+            .ok_or("error.invalidRequest")?;
+        project.check = (!check.is_empty()).then_some(check);
         self.write_projects(&projects)
     }
 

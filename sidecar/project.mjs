@@ -10,7 +10,7 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 export const READ_TOOLS = ["Read", "Grep", "Glob"];
 export const EDIT_TOOLS = ["Edit", "Write"];
 export const RUN_TOOLS = ["Bash"];
-export const MODES = ["auto", "default", "acceptEdits", "plan", "bypassPermissions"];
+export const MODES = ["auto", "default", "acceptEdits", "plan", "bypassPermissions", "readonly"];
 
 // Commands that ask first in every mode, also when permissions are bypassed.
 const RISKY_COMMANDS = [
@@ -65,6 +65,8 @@ export function projectGuard(projectDir, webTools, { mode = () => "default", onE
   // No decision: Claude Code's permission mode decides (auto mode's classifier).
   const undecided = {};
   const planOnly = "Plan mode: only read and investigate, then present a plan. Do not change files or run commands.";
+  // A second model's answer next to the chat's own (comparing models) never touches the folder.
+  const readOnly = "This answer is compared with another model's; describe changes and commands instead of making them.";
 
   const check = async (input) => {
     const tool = input.tool_name;
@@ -73,6 +75,7 @@ export function projectGuard(projectDir, webTools, { mode = () => "default", onE
     // Commands run in the project folder.
     if (RUN_TOOLS.includes(tool)) {
       if (current === "plan") return deny(planOnly);
+      if (current === "readonly") return deny(readOnly);
       if (isRisky(input.tool_input?.command)) return decide("ask");
       if (current === "bypassPermissions") return decide("allow");
       return current === "auto" ? undecided : decide("ask");
@@ -87,6 +90,7 @@ export function projectGuard(projectDir, webTools, { mode = () => "default", onE
     // Git's own files (hooks among them) are never written by Claude.
     if (isInside(join(root, ".git"), real)) return deny("Files in .git cannot be changed.");
     if (current === "plan") return deny(planOnly);
+    if (current === "readonly") return deny(readOnly);
     if (current === "default") return decide("ask");
     onEdit(tool, input.tool_input ?? {}, input.tool_use_id ?? null);
     return decide("allow");

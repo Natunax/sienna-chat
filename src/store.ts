@@ -6,15 +6,18 @@ import { useCallback, useSyncExternalStore } from "react";
 import {
   api,
   DEFAULT_MODE,
+  TEMPLATES,
   type Chat,
   type ChatSummary,
   type ContextCategory,
   type FileChange,
   type Message,
+  type ModelId,
   type PermissionDecision,
   type PermissionMode,
   type PermissionRequest,
   type Project,
+  type TemplateId,
   type ToolUse,
   type Usage,
 } from "./api";
@@ -135,6 +138,7 @@ function upsertSummary(chat: Chat, keepPlace = false) {
     pinned: chat.pinned,
     projectId: chat.projectId ?? undefined,
     projectDir: chat.projectDir ?? undefined,
+    branchOf: chat.branchOf ?? undefined,
   };
   if (keepPlace && summaries.some((summary) => summary.id === chat.id)) {
     summaries = summaries.map((summary) => (summary.id === chat.id ? entry : summary));
@@ -224,14 +228,47 @@ function titleFrom(text: string, fallback: string) {
   return line.length > 60 ? `${line.slice(0, 57).trimEnd()}…` : line;
 }
 
+/**
+ * Changes the chat's own last answer. A second model's answer to the same
+ * question may follow it; anything else after it means there is none.
+ */
 function updateLastAssistant(chat: Chat, change: (message: Message) => Message): Chat {
-  const index = chat.messages.length - 1;
+  let index = chat.messages.length - 1;
+  while (index >= 0 && chat.messages[index].lane) index--;
   const last = chat.messages[index];
   if (!last || last.role !== "assistant") return chat;
   const messages = chat.messages.slice();
   messages[index] = change(last);
   return { ...chat, messages };
 }
+
+function updateMessage(chat: Chat, id: string, change: (message: Message) => Message): Chat {
+  const index = chat.messages.findIndex((message) => message.id === id);
+  if (index < 0) return chat;
+  const messages = chat.messages.slice();
+  messages[index] = change(messages[index]);
+  return { ...chat, messages };
+}
+
+/** What the chat's own session has cost so far: its answers, not second models' ones. */
+function sessionCost(messages: Message[]): number {
+  return messages.reduce((sum, message) => sum + (message.lane ? 0 : (message.costUsd ?? 0)), 0);
+}
+
+/** Where the chat's session ends after these messages, for a second model to continue from. */
+function lastTurnEnd(messages: Message[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role === "assistant" && !message.lane) return message.turnEnd ?? null;
+  }
+  return null;
+}
+
+/**
+ * Second models' answers in flight: the engine knows each by its own id,
+ * the window routes its events to the message in the chat.
+ */
+const lanes = new Map<string, { chatId: string; messageId: string }>();
 
 /** Messages keep the error code, so the text follows the interface language. */
 function errorCode(error: unknown): string {
@@ -241,7 +278,14 @@ function errorCode(error: unknown): string {
 type Outgoing = { name: string; mediaType: string; data: string };
 
 /** Shows the user's message and an empty answer, then hands both to the engine. */
-async function dispatch(chat: Chat, kept: Message[], text: string, attachments: Outgoing[], rewindTo?: string | null) {
+async function dispatch(
+  chat: Chat,
+  kept: Message[],
+  text: string,
+  attachments: Outgoing[],
+  rewindTo?: string | null,
+  format?: TemplateId,
+) {
   const id = chat.id;
   const user: Message = {
     id: crypto.randomUUID(),
@@ -256,41 +300,95 @@ async function dispatch(chat: Chat, kept: Message[], text: string, attachments: 
     text: "",
     streaming: true,
     plan: chat.projectDir && mode === "plan" ? true : undefined,
+    format,
   };
+  // A second model answers the same question next to it (not for redoing or templates).
+  const rival = chat.compareModel && chat.compareModel !== chat.model && rewindTo === undefined && !format
+    ? chat.compareModel
+    : null;
+  const laneReply: Message | null = rival
+    ? { id: crypto.randomUUID(), role: "assistant", text: "", streaming: true, lane: true, model: rival }
+    : null;
+  if (laneReply) reply.model = chat.model;
   const first = kept.length === 0;
   const next: Chat = {
     ...chat,
-    title: first && !chat.titleLocked ? titleFrom(text, attachments[0]?.name ?? t("app.newChat")) : chat.title,
+    // A template's chat is named after the template, not its long task text.
+    title:
+      first && !chat.titleLocked
+        ? format
+          ? t(TEMPLATES.find((entry) => entry.id === format)?.name ?? "app.newChat")
+          : titleFrom(text, attachments[0]?.name ?? t("app.newChat"))
+        : chat.title,
     // A new first question deserves a new generated title.
     titleRequested: first ? false : chat.titleRequested,
     updatedAt: Date.now(),
-    messages: [...kept, user, reply],
+    messages: laneReply ? [...kept, user, reply, laneReply] : [...kept, user, reply],
+    reverted: false,
   };
   putChat(next);
   upsertSummary(next);
   persist(id);
+  // A branch's first message continues the session it branched off.
+  const fork = next.forkFrom ?? null;
   const rewind = rewindTo !== undefined;
   // What the session behind this chat has cost so far: the answers it still
   // contains. A dropped answer was paid for but is no longer in the session.
-  const sessionCost = kept.reduce((sum, message) => sum + (message.costUsd ?? 0), 0);
+  const cost = sessionCost(kept);
+  const outgoing = attachments.map(({ name, mediaType, data }) => ({ name, mediaType, data }));
+  const check = projectFor(next, projects)?.check ?? null;
+  if (laneReply && rival) {
+    const laneId = crypto.randomUUID();
+    lanes.set(laneId, { chatId: id, messageId: laneReply.id });
+    void api
+      .chatSend({
+        chatId: laneId,
+        sessionId: fork?.sessionId ?? next.sessionId,
+        model: rival,
+        effort: next.effort,
+        web: next.web,
+        text,
+        attachments: outgoing,
+        costSoFar: cost,
+        fork: true,
+        lane: true,
+        rewindTo: fork?.at ?? lastTurnEnd(kept),
+        projectDir: next.projectDir ?? null,
+        // A second model never touches the project folder.
+        mode: next.projectDir ? "readonly" : mode,
+      })
+      .then((engine) => updateChat(id, (current) => updateMessage(current, laneReply.id, (message) => ({ ...message, engine }))))
+      .catch((error) => {
+        lanes.delete(laneId);
+        updateChat(id, (current) =>
+          updateMessage(current, laneReply.id, (message) => ({ ...message, streaming: false, error: errorCode(error) })),
+        );
+      });
+  }
   try {
     const engine = await api.chatSend({
       chatId: id,
-      sessionId: next.sessionId,
+      sessionId: fork ? fork.sessionId : next.sessionId,
       model: next.model,
       effort: next.effort,
       web: next.web,
       text,
-      attachments: attachments.map(({ name, mediaType, data }) => ({ name, mediaType, data })),
-      costSoFar: sessionCost,
-      rewind,
-      rewindTo: rewindTo ?? null,
+      attachments: outgoing,
+      costSoFar: cost,
+      rewind: rewind && !fork,
+      fork: Boolean(fork),
+      rewindTo: fork ? fork.at : (rewindTo ?? null),
       projectDir: next.projectDir ?? null,
       mode,
+      check,
+      format: format ?? null,
+      userUuid: user.id,
+      reverted: Boolean(chat.reverted),
     });
-    updateChat(id, (current) =>
-      updateLastAssistant(current, (message) => (message.id === reply.id ? { ...message, engine } : message)),
-    );
+    updateChat(id, (current) => ({
+      ...updateLastAssistant(current, (message) => (message.id === reply.id ? { ...message, engine } : message)),
+      forkFrom: null,
+    }));
   } catch (error) {
     updateChat(id, (current) =>
       updateLastAssistant(current, (message) => ({ ...message, streaming: false, error: errorCode(error) })),
@@ -304,6 +402,100 @@ export async function sendMessage(id: string, text: string, attachments: Outgoin
   if (chat) await dispatch(chat, chat.messages, text, attachments);
 }
 
+/** Runs a template: its task as the message, its fixed format for the answer. */
+export async function runTemplate(id: string, template: TemplateId, text: string) {
+  const chat = chats.get(id);
+  if (chat) await dispatch(chat, chat.messages, text, [], undefined, template);
+}
+
+/** Each question also goes to another model (or no longer, with `null`). */
+export function setCompareModel(id: string, model: ModelId | null) {
+  updateChat(id, (chat) => ({ ...chat, compareModel: model }));
+  persist(id);
+}
+
+/**
+ * A new chat that continues this one from an answer: the conversation up to
+ * it is copied, and its first message continues a copy of the session there.
+ * A second model's answer can be continued the same way. Returns its id.
+ */
+export function branchChat(id: string, messageId: string): string | null {
+  const chat = chats.get(id);
+  if (!chat) return null;
+  const index = chat.messages.findIndex((message) => message.id === messageId);
+  const answer = chat.messages[index];
+  if (!answer || answer.role !== "assistant" || answer.streaming) return null;
+  const sessionId = answer.lane ? answer.laneSession : chat.sessionId;
+  const at = answer.lane ? answer.laneTurnEnd : answer.turnEnd;
+  if (!sessionId || !at) return null;
+  // Up to the answer; for a second model's answer, without the chat's own one next to it.
+  let kept = chat.messages.slice(0, index + 1);
+  if (answer.lane) kept = kept.filter((message, position) => position === index || !(position === index - 1 && message.role === "assistant"));
+  // Turn marks and second-model sessions belong to the original chat.
+  const messages = kept.map((message) => ({
+    ...message,
+    lane: message.id === answer.id ? undefined : message.lane,
+    turnEnd: undefined,
+    laneSession: undefined,
+    laneTurnEnd: undefined,
+    permissions: undefined,
+  }));
+  const now = Date.now();
+  const branch: Chat = {
+    ...chat,
+    id: crypto.randomUUID(),
+    title: t("branch.title", { title: chat.title.replace(/ \((Zweig|branch)\)$/, "") }),
+    createdAt: now,
+    updatedAt: now,
+    model: answer.lane && answer.model ? answer.model : chat.model,
+    sessionId: null,
+    forkFrom: { sessionId, at },
+    branchOf: chat.branchOf ?? chat.id,
+    costUsd: 0,
+    messages,
+    titleLocked: true,
+    pinned: false,
+    compareModel: null,
+    compacting: false,
+    reverted: false,
+  };
+  putChat(branch);
+  upsertSummary(branch);
+  persist(branch.id);
+  return branch.id;
+}
+
+/** Undoes the file changes Claude made from this answer's question on (file checkpoints). */
+export async function revertChanges(id: string, answerId: string) {
+  const chat = chats.get(id);
+  if (!chat?.sessionId || !chat.projectDir) return;
+  const index = chat.messages.findIndex((message) => message.id === answerId);
+  const question = chat.messages.slice(0, index).reverse().find((message) => message.role === "user");
+  if (!question) return;
+  try {
+    await api.chatRevertFiles({
+      chatId: id,
+      sessionId: chat.sessionId,
+      messageId: question.id,
+      model: chat.model,
+      effort: chat.effort,
+      web: chat.web,
+      projectDir: chat.projectDir,
+      mode: chat.mode ?? DEFAULT_MODE,
+    });
+  } catch (error) {
+    updateChat(id, (current) => withNote(current, { id: crypto.randomUUID(), role: "note", text: "", error: errorCode(error) }));
+  }
+}
+
+/** Sets the command a project runs after Claude changed files; empty turns it off. */
+export async function setProjectCheck(projectId: string, check: string) {
+  await api.projectSetCheck(projectId, check);
+  const clean = check.trim();
+  projects = projects.map((project) => (project.id === projectId ? { ...project, check: clean || undefined } : project));
+  notifyGlobal();
+}
+
 /**
  * Where a rewind of the last exchange cuts back to: the end of the answer
  * before it, or `null` when the last exchange is the first. `undefined` means
@@ -314,10 +506,13 @@ export function rewindPoint(chat: Chat): string | null | undefined {
   const count = chat.messages.length;
   const last = chat.messages[count - 1];
   const question = chat.messages[count - 2];
-  if (!last || last.role !== "assistant" || last.streaming) return undefined;
+  // Not after a template, a comparison or a branch's first answers.
+  if (!last || last.role !== "assistant" || last.streaming || last.lane || last.format) return undefined;
   if (!question || question.role !== "user" || question.attachments?.length) return undefined;
+  if (chat.forkFrom || (chat.branchOf && !last.turnEnd)) return undefined;
   if (count === 2) return null;
-  return chat.messages[count - 3]?.turnEnd ?? undefined;
+  const before = chat.messages.slice(0, count - 2).reverse().find((message) => message.role === "assistant" && !message.lane);
+  return before ? (before.turnEnd ?? undefined) : null;
 }
 
 /** Answers the last question again, or the same question in new words. */
@@ -363,6 +558,7 @@ function requestTitle(chat: Chat) {
 
 export function stopMessage(id: string) {
   void api.chatStop(id);
+  for (const [laneId, lane] of lanes) if (lane.chatId === id) void api.chatStop(laneId);
 }
 
 // A stored change keeps at most this much of each side, so chats stay small.
@@ -428,12 +624,14 @@ type EngineEvent =
   | { type: "permissionGone"; chatId: string; id: string }
   | ({ type: "change"; chatId: string } & PermissionRequest)
   | { type: "mode"; chatId: string; mode: PermissionMode; reason?: "autoUnavailable" }
+  | { type: "filesReverted"; chatId: string; messageId: string; files: string[]; error: string | null }
   | {
       type: "done";
       chatId: string;
       sessionId?: string;
       costUsd: number;
       turnEnd?: string | null;
+      structured?: unknown;
       error: string | null;
     }
   | { type: "title"; chatId: string; title: string }
@@ -448,12 +646,14 @@ type EngineEvent =
 /**
  * Adds a note to the thread: before an answer that is still streaming (an
  * automatic compaction runs before it), otherwise at the end. Answers before
- * a compaction can no longer be rewound to, so their marks are dropped.
+ * a compaction can no longer be rewound to, so `compacted` drops their marks.
  */
-function withNote(chat: Chat, note: Message): Chat {
-  const messages = chat.messages.map((message) => (message.turnEnd ? { ...message, turnEnd: null } : message));
-  const last = messages[messages.length - 1];
-  if (last?.streaming) messages.splice(messages.length - 1, 0, note);
+function withNote(chat: Chat, note: Message, compacted = false): Chat {
+  const messages = compacted
+    ? chat.messages.map((message) => (message.turnEnd ? { ...message, turnEnd: null } : message))
+    : chat.messages.slice();
+  const running = messages.findIndex((message) => message.streaming && !message.lane);
+  if (running >= 0) messages.splice(running, 0, note);
   else messages.push(note);
   return { ...chat, messages };
 }
@@ -462,7 +662,7 @@ function withNote(chat: Chat, note: Message): Chat {
 export async function compactChat(id: string) {
   const chat = chats.get(id);
   if (!chat || !chat.sessionId || chat.compacting) return;
-  if (chat.messages[chat.messages.length - 1]?.streaming) return;
+  if (chat.messages.slice(-3).some((message) => message.streaming)) return;
   putChat({ ...chat, compacting: true });
   try {
     await api.chatCompact({
@@ -471,7 +671,7 @@ export async function compactChat(id: string) {
       model: chat.model,
       effort: chat.effort,
       web: chat.web,
-      costSoFar: chat.messages.reduce((sum, message) => sum + (message.costUsd ?? 0), 0),
+      costSoFar: sessionCost(chat.messages),
       projectDir: chat.projectDir ?? null,
       mode: chat.mode ?? DEFAULT_MODE,
     });
@@ -486,15 +686,60 @@ export async function compactChat(id: string) {
 /** Fails the answers a stopped engine was streaming, and only those. */
 function failStreaming(generation: number, reason: string) {
   for (const chat of chats.values()) {
-    const last = chat.messages[chat.messages.length - 1];
-    if (last?.streaming && last.engine === generation) {
-      putChat(updateLastAssistant(chat, (message) => ({ ...message, streaming: false, permissions: undefined, error: reason })));
-      persist(chat.id);
-    }
+    if (!chat.messages.some((message) => message.streaming && message.engine === generation)) continue;
+    const messages = chat.messages.map((message) =>
+      message.streaming && message.engine === generation
+        ? { ...message, streaming: false, permissions: undefined, error: reason }
+        : message,
+    );
+    putChat({ ...chat, messages });
+    persist(chat.id);
+  }
+  for (const [laneId, lane] of lanes) if (!chats.get(lane.chatId)?.messages.some((m) => m.id === lane.messageId && m.streaming)) lanes.delete(laneId);
+}
+
+/** Events of a second model's answer: text, steps and its end; the rest is the chat's own business. */
+function onLaneEvent(lane: { chatId: string; messageId: string }, laneId: string, event: EngineEvent) {
+  const change = (update: (message: Message) => Message) =>
+    updateChat(lane.chatId, (chat) => updateMessage(chat, lane.messageId, update));
+  switch (event.type) {
+    case "session":
+      change((message) => ({ ...message, laneSession: event.sessionId }));
+      return;
+    case "delta":
+      change((message) => ({
+        ...message,
+        text: message.text + event.text,
+        thinking: event.thinking ? (message.thinking ?? "") + event.thinking : message.thinking,
+      }));
+      return;
+    case "tool":
+      change((message) => ({ ...message, tools: [...(message.tools ?? []), { id: event.id, name: event.name, detail: event.detail }] }));
+      return;
+    case "done":
+      lanes.delete(laneId);
+      change((message) => ({
+        ...message,
+        streaming: false,
+        costUsd: (message.costUsd ?? 0) + event.costUsd,
+        laneTurnEnd: event.turnEnd ?? null,
+        laneSession: event.sessionId ?? message.laneSession,
+        error: event.error,
+      }));
+      updateChat(lane.chatId, (chat) => ({ ...chat, costUsd: chat.costUsd + event.costUsd }));
+      persist(lane.chatId);
+      return;
+    default:
+      return;
   }
 }
 
 function onEngineEvent(event: EngineEvent) {
+  const lane = "chatId" in event ? lanes.get(event.chatId) : undefined;
+  if (lane && "chatId" in event) {
+    onLaneEvent(lane, event.chatId, event);
+    return;
+  }
   switch (event.type) {
     case "session":
       updateChat(event.chatId, (chat) => ({ ...chat, sessionId: event.sessionId }));
@@ -554,6 +799,31 @@ function onEngineEvent(event: EngineEvent) {
       });
       persist(event.chatId);
       return;
+    case "filesReverted":
+      updateChat(event.chatId, (chat) => {
+        if (event.error) return withNote(chat, { id: crypto.randomUUID(), role: "note", text: "", error: event.error });
+        // The question's answer and every one after it lose their changes.
+        const from = chat.messages.findIndex((message) => message.id === event.messageId);
+        const messages = chat.messages.map((message, index) =>
+          index > from && message.role === "assistant" && message.tools?.some((tool) => tool.change)
+            ? { ...message, reverted: true }
+            : message,
+        );
+        return withNote(
+          { ...chat, messages, reverted: true },
+          {
+            id: crypto.randomUUID(),
+            role: "note",
+            text: event.files.length
+              ? t("revert.done", {
+                  files: event.files.slice(0, 3).join(", ") + (event.files.length > 3 ? ` +${event.files.length - 3}` : ""),
+                })
+              : t("revert.nothing"),
+          },
+        );
+      });
+      persist(event.chatId);
+      return;
     case "change": {
       // A change that ran without asking (edits allowed for the whole chat).
       const { type: _type, chatId: _chatId, ...request } = event;
@@ -568,6 +838,7 @@ function onEngineEvent(event: EngineEvent) {
           permissions: undefined,
           costUsd: (message.costUsd ?? 0) + event.costUsd,
           turnEnd: event.turnEnd ?? null,
+          structured: event.structured ?? message.structured,
           error: event.error,
         })),
         sessionId: event.sessionId ?? chat.sessionId,
@@ -598,7 +869,7 @@ function onEngineEvent(event: EngineEvent) {
         role: "note",
         text: "",
         compaction: { trigger: event.trigger, before: event.before, after: event.after },
-      }));
+      }, true));
       persist(event.chatId);
       return;
     case "compactDone":

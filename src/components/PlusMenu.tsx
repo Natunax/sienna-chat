@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { t } from "../i18n";
-import { CheckIcon, FolderIcon, GlobeIcon, PaperclipIcon, PlusIcon } from "./icons";
+import { CheckIcon, CompareIcon, FolderIcon, GlobeIcon, ListIcon, PaperclipIcon, PlusIcon, ShieldCheckIcon } from "./icons";
 
 interface Props {
   web: boolean;
@@ -8,10 +8,15 @@ interface Props {
   onAttach: () => void;
   /** Missing once the chat has messages: the folder is fixed then. */
   onProject?: () => void;
+  comparing: boolean;
+  onCompare: () => void;
+  /** Only in project chats: the command run after changes. */
+  onCheck?: () => void;
+  templates: { id: string; name: string; run: () => void }[];
 }
 
-/** The composer's + button: attach a file, pick a project folder, toggle web search. */
-export function PlusMenu({ web, onWeb, onAttach, onProject }: Props) {
+/** The composer's + button: files, project folder, web search, comparing, checks and templates. */
+export function PlusMenu({ web, onWeb, onAttach, onProject, comparing, onCompare, onCheck, templates }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -70,6 +75,30 @@ export function PlusMenu({ web, onWeb, onAttach, onProject }: Props) {
             {t("composer.web")}
             {web && <CheckIcon size={14} className="plus-check" />}
           </button>
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={comparing}
+            className="plus-item"
+            onClick={run(onCompare)}
+          >
+            <CompareIcon size={15} />
+            {t("compare.action")}
+            {comparing && <CheckIcon size={14} className="plus-check" />}
+          </button>
+          {onCheck && (
+            <button type="button" role="menuitem" className="plus-item" onClick={run(onCheck)}>
+              <ShieldCheckIcon size={15} />
+              {t("check.action")}
+            </button>
+          )}
+          {templates.length > 0 && <div className="plus-heading">{t("template.title")}</div>}
+          {templates.map((template) => (
+            <button key={template.id} type="button" role="menuitem" className="plus-item" onClick={run(template.run)}>
+              <ListIcon size={15} />
+              {template.name}
+            </button>
+          ))}
         </div>
       )}
     </div>

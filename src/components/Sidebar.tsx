@@ -3,6 +3,7 @@ import { formatUsd, type ChatSummary, type Project, type Usage } from "../api";
 import { locale, t, useLanguage } from "../i18n";
 import { projectFor } from "../store";
 import {
+  BranchIcon,
   ChevronRightIcon,
   CloseIcon,
   ComposeIcon,
@@ -67,9 +68,11 @@ function RenameField({ title, onDone }: { title: string; onDone: (title: string 
   );
 }
 
-function ChatRow({ chat, active, onSelect, onDelete, onRename, onPin }: {
+function ChatRow({ chat, active, branch, onSelect, onDelete, onRename, onPin }: {
   chat: ChatSummary;
   active: boolean;
+  /** Listed below the chat it branched off. */
+  branch?: boolean;
   onSelect: () => void;
   onDelete: () => void;
   onRename: (title: string) => void;
@@ -99,7 +102,7 @@ function ChatRow({ chat, active, onSelect, onDelete, onRename, onPin }: {
   }
 
   return (
-    <li className={`chat-row${active ? " is-active" : ""}${confirming ? " is-confirming" : ""}`}>
+    <li className={`chat-row${active ? " is-active" : ""}${confirming ? " is-confirming" : ""}${branch ? " is-branch" : ""}`}>
       <button
         type="button"
         className="chat-row-main"
@@ -109,6 +112,7 @@ function ChatRow({ chat, active, onSelect, onDelete, onRename, onPin }: {
         aria-current={active ? "page" : undefined}
         title={t("sidebar.renameHint")}
       >
+        {branch && <BranchIcon size={13} className="chat-row-branch" />}
         {chat.title}
       </button>
       {confirming ? (
@@ -269,7 +273,22 @@ export function Sidebar(props: Props) {
   }, [activeProjectId]);
 
   const owner = (chat: ChatSummary) => projectFor(chat, projects)?.id;
-  const matches = (chat: ChatSummary) => !needle || chat.title.toLowerCase().includes(needle);
+  // Branches are listed below the chat they branched off, while it exists.
+  const branches = useMemo(() => {
+    const ids = new Set(summaries.map((chat) => chat.id));
+    const byParent = new Map<string, ChatSummary[]>();
+    for (const chat of summaries) {
+      if (!chat.branchOf || !ids.has(chat.branchOf)) continue;
+      byParent.set(chat.branchOf, [...(byParent.get(chat.branchOf) ?? []), chat]);
+    }
+    return byParent;
+  }, [summaries]);
+  const isNested = (chat: ChatSummary) => Boolean(chat.branchOf && branches.get(chat.branchOf)?.includes(chat));
+  const matches = (chat: ChatSummary) =>
+    !isNested(chat) &&
+    (!needle ||
+      chat.title.toLowerCase().includes(needle) ||
+      (branches.get(chat.id) ?? []).some((branch) => branch.title.toLowerCase().includes(needle)));
 
   const projectChats = useMemo(() => {
     const byProject = new Map<string, ChatSummary[]>();
@@ -279,7 +298,7 @@ export function Sidebar(props: Props) {
       byProject.set(projectId, [...(byProject.get(projectId) ?? []), chat]);
     }
     return byProject;
-  }, [summaries, projects, needle]);
+  }, [summaries, projects, needle, branches]);
 
   const groups = useMemo(() => {
     const now = new Date();
@@ -296,23 +315,25 @@ export function Sidebar(props: Props) {
     }
     return result;
     // The group labels are translated, so they are rebuilt when the language changes.
-  }, [summaries, projects, needle, language]);
+  }, [summaries, projects, needle, language, branches]);
 
   const visibleProjects = projects.filter(
     (project) => !needle || project.name.toLowerCase().includes(needle) || projectChats.has(project.id),
   );
 
-  const row = (chat: ChatSummary) => (
+  const single = (chat: ChatSummary, branch = false) => (
     <ChatRow
       key={chat.id}
       chat={chat}
       active={chat.id === activeId}
+      branch={branch}
       onSelect={() => onSelect(chat.id)}
       onDelete={() => onDelete(chat.id)}
       onRename={(title) => onRename(chat.id, title)}
       onPin={() => onPin(chat.id)}
     />
   );
+  const row = (chat: ChatSummary) => [single(chat), ...(branches.get(chat.id) ?? []).map((branch) => single(branch, true))];
 
   const share = usage ? Math.min(1, usage.usd / usage.budget) : 0;
   const monthName = usage

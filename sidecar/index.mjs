@@ -14,10 +14,12 @@
 
 import { deleteSession, query } from "@anthropic-ai/claude-agent-sdk";
 import { createInterface } from "node:readline";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, projectGuard, projectPrompt } from "./project.mjs";
+import { TEMPLATES } from "./templates.mjs";
 
 const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
 // The packaged app ships the engine as one bundled file plus the Claude Code
@@ -105,7 +107,36 @@ const SANDBOXED_MODES = ["auto", "bypassPermissions"];
 const noAutoMode = new Set();
 
 function sdkMode(mode) {
-  return mode === "plan" ? "default" : mode;
+  return mode === "plan" || mode === "readonly" ? "default" : mode;
+}
+
+// The check command after changes: how often a failing check sends Claude
+// back to fix it within one answer, and how long it may run.
+const MAX_CHECK_ROUNDS = 2;
+const CHECK_TIMEOUT_MS = 10 * 60 * 1000;
+const REVERTED_NOTE =
+  "<sienna_note>The user reverted the file changes of an earlier answer in Sienna. The files are back to how they were before it; read them again before relying on them.</sienna_note>";
+
+/** Runs the user's check command in the project folder; resolves with its result. */
+function runCheck(command, cwd) {
+  return new Promise((resolveCheck) => {
+    // The API key stays out of the user's tests.
+    const { ANTHROPIC_API_KEY: _key, CLAUDE_CONFIG_DIR: _config, ...env } = childEnv;
+    const child = spawn("/bin/zsh", ["-c", command], { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    let output = "";
+    const collect = (chunk) => {
+      output = (output + chunk.toString()).slice(-MAX_OUTPUT_CHARS * 4);
+    };
+    child.stdout.on("data", collect);
+    child.stderr.on("data", collect);
+    const timer = setTimeout(() => child.kill("SIGTERM"), CHECK_TIMEOUT_MS);
+    const finish = (code) => {
+      clearTimeout(timer);
+      resolveCheck({ passed: code === 0, output: output.slice(-MAX_OUTPUT_CHARS) });
+    };
+    child.on("error", () => finish(-1));
+    child.on("close", finish);
+  });
 }
 
 function validMode(mode) {
@@ -173,6 +204,9 @@ class ChatSession {
     this.permissions = new Map();
     /** Commands' tool use ids, to report their output. */
     this.commandIds = new Set();
+    /** Files changed in the running answer, and check rounds run for it. */
+    this.edited = false;
+    this.checkRounds = 0;
     this.query = query({
       prompt: this.inbox,
       options: {
@@ -200,12 +234,20 @@ class ChatSession {
             : undefined,
         canUseTool: config.projectDir ? (tool, input, options) => this.askUser(tool, input, options) : undefined,
         hooks: config.projectDir
-          ? projectGuard(config.projectDir, config.web ? WEB_TOOLS : [], {
-              mode: () => this.config.mode,
-              onEdit: (tool, input, toolUseId) =>
-                emit({ type: "change", chatId: this.chatId, id: randomUUID(), toolUseId, ...this.describe(tool, input) }),
-            })
+          ? {
+              ...projectGuard(config.projectDir, config.web ? WEB_TOOLS : [], {
+                mode: () => this.config.mode,
+                onEdit: (tool, input, toolUseId) => {
+                  this.edited = true;
+                  emit({ type: "change", chatId: this.chatId, id: randomUUID(), toolUseId, ...this.describe(tool, input) });
+                },
+              }),
+              Stop: [{ hooks: [() => this.afterAnswer()] }],
+            }
           : undefined,
+        // Backups of changed files, so an answer's changes can be undone.
+        enableFileCheckpointing: config.projectDir ? true : undefined,
+        outputFormat: config.format ? { type: "json_schema", schema: TEMPLATES[config.format] } : undefined,
         systemPrompt: config.projectDir ? SYSTEM_PROMPT + projectPrompt(config.projectDir) : SYSTEM_PROMPT,
         cwd: config.projectDir ?? workDir,
         env: childEnv,
@@ -213,12 +255,33 @@ class ChatSession {
         resume: config.sessionId ?? undefined,
         // Cutting back forks the session, so the dropped turn stays out of it.
         resumeSessionAt: config.rewindTo ?? undefined,
-        forkSession: config.rewindTo ? true : undefined,
+        forkSession: config.sessionId && (config.rewindTo || config.fork) ? true : undefined,
         stderr: () => {},
       },
     });
     this.pump();
     if (config.projectDir && config.mode === "auto") this.checkAutoMode();
+  }
+
+  /**
+   * Stop hook: after an answer that changed files, runs the project's check
+   * command. A failing check sends Claude back to fix it, a few times at most.
+   */
+  async afterAnswer() {
+    const command = this.config.check;
+    if (!command || !this.edited || this.checkRounds >= MAX_CHECK_ROUNDS || this.interrupted) return {};
+    this.edited = false;
+    this.checkRounds += 1;
+    this.flush();
+    const id = `check-${randomUUID()}`;
+    emit({ type: "tool", chatId: this.chatId, id, name: "Check", detail: command.slice(0, 500) });
+    const result = await runCheck(command, this.config.projectDir);
+    emit({ type: "toolResult", chatId: this.chatId, id, failed: !result.passed, output: result.output || "" });
+    if (result.passed) return {};
+    return {
+      decision: "block",
+      reason: `The project's check command \`${command}\` failed after your changes. Fix the cause, then stop. Output (end):\n${result.output}`,
+    };
   }
 
   /** Falls back to manual approvals when the model has no auto mode. */
@@ -285,6 +348,7 @@ class ChatSession {
         if (!this.permissions.delete(id)) return;
         emit({ type: "permissionGone", chatId: this.chatId, id });
         if (decision === "allow" || decision === "always") {
+          if (EDIT_TOOLS.includes(tool)) this.edited = true;
           if (decision === "always" && EDIT_TOOLS.includes(tool) && this.config.mode === "default") {
             this.setMode("acceptEdits");
             emit({ type: "mode", chatId: this.chatId, mode: "acceptEdits" });
@@ -361,23 +425,31 @@ class ChatSession {
       this.config.effort === config.effort &&
       this.config.web === config.web &&
       this.config.projectDir === config.projectDir &&
+      this.config.format === config.format &&
       // The sandbox is set when the session starts.
       SANDBOXED_MODES.includes(this.config.mode) === SANDBOXED_MODES.includes(config.mode)
     );
   }
 
-  send(content) {
+  send(content, { uuid = null, reverted = false } = {}) {
     clearTimeout(this.idleTimer);
-    if (this.config.projectDir && this.config.mode === "plan") {
+    const notes = [];
+    if (reverted) notes.push(REVERTED_NOTE);
+    if (this.config.projectDir && this.config.mode === "plan") notes.push(PLAN_NOTE);
+    if (notes.length) {
       const blocks = typeof content === "string" ? [{ type: "text", text: content }] : content;
-      content = [{ type: "text", text: PLAN_NOTE }, ...blocks];
+      content = [...notes.map((text) => ({ type: "text", text })), ...blocks];
     }
     this.busy = true;
     this.interrupted = false;
+    this.edited = false;
+    this.checkRounds = 0;
     this.inbox.push({
       type: "user",
       message: { role: "user", content },
       parent_tool_use_id: null,
+      // The window's message id: file checkpoints are kept per user message.
+      ...(uuid ? { uuid } : {}),
       // The user's text goes in as typed: no `@path` file expansion, no slash commands.
       client_composed: true,
     });
@@ -523,8 +595,14 @@ class ChatSession {
           model: this.config.model,
           // Where a later rewind cuts back to, to drop the turns after this one.
           turnEnd: this.lastAssistantUuid,
+          structured: this.config.format && !failed ? (message.structured_output ?? null) : null,
           error: failed ? describeError(message) : null,
         });
+        // A second model's answer is done once it is written; its session stays for a branch.
+        if (this.config.lane) {
+          this.close();
+          return;
+        }
         this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
         this.reportContext();
         return;
@@ -646,11 +724,23 @@ async function onSend(command) {
     // Already checked and made canonical by the Rust shell.
     projectDir: typeof command.projectDir === "string" && command.projectDir ? command.projectDir : null,
     mode: validMode(command.mode),
+    check: typeof command.check === "string" && command.check.trim() ? command.check.trim() : null,
+    format: Object.hasOwn(TEMPLATES, command.format ?? "") ? command.format : null,
+    lane: Boolean(command.lane),
     rewindTo: null,
     replacesSession: null,
   };
   let session = sessions.get(command.chatId);
-  if (command.rewind) {
+  if (command.fork) {
+    // A branch (or a second model's answer) continues a copy of another
+    // chat's session from one of its answers; the original stays as it is.
+    session?.close();
+    sessions.delete(command.chatId);
+    session = undefined;
+    // Without a turn mark the whole session is copied; without a session the chat starts afresh.
+    config.fork = true;
+    config.rewindTo = command.rewindTo ?? null;
+  } else if (command.rewind) {
     // Regenerate or edit: the answer to replace is the last turn of the
     // session. Keep everything up to `rewindTo`; without one, start afresh.
     session?.close();
@@ -673,10 +763,14 @@ async function onSend(command) {
     await session.query.setModel(config.model);
   }
   session.setMode(config.mode);
+  session.config.check = config.check;
   // Re-inserting keeps the map ordered from least to most recently used.
   sessions.delete(command.chatId);
   sessions.set(command.chatId, session);
-  session.send(toContent(command.text, command.attachments));
+  session.send(toContent(command.text, command.attachments), {
+    uuid: typeof command.userUuid === "string" ? command.userUuid : null,
+    reverted: Boolean(command.reverted),
+  });
 }
 
 /** Compacts a chat's session, opening it first (from its session id) if needed. */
@@ -700,6 +794,36 @@ async function onCompact(command) {
     sessions.set(command.chatId, session);
   }
   session.compact();
+}
+
+/** Undoes the file changes made since a user message, opening the chat's session if needed. */
+async function onRewindFiles(command) {
+  let session = sessions.get(command.chatId);
+  if (session?.busy) throw new Error("busy");
+  if (!session) {
+    if (!command.sessionId || !command.projectDir) throw new Error("no session");
+    evictIdleSessions();
+    session = new ChatSession(command.chatId, {
+      model: command.model,
+      effort: command.effort,
+      web: Boolean(command.web),
+      sessionId: command.sessionId,
+      costSoFar: 0,
+      projectDir: command.projectDir,
+      mode: validMode(command.mode),
+      rewindTo: null,
+      replacesSession: null,
+    });
+    sessions.set(command.chatId, session);
+  }
+  const result = await session.query.rewindFiles(command.messageId);
+  emit({
+    type: "filesReverted",
+    chatId: command.chatId,
+    messageId: command.messageId,
+    files: (result.filesChanged ?? []).map((file) => session.relative(file)),
+    error: result.canRewind ? null : "error.revertFailed",
+  });
 }
 
 /** Makes room for one more live session by closing the oldest idle ones. */
@@ -768,6 +892,11 @@ function onCommand(line) {
       return;
     case "interrupt":
       sessions.get(command.chatId)?.interrupt();
+      return;
+    case "rewindFiles":
+      onRewindFiles(command).catch(() =>
+        emit({ type: "filesReverted", chatId: command.chatId, messageId: command.messageId, files: [], error: "error.revertFailed" }),
+      );
       return;
     case "permission":
       sessions.get(command.chatId)?.answer(command.id, command.decision);

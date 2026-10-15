@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "
 import {
   api,
   formatUsd,
+  MODELS,
   type Message,
   type PermissionDecision,
   type PermissionMode,
@@ -14,6 +15,7 @@ import { shortTokens } from "./ContextMeter";
 import { DiffView } from "./DiffView";
 import {
   AlertIcon,
+  BranchIcon,
   CheckIcon,
   ChevronRightIcon,
   CopyIcon,
@@ -23,9 +25,12 @@ import {
   RetryIcon,
   SearchIcon,
   SparkIcon,
+  ShieldCheckIcon,
   TerminalIcon,
+  UndoIcon,
 } from "./icons";
 import { PermissionCard } from "./PermissionCard";
+import { StructuredView } from "./StructuredView";
 
 const TOOL_LABELS: Record<string, TextKey> = {
   WebSearch: "message.searching",
@@ -36,6 +41,7 @@ const TOOL_LABELS: Record<string, TextKey> = {
   Edit: "tool.edit",
   Write: "tool.write",
   Bash: "tool.bash",
+  Check: "tool.check",
 };
 
 function ToolIcon({ name }: { name: string }) {
@@ -43,13 +49,14 @@ function ToolIcon({ name }: { name: string }) {
   if (name === "Bash") return <TerminalIcon size={13} />;
   if (name === "Edit") return <PencilIcon size={13} />;
   if (name === "Write") return <DocumentIcon size={13} />;
+  if (name === "Check") return <ShieldCheckIcon size={13} />;
   return <SearchIcon size={13} />;
 }
 
 const FILE_TOOLS = ["Read", "Edit", "Write"];
 
 /** The tools an answer used; changes and command output open below the row, files in the editor. */
-function Tools({ tools, projectDir }: { tools: ToolUse[]; projectDir?: string | null }) {
+function Tools({ tools, projectDir, reverted }: { tools: ToolUse[]; projectDir?: string | null; reverted?: boolean }) {
   const [open, setOpen] = useState<number | null>(null);
   const [missing, setMissing] = useState<number | null>(null);
   const shown = open === null ? undefined : tools[open];
@@ -100,6 +107,7 @@ function Tools({ tools, projectDir }: { tools: ToolUse[]; projectDir?: string | 
                 tool.detail && <span className="tool-detail">{tool.detail}</span>
               )}
               {tool.denied && <span className="tool-state">{t("tool.denied")}</span>}
+              {reverted && tool.change && !tool.denied && <span className="tool-state">{t("revert.label")}</span>}
               {!tool.denied && tool.failed && <span className="tool-state">{t("tool.failed")}</span>}
               {missing === index && <span className="tool-state is-error">{t("error.fileMissing")}</span>}
             </div>
@@ -259,10 +267,22 @@ interface Props {
   projectDir?: string | null;
   /** Set on the last answer: carries out a plan it ends with. */
   onImplement?: (mode: PermissionMode) => void;
+  /** Starts a new chat that continues from this answer. */
+  onBranch?: (messageId: string) => void;
+  /** Undoes the file changes from this answer on. */
+  onRevert?: (messageId: string) => void;
+  /** Shows the model above the answer, when two answer side by side. */
+  showModel?: boolean;
 }
 
-function MessageViewImpl({ message, onRedo, onPermission, projectDir, onImplement }: Props) {
+function MessageViewImpl({ message, onRedo, onPermission, projectDir, onImplement, onBranch, onRevert, showModel }: Props) {
   const [editing, setEditing] = useState(false);
+  const [confirmRevert, setConfirmRevert] = useState(false);
+  useEffect(() => {
+    if (!confirmRevert) return;
+    const timer = setTimeout(() => setConfirmRevert(false), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmRevert]);
 
   if (message.role === "note") {
     const compaction = message.compaction;
@@ -327,13 +347,25 @@ function MessageViewImpl({ message, onRedo, onPermission, projectDir, onImplemen
   }
 
   const streaming = Boolean(message.streaming);
-  const waiting = streaming && !message.text && !message.permissions?.length;
+  const structured = message.format && message.structured ? message.structured : null;
+  const waiting = streaming && (!message.text || Boolean(message.format)) && !message.permissions?.length;
+  const branchable = !streaming && onBranch && (message.lane ? message.laneSession && message.laneTurnEnd : message.turnEnd);
+  const revertable =
+    !streaming && onRevert && !message.lane && !message.reverted && message.turnEnd && message.tools?.some((tool) => tool.change);
+  const modelName = MODELS.find((entry) => entry.id === message.model)?.name;
   return (
-    <div className="msg msg-assistant" aria-busy={streaming}>
+    <div className={`msg msg-assistant${message.lane ? " is-lane" : ""}`} aria-busy={streaming}>
+      {showModel && modelName && <div className="msg-model">{modelName}</div>}
       {(message.thinking || waiting) && <Thinking text={message.thinking ?? ""} active={waiting} />}
-      {message.tools?.length ? <Tools tools={message.tools} projectDir={projectDir} /> : null}
-      {message.text && <Markdown text={message.text} final={!streaming} />}
-      {streaming && message.text && !message.permissions?.length && <span className="caret" aria-hidden="true" />}
+      {message.tools?.length ? <Tools tools={message.tools} projectDir={projectDir} reverted={message.reverted} /> : null}
+      {structured && message.format ? (
+        <StructuredView format={message.format} data={structured} />
+      ) : (
+        message.text && !(message.format && streaming) && <Markdown text={message.text} final={!streaming} />
+      )}
+      {streaming && message.text && !message.format && !message.permissions?.length && (
+        <span className="caret" aria-hidden="true" />
+      )}
       {onPermission &&
         message.permissions?.map((request) => (
           <PermissionCard key={request.id} request={request} onAnswer={onPermission} />
@@ -354,9 +386,9 @@ function MessageViewImpl({ message, onRedo, onPermission, projectDir, onImplemen
           {storedErrorText(message.error)}
         </div>
       )}
-      {!streaming && (message.text || onRedo) ? (
+      {!streaming && (message.text || onRedo || structured) ? (
         <div className="msg-actions">
-          {message.text && <CopyButton text={message.text} />}
+          {message.text && !structured && <CopyButton text={message.text} />}
           {onRedo && (
             <button
               type="button"
@@ -368,6 +400,41 @@ function MessageViewImpl({ message, onRedo, onPermission, projectDir, onImplemen
               <RetryIcon size={15} />
             </button>
           )}
+          {branchable && (
+            <button
+              type="button"
+              className="msg-action"
+              onClick={() => onBranch(message.id)}
+              aria-label={t(message.lane ? "compare.continue" : "branch.action")}
+              title={t(message.lane ? "compare.continue" : "branch.action")}
+            >
+              <BranchIcon size={15} />
+            </button>
+          )}
+          {revertable &&
+            (confirmRevert ? (
+              <button
+                type="button"
+                className="msg-action is-confirm"
+                onClick={() => {
+                  setConfirmRevert(false);
+                  onRevert(message.id);
+                }}
+              >
+                <UndoIcon size={14} />
+                {t("revert.confirm")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="msg-action"
+                onClick={() => setConfirmRevert(true)}
+                aria-label={t("revert.action")}
+                title={t("revert.action")}
+              >
+                <UndoIcon size={15} />
+              </button>
+            ))}
           {message.costUsd ? <span className="msg-cost">{formatUsd(message.costUsd)}</span> : null}
         </div>
       ) : null}
