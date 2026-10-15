@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_MODE, MODES, type PermissionMode } from "../api";
 import { t } from "../i18n";
-import { CheckIcon, ChevronDownIcon } from "./icons";
+import { CheckIcon } from "./icons";
 
 interface Props {
   mode: PermissionMode;
@@ -62,7 +62,6 @@ export function ModeMenu({ mode, onChange }: Props) {
         onClick={() => setOpen(!open)}
       >
         {modeName(mode)}
-        <ChevronDownIcon size={13} />
       </button>
       {open && (
         <div className="menu mode-menu" role="menu" aria-label={t("mode.title")}>

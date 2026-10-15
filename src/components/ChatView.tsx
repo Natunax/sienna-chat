@@ -181,7 +181,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
       compacting={Boolean(chat.compacting)}
       onCompact={chat.sessionId && !streaming ? () => void compactChat(chat.id) : undefined}
       mode={chat.mode ?? DEFAULT_MODE}
-      onMode={chat.projectDir ? (mode) => setMode(chat.id, mode) : undefined}
+      onMode={(mode) => setMode(chat.id, mode)}
       onProject={(picked) =>
         updateChat(chat.id, (current) => ({
           ...current,

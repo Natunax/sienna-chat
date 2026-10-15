@@ -44,8 +44,8 @@ interface Props {
   onCompact?: () => void;
   compacting: boolean;
   mode: PermissionMode;
-  /** Missing outside project chats, where Claude cannot change anything. */
-  onMode?: (mode: PermissionMode) => void;
+  /** Always shown, as in Claude Code; it takes effect once the chat has a project folder. */
+  onMode: (mode: PermissionMode) => void;
 }
 
 function folderName(path: string): string {
@@ -269,7 +269,7 @@ export function Composer(props: Props) {
       {/* The model sits below the box, as in Claude Code. */}
       <div className="composer-footer">
         <div className="composer-footer-start">
-          {project && onMode && <ModeMenu mode={mode} onChange={onMode} />}
+          <ModeMenu mode={mode} onChange={onMode} />
           <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
         </div>
         {context && context.window > 0 && (
