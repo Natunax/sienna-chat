@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { formatUsd, type ChatSummary, type Usage } from "../api";
 import { ComposeIcon, GearIcon, SearchIcon, SidebarIcon, TrashIcon } from "./icons";
 
@@ -9,6 +9,7 @@ interface Props {
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  onRename: (id: string, title: string) => void;
   onToggle: () => void;
   onSettings: () => void;
 }
@@ -25,13 +26,36 @@ function groupOf(updatedAt: number, now: Date): string {
   return "Älter";
 }
 
-function ChatRow({ chat, active, onSelect, onDelete }: {
+function RenameField({ title, onDone }: { title: string; onDone: (title: string | null) => void }) {
+  const [value, setValue] = useState(title);
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") onDone(value.trim() || null);
+    if (event.key === "Escape") onDone(null);
+  };
+  return (
+    <input
+      className="chat-row-rename"
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onKeyDown={onKeyDown}
+      onBlur={() => onDone(value.trim() || null)}
+      onFocus={(event) => event.target.select()}
+      aria-label="Chat umbenennen"
+      maxLength={120}
+      autoFocus
+    />
+  );
+}
+
+function ChatRow({ chat, active, onSelect, onDelete, onRename }: {
   chat: ChatSummary;
   active: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  onRename: (title: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [renaming, setRenaming] = useState(false);
 
   useEffect(() => {
     if (!confirming) return;
@@ -39,9 +63,31 @@ function ChatRow({ chat, active, onSelect, onDelete }: {
     return () => clearTimeout(timer);
   }, [confirming]);
 
+  if (renaming) {
+    return (
+      <li className="chat-row is-renaming">
+        <RenameField
+          title={chat.title}
+          onDone={(title) => {
+            setRenaming(false);
+            if (title && title !== chat.title) onRename(title);
+          }}
+        />
+      </li>
+    );
+  }
+
   return (
     <li className={`chat-row${active ? " is-active" : ""}`}>
-      <button type="button" className="chat-row-main" onClick={onSelect} aria-current={active ? "page" : undefined}>
+      <button
+        type="button"
+        className="chat-row-main"
+        onClick={onSelect}
+        onDoubleClick={() => setRenaming(true)}
+        onKeyDown={(event) => event.key === "F2" && setRenaming(true)}
+        aria-current={active ? "page" : undefined}
+        title="Doppelklick zum Umbenennen"
+      >
         {chat.title}
       </button>
       {confirming ? (
@@ -64,7 +110,7 @@ function ChatRow({ chat, active, onSelect, onDelete }: {
 }
 
 export function Sidebar(props: Props) {
-  const { summaries, activeId, usage, onSelect, onNew, onDelete, onToggle, onSettings } = props;
+  const { summaries, activeId, usage, onSelect, onNew, onDelete, onRename, onToggle, onSettings } = props;
   const [query, setQuery] = useState("");
 
   const groups = useMemo(() => {
@@ -118,6 +164,7 @@ export function Sidebar(props: Props) {
                   active={chat.id === activeId}
                   onSelect={() => onSelect(chat.id)}
                   onDelete={() => onDelete(chat.id)}
+                  onRename={(title) => onRename(chat.id, title)}
                 />
               ))}
             </ul>

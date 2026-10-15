@@ -1,12 +1,13 @@
-// Chat engine of Claude API Chat. The Rust shell starts this script with Node
+// Chat engine of Sienna. The Rust shell starts this script with Node
 // and talks to it in JSON lines: commands on stdin, events on stdout.
 //
 // Every chat keeps one live Agent SDK query in streaming-input mode, so a
 // follow-up message does not pay for a new Claude Code process. A chat whose
 // query was closed (app restart, settings change) is picked up again with
-// `resume` and its session id.
+// `resume` and its session id. Regenerating or editing the last exchange
+// resumes the session cut back to the turn before it (`resumeSessionAt`).
 
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { deleteSession, query } from "@anthropic-ai/claude-agent-sdk";
 import { createInterface } from "node:readline";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -29,6 +30,8 @@ const configDir = join(dataDir, "claude-config");
 const workDir = join(dataDir, "workspace");
 mkdirSync(configDir, { recursive: true });
 mkdirSync(workDir, { recursive: true });
+// The SDK's session helpers (deleteSession) read the config dir from here.
+process.env.CLAUDE_CONFIG_DIR = configDir;
 
 const childEnv = {
   PATH: process.env.PATH,
@@ -52,6 +55,11 @@ const SYSTEM_PROMPT = [
 // Search only: WebFetch would let a page the model reads tell it to fetch an
 // attacker's URL with parts of the conversation in it, unasked.
 const WEB_TOOLS = ["WebSearch"];
+const TITLE_MODEL = "claude-haiku-5-5";
+const TITLE_PROMPT = [
+  "Du formulierst Titel für Chats.",
+  "Antworte nur mit dem Titel: höchstens sechs Wörter, ohne Anführungszeichen, ohne Punkt am Ende, in der Sprache des Gesprächs.",
+].join("\n");
 const DELTA_FLUSH_MS = 32;
 // Every live chat keeps a Claude Code process of its own. Idle chats are
 // closed and picked up again with `resume` on their next message.
@@ -106,6 +114,7 @@ class ChatSession {
     this.busy = false;
     this.interrupted = false;
     this.failReason = null;
+    this.lastAssistantUuid = null;
     this.closed = false;
     this.query = query({
       prompt: this.inbox,
@@ -123,6 +132,9 @@ class ChatSession {
         cwd: workDir,
         env: childEnv,
         resume: config.sessionId ?? undefined,
+        // Cutting back forks the session, so the dropped turn stays out of it.
+        resumeSessionAt: config.rewindTo ?? undefined,
+        forkSession: config.rewindTo ? true : undefined,
         stderr: () => {},
       },
     });
@@ -170,6 +182,11 @@ class ChatSession {
             return;
           }
           emit({ type: "session", chatId: this.chatId, sessionId: message.session_id });
+          // After a rewind the old transcript still holds the dropped turn.
+          const replaced = this.config.replacesSession;
+          if (replaced && replaced !== message.session_id) {
+            deleteSession(replaced, { dir: workDir }).catch(() => {});
+          }
         }
         return;
       case "stream_event": {
@@ -185,6 +202,7 @@ class ChatSession {
         return;
       }
       case "assistant":
+        this.lastAssistantUuid = message.uuid;
         for (const block of message.message.content) {
           if (block.type !== "tool_use") continue;
           this.flush();
@@ -212,6 +230,9 @@ class ChatSession {
           chatId: this.chatId,
           sessionId: message.session_id,
           costUsd: turnCost,
+          model: this.config.model,
+          // Where a later rewind cuts back to, to drop the turns after this one.
+          turnEnd: this.lastAssistantUuid,
           error: failed ? describeError(message) : null,
         });
         this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
@@ -295,8 +316,20 @@ async function onSend(command) {
     web: Boolean(command.web),
     sessionId: command.sessionId ?? null,
     costSoFar: Number(command.costSoFar) || 0,
+    rewindTo: null,
+    replacesSession: null,
   };
   let session = sessions.get(command.chatId);
+  if (command.rewind) {
+    // Regenerate or edit: the answer to replace is the last turn of the
+    // session. Keep everything up to `rewindTo`; without one, start afresh.
+    session?.close();
+    sessions.delete(command.chatId);
+    session = undefined;
+    config.replacesSession = config.sessionId;
+    config.rewindTo = command.rewindTo ?? null;
+    if (!config.rewindTo) config.sessionId = null;
+  }
   if (session && !session.sameConfig(config)) {
     session.close();
     sessions.delete(command.chatId);
@@ -325,6 +358,45 @@ function evictIdleSessions() {
   }
 }
 
+/** Asks Haiku for a short chat title, in a one-shot query that is not kept. */
+async function onTitle(command) {
+  const titleQuery = query({
+    prompt: String(command.text ?? "").slice(0, 4000),
+    options: {
+      model: TITLE_MODEL,
+      effort: "low",
+      maxTurns: 1,
+      tools: [],
+      settingSources: [],
+      strictMcpConfig: true,
+      permissionMode: "dontAsk",
+      persistSession: false,
+      systemPrompt: TITLE_PROMPT,
+      cwd: workDir,
+      env: childEnv,
+      stderr: () => {},
+    },
+  });
+  for await (const message of titleQuery) {
+    if (message.type === "system" && message.subtype === "init" && message.apiKeySource !== "ANTHROPIC_API_KEY") {
+      titleQuery.close();
+      return;
+    }
+    if (message.type !== "result") continue;
+    const title = String(message.result ?? "")
+      .split("\n")[0]
+      .replace(/^["'„“»«\s]+|["'„“»«.\s]+$/g, "")
+      .slice(0, 60);
+    emit({
+      type: "title",
+      chatId: command.chatId,
+      title: message.is_error ? "" : title,
+      costUsd: message.total_cost_usd ?? 0,
+      model: TITLE_MODEL,
+    });
+  }
+}
+
 function onCommand(line) {
   let command;
   try {
@@ -340,6 +412,9 @@ function onCommand(line) {
       return;
     case "interrupt":
       sessions.get(command.chatId)?.interrupt();
+      return;
+    case "title":
+      onTitle(command).catch(() => {});
       return;
     case "close":
       sessions.get(command.chatId)?.close();

@@ -1,7 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { formatUsd, type Chat, type OutgoingAttachment } from "../api";
-import { sendMessage, stopMessage, updateChat } from "../store";
+import { redoLast, rewindPoint, sendMessage, stopMessage, updateChat } from "../store";
 import { Composer, type ComposerSettings } from "./Composer";
 import { SidebarIcon } from "./icons";
 import { MessageView } from "./MessageView";
@@ -60,6 +60,18 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
     updateChat(chat.id, (current) => ({ ...current, ...change }));
     onSettingsChange(next);
   };
+
+  // Only the last question and answer can be replaced; a stable callback keeps
+  // the memoized older messages from re-rendering.
+  const canRedo = rewindPoint(chat) !== undefined;
+  const redo = useCallback(
+    (text?: string) => {
+      stuck.current = true;
+      void redoLast(chat.id, text);
+    },
+    [chat.id, stuck],
+  );
+  const lastQuestion = chat.messages.length - 2;
 
   const send = (text: string, attachments: OutgoingAttachment[]) => {
     stuck.current = true;
@@ -157,8 +169,12 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange 
         <>
           <div className="scroller" ref={scroller} onClick={onClick}>
             <div className="thread" ref={content}>
-              {chat.messages.map((message) => (
-                <MessageView key={message.id} message={message} />
+              {chat.messages.map((message, index) => (
+                <MessageView
+                  key={message.id}
+                  message={message}
+                  onRedo={canRedo && index >= lastQuestion ? redo : undefined}
+                />
               ))}
             </div>
           </div>

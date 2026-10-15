@@ -87,6 +87,20 @@ export const GearIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const RetryIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M16 10a6 6 0 1 1-1.8-4.3" />
+    <path d="M16.2 3.2v3.5h-3.5" />
+  </Icon>
+);
+
+export const PencilIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M13.3 3.7a1.8 1.8 0 0 1 2.6 2.6l-9 9-3.4.8.8-3.4z" />
+    <path d="m11.8 5.2 2.6 2.6" />
+  </Icon>
+);
+
 export const CloseIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="m5.5 5.5 9 9M14.5 5.5l-9 9" />

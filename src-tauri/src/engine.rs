@@ -101,9 +101,15 @@ fn spawn(app: &AppHandle, store: Arc<Store>, generation: u64) -> Result<Running,
                 continue;
             };
             event.insert("generation".into(), generation.into());
-            if event.get("type").and_then(Value::as_str) == Some("done") {
-                let cost = event.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0);
-                let _ = app.emit("usage", store.add_cost(cost));
+            // Answers and generated titles both cost money.
+            if let Some(cost) = event.get("costUsd").and_then(Value::as_f64) {
+                let model = event.get("model").and_then(Value::as_str).unwrap_or("");
+                let model = if crate::MODELS.contains(&model) {
+                    model
+                } else {
+                    "other"
+                };
+                let _ = app.emit("usage", store.add_cost(cost, model));
             }
             let _ = app.emit("engine", event);
         }

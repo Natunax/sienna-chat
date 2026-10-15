@@ -1,7 +1,7 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { formatUsd, type Message } from "../api";
 import { loadHighlighter, renderBlocks } from "../markdown";
-import { AlertIcon, ChevronRightIcon, DocumentIcon, GlobeIcon, SparkIcon } from "./icons";
+import { AlertIcon, CheckIcon, ChevronRightIcon, CopyIcon, DocumentIcon, GlobeIcon, PencilIcon, RetryIcon, SparkIcon } from "./icons";
 
 const TOOL_LABELS: Record<string, string> = {
   WebSearch: "Sucht im Web",
@@ -69,8 +69,99 @@ function Thinking({ text, active }: { text: string; active: boolean }) {
   );
 }
 
-function MessageViewImpl({ message }: { message: Message }) {
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1400);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  return (
+    <button
+      type="button"
+      className="msg-action"
+      onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
+      aria-label={copied ? "Kopiert" : "Antwort kopieren"}
+      title={copied ? "Kopiert" : "Antwort kopieren"}
+    >
+      {copied ? <CheckIcon size={15} /> : <CopyIcon size={15} />}
+    </button>
+  );
+}
+
+function EditBox({ text, onSubmit, onCancel }: { text: string; onSubmit: (text: string) => void; onCancel: () => void }) {
+  const [value, setValue] = useState(text);
+  const area = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+
+  useEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+  }, [value]);
+
+  const submit = () => value.trim() && onSubmit(value.trim());
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Escape") onCancel();
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      submit();
+    }
+  };
+
+  return (
+    <div className="edit-box">
+      <textarea
+        ref={area}
+        className="edit-input"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={onKeyDown}
+        aria-label="Nachricht bearbeiten"
+      />
+      <div className="edit-actions">
+        <button type="button" className="secondary-button" onClick={onCancel}>
+          Abbrechen
+        </button>
+        <button type="button" className="primary-button" onClick={submit} disabled={!value.trim()}>
+          Senden
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface Props {
+  message: Message;
+  /** Set on the last question and answer when they can be replaced. */
+  onRedo?: (text?: string) => void;
+}
+
+function MessageViewImpl({ message, onRedo }: Props) {
+  const [editing, setEditing] = useState(false);
+
   if (message.role === "user") {
+    if (editing && onRedo) {
+      return (
+        <div className="msg msg-user">
+          <EditBox
+            text={message.text}
+            onCancel={() => setEditing(false)}
+            onSubmit={(text) => {
+              setEditing(false);
+              onRedo(text);
+            }}
+          />
+        </div>
+      );
+    }
     return (
       <div className="msg msg-user">
         {message.attachments?.length ? (
@@ -84,6 +175,19 @@ function MessageViewImpl({ message }: { message: Message }) {
           </div>
         ) : null}
         {message.text && <div className="bubble">{message.text}</div>}
+        {onRedo && (
+          <div className="msg-actions">
+            <button
+              type="button"
+              className="msg-action"
+              onClick={() => setEditing(true)}
+              aria-label="Nachricht bearbeiten"
+              title="Nachricht bearbeiten"
+            >
+              <PencilIcon size={15} />
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -112,8 +216,22 @@ function MessageViewImpl({ message }: { message: Message }) {
           {message.error}
         </div>
       )}
-      {!streaming && !message.error && message.costUsd ? (
-        <div className="msg-meta">{formatUsd(message.costUsd)}</div>
+      {!streaming && (message.text || onRedo) ? (
+        <div className="msg-actions">
+          {message.text && <CopyButton text={message.text} />}
+          {onRedo && (
+            <button
+              type="button"
+              className="msg-action"
+              onClick={() => onRedo()}
+              aria-label="Antwort neu erzeugen"
+              title="Antwort neu erzeugen"
+            >
+              <RetryIcon size={15} />
+            </button>
+          )}
+          {message.costUsd ? <span className="msg-cost">{formatUsd(message.costUsd)}</span> : null}
+        </div>
       ) : null}
     </div>
   );

@@ -61,7 +61,13 @@ function putChat(chat: Chat) {
   notifyChat(chat.id);
 }
 
-function upsertSummary(chat: Chat) {
+function upsertSummary(chat: Chat, keepPlace = false) {
+  const entry = { id: chat.id, title: chat.title, updatedAt: chat.updatedAt };
+  if (keepPlace && summaries.some((summary) => summary.id === chat.id)) {
+    summaries = summaries.map((summary) => (summary.id === chat.id ? entry : summary));
+    notifyGlobal();
+    return;
+  }
   summaries = [
     { id: chat.id, title: chat.title, updatedAt: chat.updatedAt },
     ...summaries.filter((entry) => entry.id !== chat.id),
@@ -145,13 +151,11 @@ function updateLastAssistant(chat: Chat, change: (message: Message) => Message):
   return { ...chat, messages };
 }
 
-export async function sendMessage(
-  id: string,
-  text: string,
-  attachments: { name: string; mediaType: string; data: string }[],
-) {
-  const chat = chats.get(id);
-  if (!chat) return;
+type Outgoing = { name: string; mediaType: string; data: string };
+
+/** Shows the user's message and an empty answer, then hands both to the engine. */
+async function dispatch(chat: Chat, kept: Message[], text: string, attachments: Outgoing[], rewindTo?: string | null) {
+  const id = chat.id;
   const user: Message = {
     id: crypto.randomUUID(),
     role: "user",
@@ -159,16 +163,22 @@ export async function sendMessage(
     attachments: attachments.map(({ name, mediaType }) => ({ name, mediaType })),
   };
   const reply: Message = { id: crypto.randomUUID(), role: "assistant", text: "", streaming: true };
-  const isFirst = chat.messages.length === 0;
+  const first = kept.length === 0;
   const next: Chat = {
     ...chat,
-    title: isFirst ? titleFrom(text, attachments[0]?.name ?? "Neuer Chat") : chat.title,
+    title: first && !chat.titleLocked ? titleFrom(text, attachments[0]?.name ?? "Neuer Chat") : chat.title,
+    // A new first question deserves a new generated title.
+    titleRequested: first ? false : chat.titleRequested,
     updatedAt: Date.now(),
-    messages: [...chat.messages, user, reply],
+    messages: [...kept, user, reply],
   };
   putChat(next);
   upsertSummary(next);
   persist(id);
+  const rewind = rewindTo !== undefined;
+  // What the session behind this chat has cost so far: the answers it still
+  // contains. A dropped answer was paid for but is no longer in the session.
+  const sessionCost = kept.reduce((sum, message) => sum + (message.costUsd ?? 0), 0);
   try {
     const engine = await api.chatSend({
       chatId: id,
@@ -178,7 +188,9 @@ export async function sendMessage(
       web: next.web,
       text,
       attachments: attachments.map(({ mediaType, data }) => ({ mediaType, data })),
-      costSoFar: next.costUsd,
+      costSoFar: sessionCost,
+      rewind,
+      rewindTo: rewindTo ?? null,
     });
     updateChat(id, (current) =>
       updateLastAssistant(current, (message) => (message.id === reply.id ? { ...message, engine } : message)),
@@ -191,6 +203,59 @@ export async function sendMessage(
   }
 }
 
+export async function sendMessage(id: string, text: string, attachments: Outgoing[]) {
+  const chat = chats.get(id);
+  if (chat) await dispatch(chat, chat.messages, text, attachments);
+}
+
+/**
+ * Where a rewind of the last exchange cuts back to: the end of the answer
+ * before it, or `null` when the last exchange is the first. `undefined` means
+ * it cannot be rewound (still streaming, attachments that are not kept, or an
+ * older chat without turn marks).
+ */
+export function rewindPoint(chat: Chat): string | null | undefined {
+  const count = chat.messages.length;
+  const last = chat.messages[count - 1];
+  const question = chat.messages[count - 2];
+  if (!last || last.role !== "assistant" || last.streaming) return undefined;
+  if (!question || question.role !== "user" || question.attachments?.length) return undefined;
+  if (count === 2) return null;
+  return chat.messages[count - 3]?.turnEnd ?? undefined;
+}
+
+/** Answers the last question again, or the same question in new words. */
+export async function redoLast(id: string, text?: string) {
+  const chat = chats.get(id);
+  if (!chat) return;
+  const point = rewindPoint(chat);
+  if (point === undefined) return;
+  const question = chat.messages[chat.messages.length - 2];
+  const newText = (text ?? question.text).trim();
+  if (!newText) return;
+  await dispatch(chat, chat.messages.slice(0, -2), newText, [], point);
+}
+
+export async function renameChat(id: string, title: string) {
+  const clean = title.trim().slice(0, 120);
+  if (!clean) return;
+  const chat = await loadChat(id).catch(() => undefined);
+  if (!chat) return;
+  const next = { ...chat, title: clean, titleLocked: true };
+  putChat(next);
+  upsertSummary(next, true);
+  persist(id);
+}
+
+/** After the first answer, Haiku suggests a better title than the first line. */
+function requestTitle(chat: Chat) {
+  if (chat.titleLocked || chat.titleRequested || chat.messages.length !== 2) return;
+  const [question, answer] = chat.messages;
+  if (!answer || answer.error || !answer.text) return;
+  putChat({ ...chat, titleRequested: true });
+  void api.chatTitle(chat.id, `${question.text}\n\n${answer.text.slice(0, 1500)}`).catch(() => {});
+}
+
 export function stopMessage(id: string) {
   void api.chatStop(id);
 }
@@ -199,7 +264,15 @@ type EngineEvent =
   | { type: "session"; chatId: string; sessionId: string }
   | { type: "delta"; chatId: string; text: string; thinking: string }
   | { type: "tool"; chatId: string; name: string; detail: string }
-  | { type: "done"; chatId: string; sessionId?: string; costUsd: number; error: string | null }
+  | {
+      type: "done";
+      chatId: string;
+      sessionId?: string;
+      costUsd: number;
+      turnEnd?: string | null;
+      error: string | null;
+    }
+  | { type: "title"; chatId: string; title: string }
   | { type: "fatal"; message: string; generation: number }
   | { type: "exit"; generation: number }
   | { type: "ready" };
@@ -243,6 +316,7 @@ function onEngineEvent(event: EngineEvent) {
           ...message,
           streaming: false,
           costUsd: (message.costUsd ?? 0) + event.costUsd,
+          turnEnd: event.turnEnd ?? null,
           error: event.error,
         })),
         sessionId: event.sessionId ?? chat.sessionId,
@@ -250,7 +324,20 @@ function onEngineEvent(event: EngineEvent) {
         updatedAt: Date.now(),
       }));
       persist(event.chatId);
+      {
+        const chat = chats.get(event.chatId);
+        if (chat) requestTitle(chat);
+      }
       return;
+    case "title": {
+      const chat = chats.get(event.chatId);
+      if (!chat || chat.titleLocked || !event.title) return;
+      const next = { ...chat, title: event.title };
+      putChat(next);
+      upsertSummary(next, true);
+      persist(chat.id);
+      return;
+    }
     case "fatal":
       failStreaming(event.generation, event.message);
       return;

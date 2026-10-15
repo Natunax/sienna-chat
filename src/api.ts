@@ -37,6 +37,8 @@ export interface Message {
   streaming?: boolean;
   /** The engine process that streams this answer (see engine.rs). */
   engine?: number;
+  /** SDK message id at the end of this answer's turn; a rewind cuts back to it. */
+  turnEnd?: string | null;
 }
 
 export interface Chat {
@@ -50,6 +52,10 @@ export interface Chat {
   sessionId: string | null;
   costUsd: number;
   messages: Message[];
+  /** Renamed by hand: the generated title must not replace it. */
+  titleLocked?: boolean;
+  /** A generated title was already asked for. */
+  titleRequested?: boolean;
 }
 
 export interface ChatSummary {
@@ -62,6 +68,7 @@ export interface Usage {
   month: string;
   usd: number;
   budget: number;
+  byModel: Record<string, number>;
 }
 
 export interface OutgoingAttachment extends AttachmentMeta {
@@ -89,7 +96,10 @@ export const api = {
     text: string;
     attachments: { mediaType: string; data: string }[];
     costSoFar: number;
+    rewind?: boolean;
+    rewindTo?: string | null;
   }) => invoke<number>("chat_send", { request }),
+  chatTitle: (chatId: string, text: string) => invoke<void>("chat_title", { chatId, text }),
 };
 
 export function errorText(error: unknown): string {

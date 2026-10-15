@@ -14,7 +14,7 @@ struct AppState {
     engine: Engine,
 }
 
-const MODELS: [&str; 3] = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"];
+pub(crate) const MODELS: [&str; 3] = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"];
 const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 const MEDIA_TYPES: [&str; 5] = [
     "image/png",
@@ -45,6 +45,10 @@ struct SendRequest {
     text: String,
     attachments: Vec<Attachment>,
     cost_so_far: f64,
+    /// Replace the last exchange: resume the session cut back to `rewind_to`.
+    #[serde(default)]
+    rewind: bool,
+    rewind_to: Option<String>,
 }
 
 #[tauri::command]
@@ -107,6 +111,10 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
             .session_id
             .as_deref()
             .is_some_and(|id| !store::valid_id(id))
+        || request
+            .rewind_to
+            .as_deref()
+            .is_some_and(|id| !store::valid_id(id))
         || !MODELS.contains(&request.model.as_str())
         || !EFFORTS.contains(&request.effort.as_str())
     {
@@ -148,6 +156,8 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         "web": request.web,
         "text": request.text,
         "costSoFar": request.cost_so_far,
+        "rewind": request.rewind,
+        "rewindTo": request.rewind_to,
         "attachments": request.attachments.iter().map(|file| json!({
             "mediaType": file.media_type,
             "data": file.data,
@@ -155,6 +165,26 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
     })
     .to_string();
     state.engine.send(&app, &state.store, &line)
+}
+
+/// Asks the engine for a short title once a chat has its first answer.
+#[tauri::command(async)]
+fn chat_title(
+    chat_id: String,
+    text: String,
+    app: AppHandle,
+    state: State<AppState>,
+) -> Result<(), String> {
+    if !store::valid_id(&chat_id) {
+        return Err("Unbekannter Chat.".into());
+    }
+    let usage = state.store.usage();
+    if usage.usd >= usage.budget {
+        return Ok(());
+    }
+    let text: String = text.chars().take(4000).collect();
+    let line = json!({ "type": "title", "chatId": chat_id, "text": text }).to_string();
+    state.engine.send(&app, &state.store, &line).map(|_| ())
 }
 
 #[tauri::command]
@@ -201,6 +231,7 @@ pub fn run() {
             usage_get,
             budget_set,
             chat_send,
+            chat_title,
             chat_stop,
         ])
         .build(tauri::generate_context!())

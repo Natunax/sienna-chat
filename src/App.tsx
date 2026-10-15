@@ -11,6 +11,7 @@ import {
   getChat,
   loadChat,
   refreshSummaries,
+  renameChat,
   refreshUsage,
   startEngineListener,
   useChat,
@@ -109,6 +110,7 @@ export function App() {
           onSelect={(id) => void openChat(id)}
           onNew={newChat}
           onDelete={(id) => void removeChat(id)}
+          onRename={(id, title) => void renameChat(id, title)}
           onToggle={() => setSidebarOpen(false)}
           onSettings={() => setSettingsOpen(true)}
         />

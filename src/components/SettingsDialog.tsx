@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, errorText, formatUsd, type Usage } from "../api";
+import { api, errorText, formatUsd, MODELS, type Usage } from "../api";
 import { setUsage } from "../store";
 import { CloseIcon, KeyIcon } from "./icons";
 import { KeyForm } from "./KeyForm";
@@ -18,6 +18,8 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
 
   useEffect(() => {
     dialog.current?.showModal();
+    // Focus the dialog itself, not its first button, so no focus ring shows on open.
+    dialog.current?.focus();
   }, []);
 
   const saveBudget = async () => {
@@ -40,7 +42,7 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
   };
 
   return (
-    <dialog ref={dialog} className="dialog" onClose={onClose} onCancel={onClose}>
+    <dialog ref={dialog} className="dialog" tabIndex={-1} onClose={onClose} onCancel={onClose}>
       <header className="dialog-head">
         <h2>Einstellungen</h2>
         <button type="button" className="icon-button" onClick={onClose} aria-label="Schließen">
@@ -76,10 +78,32 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
       </section>
 
       <section className="setting">
+        <h3>Kosten diesen Monat</h3>
+        {usage && Object.keys(usage.byModel ?? {}).length ? (
+          <dl className="cost-list">
+            {Object.entries(usage.byModel)
+              .sort(([, a], [, b]) => b - a)
+              .map(([model, usd]) => (
+                <div key={model} className="cost-row">
+                  <dt>{MODELS.find((entry) => entry.id === model)?.name ?? "Sonstige"}</dt>
+                  <dd>{formatUsd(usd)}</dd>
+                </div>
+              ))}
+            <div className="cost-row is-total">
+              <dt>Gesamt</dt>
+              <dd>{formatUsd(usage.usd)}</dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="setting-hint">Noch keine Kosten in diesem Monat.</p>
+        )}
+      </section>
+
+      <section className="setting">
         <h3>Monatsbudget</h3>
         <p className="setting-hint">
-          Diesen Monat verbraucht: {usage ? formatUsd(usage.usd) : "–"}. Ist das Budget erreicht, nimmt die App keine
-          Nachrichten mehr an. Setz zusätzlich ein Ausgabenlimit in der Claude Console.
+          Ist das Budget erreicht, nimmt die App keine Nachrichten mehr an. Setz zusätzlich ein Ausgabenlimit in der
+          Claude Console.
         </p>
         <div className="setting-row">
           <label className="budget-field">

@@ -24,6 +24,7 @@ const sample: Chat = {
     {
       id: "m2",
       role: "assistant",
+      turnEnd: "66666666-6666-4666-8666-666666666666",
       thinking: "Unterschied: atomare Referenzzählung, Send/Sync, Kosten.",
       costUsd: 0.0184,
       text: [
@@ -83,7 +84,13 @@ function streamAnswer(chatId: string) {
       if (chunk) void emit("engine", { type: "delta", chatId, text: chunk, thinking: "" });
       else {
         clearInterval(timer);
-        void emit("engine", { type: "done", chatId, costUsd: 0.0062, error: null });
+        void emit("engine", {
+          type: "done",
+          chatId,
+          costUsd: 0.0062,
+          turnEnd: crypto.randomUUID(),
+          error: null,
+        });
       }
     }, 32);
   }, 900);
@@ -101,7 +108,18 @@ export function installDevMock() {
         case "chat_load":
           return payload?.id === sample.id ? sample : { ...sample, id: payload?.id, messages: sample.messages.slice(0, 1) };
         case "usage_get":
-          return { month: "2026-10", usd: 12.4, budget: 100 };
+          return {
+            month: "2026-10",
+            usd: 12.4,
+            budget: 100,
+            byModel: { "claude-sonnet-5-5": 9.85, "claude-opus-5-5": 2.31, "claude-haiku-5-5": 0.24 },
+          };
+        case "chat_title":
+          setTimeout(
+            () => void emit("engine", { type: "title", chatId: payload?.chatId, title: "Wochenplan mit drei Gerichten" }),
+            600,
+          );
+          return null;
         case "chat_send":
           streamAnswer((payload?.request as { chatId: string }).chatId);
           return null;

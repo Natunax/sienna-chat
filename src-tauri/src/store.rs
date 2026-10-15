@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Reverse;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -24,6 +25,9 @@ pub struct Usage {
     pub month: String,
     pub usd: f64,
     pub budget: f64,
+    /// Spend of this month per model id.
+    #[serde(default)]
+    pub by_model: BTreeMap<String, f64>,
 }
 
 pub struct Store {
@@ -222,11 +226,13 @@ impl Store {
                 month,
                 usd: 0.0,
                 budget: usage.budget,
+                by_model: BTreeMap::new(),
             },
             None => Usage {
                 month,
                 usd: 0.0,
                 budget: DEFAULT_BUDGET_USD,
+                by_model: BTreeMap::new(),
             },
         }
     }
@@ -237,11 +243,12 @@ impl Store {
         write_atomic(&self.root.join("usage.json"), &bytes)
     }
 
-    pub fn add_cost(&self, usd: f64) -> Usage {
+    pub fn add_cost(&self, usd: f64, model: &str) -> Usage {
         let _guard = self.guard();
         let mut usage = self.read_usage();
         if usd.is_finite() && usd > 0.0 {
             usage.usd += usd;
+            *usage.by_model.entry(model.to_string()).or_default() += usd;
             let _ = self.write_usage(&usage);
         }
         usage
