@@ -51,14 +51,14 @@ export const PaperclipIcon = (p: IconProps) => (
 );
 
 export const ArrowUpIcon = (p: IconProps) => (
-  <Icon {...p} strokeWidth={2}>
-    <path d="M10 15.5v-11M5.5 9 10 4.5 14.5 9" />
+  <Icon {...p} strokeWidth={1.8}>
+    <path d="M10 15v-10M6 9l4-4 4 4" />
   </Icon>
 );
 
 export const StopIcon = (p: IconProps) => (
   <Icon {...p} stroke="none">
-    <rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" />
+    <rect x="6.5" y="6.5" width="7" height="7" rx="1.75" fill="currentColor" />
   </Icon>
 );
 

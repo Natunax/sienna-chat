@@ -1236,132 +1236,16 @@ a:focus-visible {
 }
 
 .composer-row > .send-button {
-  grid-area: send;
-}
-
-@container (max-width: 300px) {
-  .composer-row {
-    grid-template-areas:
-      "input input input"
-      "plus . send";
-    row-gap: 2px;
-  }
-
-  .composer-input {
-    padding-left: 8px;
-  }
-}
-
-.plus-button {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  color: var(--label-2);
-  flex-shrink: 0;
-  transition: background-color 120ms, color 120ms;
-}
-
-.plus-button:hover,
-.plus-button[aria-expanded="true"] {
-  background: var(--fill-hover);
-  color: var(--label);
-}
-
-.composer-input {
-  min-width: 0;
-  min-height: 32px;
-  max-height: 320px;
-  padding: 6px 4px;
-  border: 0;
-  resize: none;
-  background: none;
-  color: var(--label);
-  font: 15px/20px var(--font);
-  outline: none;
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-.composer-input::placeholder {
-  color: var(--label-3);
-}
-
-.composer-input:focus-visible {
-  outline: none;
-}
-
-.composer-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 2px 0;
-}
-
-.composer-footer .pill {
-  height: 26px;
-  padding: 0 8px;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.context-meter {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  font-size: 12px;
-  color: var(--label-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.context-meter svg {
-  transform: rotate(-90deg);
-}
-
-.context-track,
-.context-fill {
-  fill: none;
-  stroke-width: 2;
-}
-
-.context-track {
-  stroke: var(--fill-active);
-}
-
-.context-fill {
-  stroke: var(--label-2);
-  stroke-linecap: round;
-  transition: stroke-dashoffset 300ms ease-out;
-}
-
-.context-meter.is-high .context-fill {
-  stroke: var(--danger);
-}
-
-/* Below the box the menu opens upward from the left edge. */
-.composer-footer .model-menu {
-  left: 0;
-  right: auto;
-}
-
-.composer-notice {
-  margin: 4px 8px 2px;
-  font-size: 12px;
-  color: var(--danger);
-}
-
-.send-button {
   display: inline-grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
+  margin: 2px;
   border-radius: 50%;
   background: var(--accent);
   color: var(--on-accent);
   flex-shrink: 0;
-  transition: background-color 120ms, opacity 120ms, transform 120ms;
+  transition: background-color 120ms, transform 120ms;
 }
 
 .send-button:hover:not(:disabled) {
@@ -1369,7 +1253,7 @@ a:focus-visible {
 }
 
 .send-button:active:not(:disabled) {
-  transform: scale(0.94);
+  transform: scale(0.92);
 }
 
 .send-button:disabled {
@@ -1377,15 +1261,14 @@ a:focus-visible {
   color: var(--label-3);
 }
 
-/* Stop: an outlined circle with a filled square, as in Claude Code. */
+/* Stop: a filled circle in the text color with a small rounded square. */
 .send-button.is-stop {
-  background: none;
-  color: var(--label);
-  box-shadow: inset 0 0 0 1.5px currentColor;
+  background: var(--label);
+  color: var(--surface-raised);
 }
 
 .send-button.is-stop:hover {
-  background: var(--fill-hover);
+  background: var(--label-2);
 }
 
 .composer-chips {
