@@ -139,121 +139,126 @@ export function Composer(props: Props) {
   const chips = settings.web || project || files.length > 0;
 
   return (
-    <div className="composer">
-      {chips && (
-        <div className="composer-chips">
-          {settings.web && (
-            <span className="chip">
-              <GlobeIcon size={14} />
-              {t("composer.web")}
-              <button
-                type="button"
-                className="chip-remove"
-                onClick={() => onSettings({ web: false })}
-                aria-label={t("composer.webOff")}
-                title={t("composer.webOff")}
-              >
-                <CloseIcon size={11} />
-              </button>
-            </span>
-          )}
-          {project && (
-            <span
-              className="chip"
-              title={t(projectLocked ? "composer.projectLocked" : "composer.projectActive", { name: folderName(project) })}
-            >
-              <FolderIcon size={14} />
-              <span className="chip-text">{folderName(project)}</span>
-              {!projectLocked && (
+    <div className="composer-wrap">
+      <div className="composer">
+        {chips && (
+          <div className="composer-chips">
+            {settings.web && (
+              <span className="chip">
+                <GlobeIcon size={14} />
+                {t("composer.web")}
                 <button
                   type="button"
                   className="chip-remove"
-                  onClick={() => onProject(null)}
-                  aria-label={t("composer.projectRemove")}
-                  title={t("composer.projectRemove")}
+                  onClick={() => onSettings({ web: false })}
+                  aria-label={t("composer.webOff")}
+                  title={t("composer.webOff")}
                 >
                   <CloseIcon size={11} />
                 </button>
-              )}
-            </span>
-          )}
-          {files.map((file, index) => (
-            <span key={index} className="chip chip-file">
-              {file.previewUrl ? (
-                <img src={file.previewUrl} alt="" />
-              ) : file.mediaType === TEXT_MEDIA_TYPE ? (
-                <span className="chip-ext">{fileLabel(file.name)}</span>
-              ) : (
-                <DocumentIcon size={14} />
-              )}
-              <span className="chip-text">{file.name}</span>
-              <button
-                type="button"
-                className="chip-remove"
-                aria-label={t("composer.remove", { name: file.name })}
-                title={t("composer.remove", { name: file.name })}
-                onClick={() => removeFile(index)}
+              </span>
+            )}
+            {project && (
+              <span
+                className="chip"
+                title={t(projectLocked ? "composer.projectLocked" : "composer.projectActive", { name: folderName(project) })}
               >
-                <CloseIcon size={11} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="composer-row">
-        <PlusMenu
-          web={settings.web}
-          onWeb={() => onSettings({ web: !settings.web })}
-          onAttach={() => picker.current?.click()}
-          onProject={projectLocked ? undefined : () => void pickProject()}
-        />
-        <input
-          ref={picker}
-          type="file"
-          hidden
-          multiple
-          accept={PICKER_ACCEPT}
-          onChange={(event) => {
-            void addFiles(Array.from(event.target.files ?? []));
-            event.target.value = "";
-          }}
-        />
-        <textarea
-          ref={area}
-          className="composer-input"
-          rows={1}
-          placeholder={t("composer.placeholder")}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          aria-label={t("composer.label")}
-        />
-        <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
-        {streaming ? (
-          <button
-            type="button"
-            className="send-button is-stop"
-            onClick={onStop}
-            aria-label={t("composer.stop")}
-            title={t("composer.stopHint")}
-          >
-            <StopIcon size={16} />
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="send-button"
-            onClick={submit}
-            disabled={!canSend}
-            aria-label={t("composer.send")}
-            title={t("composer.sendHint")}
-          >
-            <ArrowUpIcon size={16} />
-          </button>
+                <FolderIcon size={14} />
+                <span className="chip-text">{folderName(project)}</span>
+                {!projectLocked && (
+                  <button
+                    type="button"
+                    className="chip-remove"
+                    onClick={() => onProject(null)}
+                    aria-label={t("composer.projectRemove")}
+                    title={t("composer.projectRemove")}
+                  >
+                    <CloseIcon size={11} />
+                  </button>
+                )}
+              </span>
+            )}
+            {files.map((file, index) => (
+              <span key={index} className="chip chip-file">
+                {file.previewUrl ? (
+                  <img src={file.previewUrl} alt="" />
+                ) : file.mediaType === TEXT_MEDIA_TYPE ? (
+                  <span className="chip-ext">{fileLabel(file.name)}</span>
+                ) : (
+                  <DocumentIcon size={14} />
+                )}
+                <span className="chip-text">{file.name}</span>
+                <button
+                  type="button"
+                  className="chip-remove"
+                  aria-label={t("composer.remove", { name: file.name })}
+                  title={t("composer.remove", { name: file.name })}
+                  onClick={() => removeFile(index)}
+                >
+                  <CloseIcon size={11} />
+                </button>
+              </span>
+            ))}
+          </div>
         )}
+        <div className="composer-row">
+          <PlusMenu
+            web={settings.web}
+            onWeb={() => onSettings({ web: !settings.web })}
+            onAttach={() => picker.current?.click()}
+            onProject={projectLocked ? undefined : () => void pickProject()}
+          />
+          <input
+            ref={picker}
+            type="file"
+            hidden
+            multiple
+            accept={PICKER_ACCEPT}
+            onChange={(event) => {
+              void addFiles(Array.from(event.target.files ?? []));
+              event.target.value = "";
+            }}
+          />
+          <textarea
+            ref={area}
+            className="composer-input"
+            rows={1}
+            placeholder={t("composer.placeholder")}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            aria-label={t("composer.label")}
+          />
+          {streaming ? (
+            <button
+              type="button"
+              className="send-button is-stop"
+              onClick={onStop}
+              aria-label={t("composer.stop")}
+              title={t("composer.stopHint")}
+            >
+              <StopIcon size={16} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="send-button"
+              onClick={submit}
+              disabled={!canSend}
+              aria-label={t("composer.send")}
+              title={t("composer.sendHint")}
+            >
+              <ArrowUpIcon size={16} />
+            </button>
+          )}
+        </div>
+        {notice && <div className="composer-notice">{notice}</div>}
       </div>
-      {notice && <div className="composer-notice">{notice}</div>}
+      {/* The model sits below the box, as in Claude Code. */}
+      <div className="composer-footer">
+        <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
+      </div>
     </div>
   );
 }

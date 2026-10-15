@@ -561,7 +561,7 @@ a:focus-visible {
   flex-shrink: 0;
 }
 
-.dock .composer {
+.dock .composer-wrap {
   max-width: var(--thread-w);
   margin: 0 auto;
 }
@@ -1086,8 +1086,8 @@ a:focus-visible {
    the full width on top and the buttons move to a row below. */
 .composer-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  grid-template-areas: "plus input model send";
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "plus input send";
   align-items: end;
   gap: 4px;
 }
@@ -1100,19 +1100,15 @@ a:focus-visible {
   grid-area: input;
 }
 
-.composer-row > .menu-anchor:not(:first-child) {
-  grid-area: model;
-}
-
 .composer-row > .send-button {
   grid-area: send;
 }
 
-@container (max-width: 520px) {
+@container (max-width: 300px) {
   .composer-row {
     grid-template-areas:
-      "input input input input"
-      "plus . model send";
+      "input input input"
+      "plus . send";
     row-gap: 2px;
   }
 
@@ -1161,9 +1157,22 @@ a:focus-visible {
   outline: none;
 }
 
-.composer-row .pill {
-  height: 32px;
+.composer-footer {
+  display: flex;
+  padding: 4px 2px 0;
+}
+
+.composer-footer .pill {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
   white-space: nowrap;
+}
+
+/* Below the box the menu opens upward from the left edge. */
+.composer-footer .model-menu {
+  left: 0;
+  right: auto;
 }
 
 .composer-notice {
