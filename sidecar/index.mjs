@@ -304,13 +304,23 @@ function describeError(source) {
   return "error.answerFailed";
 }
 
+/** A file name that cannot break out of the tag it is written into. */
+function safeName(name) {
+  return String(name ?? "file").replace(/[^\p{L}\p{N} ._()+-]/gu, "_").slice(0, 120) || "file";
+}
+
+function toBlock(file) {
+  if (file.mediaType === "text/plain") {
+    // Text files go in as text, so Claude reads them directly and knows the file name.
+    return { type: "text", text: `<file name="${safeName(file.name)}">\n${file.data}\n</file>` };
+  }
+  const source = { type: "base64", media_type: file.mediaType, data: file.data };
+  return file.mediaType === "application/pdf" ? { type: "document", source } : { type: "image", source };
+}
+
 function toContent(text, attachments) {
   if (!attachments?.length) return text;
-  const blocks = attachments.map((file) =>
-    file.mediaType === "application/pdf"
-      ? { type: "document", source: { type: "base64", media_type: file.mediaType, data: file.data } }
-      : { type: "image", source: { type: "base64", media_type: file.mediaType, data: file.data } },
-  );
+  const blocks = attachments.map(toBlock);
   if (text) blocks.push({ type: "text", text });
   return blocks;
 }

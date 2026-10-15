@@ -30,7 +30,7 @@ Every request goes to Anthropic with **your API key**, is billed to **your API o
 - **Thinking summary** you can expand while the model reasons
 - **Web search** as a toggle; answers cite their sources as links that open in your browser
 - **Model and effort choice** per chat: Sonnet 5.5 (default), Opus 5.5, Haiku 5.5; low, medium or high effort
-- **Images and PDFs** by button, drag and drop or paste
+- **Attachments** by button, drag and drop or paste: images, PDFs and text files such as code, Markdown, CSV, JSON or logs (up to 512 KB each, sent as text with the file name)
 - **Costs you can see**: per answer, per chat (header), per month (sidebar) and per model (settings)
 - **Monthly budget cap**: once reached, the app stops sending
 - **Regenerate or edit** the last exchange; the conversation resumes from the turn before it

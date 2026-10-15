@@ -1,11 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { EFFORTS, MODELS, type Effort, type ModelId, type OutgoingAttachment } from "../api";
+import { PICKER_ACCEPT, readAttachment, TEXT_MEDIA_TYPE } from "../attachments";
 import { t } from "../i18n";
 import { ArrowUpIcon, CheckIcon, ChevronDownIcon, CloseIcon, DocumentIcon, GlobeIcon, PaperclipIcon, StopIcon } from "./icons";
-
-const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
 export interface ComposerSettings {
   model: ModelId;
@@ -24,26 +21,10 @@ interface Props {
   onFilesTaken: () => void;
 }
 
-function readFile(file: File): Promise<OutgoingAttachment> {
-  return new Promise((resolve, reject) => {
-    const isPdf = file.type === "application/pdf";
-    if (!isPdf && !IMAGE_TYPES.includes(file.type)) return reject(t("composer.fileType"));
-    if (file.size > (isPdf ? MAX_PDF_BYTES : MAX_IMAGE_BYTES)) {
-      return reject(isPdf ? t("composer.pdfSize") : t("composer.imageSize"));
-    }
-    const reader = new FileReader();
-    reader.onerror = () => reject(t("composer.readError"));
-    reader.onload = () => {
-      const result = String(reader.result);
-      resolve({
-        name: file.name || t("app.image"),
-        mediaType: file.type,
-        data: result.slice(result.indexOf(",") + 1),
-        previewUrl: isPdf ? undefined : URL.createObjectURL(file),
-      });
-    };
-    reader.readAsDataURL(file);
-  });
+/** A short type label for a text file chip, such as RS, MD or CSV. */
+function fileLabel(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return (dot > 0 ? name.slice(dot + 1) : "TXT").slice(0, 4).toUpperCase();
 }
 
 function ModelMenu({ settings, onSettings }: Pick<Props, "settings" | "onSettings">) {
@@ -144,7 +125,7 @@ export function Composer(props: Props) {
     setNotice(null);
     for (const file of list) {
       try {
-        const read = await readFile(file);
+        const read = await readAttachment(file);
         setFiles((current) => [...current, read]);
       } catch (reason) {
         setNotice(String(reason));
@@ -202,7 +183,11 @@ export function Composer(props: Props) {
                 <img src={file.previewUrl} alt="" />
               ) : (
                 <span className="attachment-doc">
-                  <DocumentIcon size={18} />
+                  {file.mediaType === TEXT_MEDIA_TYPE ? (
+                    <span className="attachment-ext">{fileLabel(file.name)}</span>
+                  ) : (
+                    <DocumentIcon size={18} />
+                  )}
                 </span>
               )}
               <span className="attachment-name">{file.name}</span>
@@ -246,7 +231,7 @@ export function Composer(props: Props) {
             type="file"
             hidden
             multiple
-            accept="image/png,image/jpeg,image/gif,image/webp,application/pdf"
+            accept={PICKER_ACCEPT}
             onChange={(event) => {
               void addFiles(Array.from(event.target.files ?? []));
               event.target.value = "";

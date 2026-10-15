@@ -193,7 +193,7 @@ async function dispatch(chat: Chat, kept: Message[], text: string, attachments: 
       effort: next.effort,
       web: next.web,
       text,
-      attachments: attachments.map(({ mediaType, data }) => ({ mediaType, data })),
+      attachments: attachments.map(({ name, mediaType, data }) => ({ name, mediaType, data })),
       costSoFar: sessionCost,
       rewind,
       rewindTo: rewindTo ?? null,

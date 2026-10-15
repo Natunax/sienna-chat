@@ -16,13 +16,18 @@ struct AppState {
 
 pub(crate) const MODELS: [&str; 3] = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"];
 const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
-const MEDIA_TYPES: [&str; 5] = [
+/// Images and PDFs arrive as base64, text files (code, Markdown, CSV) as text.
+const MEDIA_TYPES: [&str; 6] = [
     "image/png",
     "image/jpeg",
     "image/gif",
     "image/webp",
     "application/pdf",
+    TEXT_MEDIA_TYPE,
 ];
+const TEXT_MEDIA_TYPE: &str = "text/plain";
+/// The window allows 512 KB per text file; a little headroom for encoding.
+const MAX_TEXT_FILE_BYTES: usize = 1024 * 1024;
 /// The Messages API accepts requests up to 32 MB; leave room for the text.
 const MAX_ATTACHMENT_BYTES: usize = 30 * 1024 * 1024;
 const MAX_TEXT_CHARS: usize = 400_000;
@@ -30,6 +35,8 @@ const MAX_TEXT_CHARS: usize = 400_000;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Attachment {
+    #[serde(default)]
+    name: String,
     media_type: String,
     data: String,
 }
@@ -144,6 +151,13 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
     if request
         .attachments
         .iter()
+        .any(|file| file.media_type == TEXT_MEDIA_TYPE && file.data.len() > MAX_TEXT_FILE_BYTES)
+    {
+        return Err("error.attachmentsTooLarge".into());
+    }
+    if request
+        .attachments
+        .iter()
         .map(|file| file.data.len())
         .sum::<usize>()
         > MAX_ATTACHMENT_BYTES
@@ -167,6 +181,7 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         "rewind": request.rewind,
         "rewindTo": request.rewind_to,
         "attachments": request.attachments.iter().map(|file| json!({
+            "name": file.name.chars().take(200).collect::<String>(),
             "mediaType": file.media_type,
             "data": file.data,
         })).collect::<Vec<_>>(),

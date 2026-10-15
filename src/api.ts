@@ -99,7 +99,7 @@ export const api = {
     effort: Effort;
     web: boolean;
     text: string;
-    attachments: { mediaType: string; data: string }[];
+    attachments: { name: string; mediaType: string; data: string }[];
     costSoFar: number;
     rewind?: boolean;
     rewindTo?: string | null;
