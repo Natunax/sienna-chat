@@ -105,7 +105,7 @@ Found a vulnerability? See [SECURITY.md](SECURITY.md).
 
 ## Costs
 
-Costs come from the token usage the API reports, priced by the Agent SDK. They are estimates; the Claude Console is the source of truth. Rough guide per question and answer: Haiku well under a cent, Sonnet one to a few cents, Opus about twice Sonnet, more with web search or long chats.
+Sienna counts only its own requests, from the token usage the API reports, priced by the Agent SDK. These are estimates. The Claude Console shows everything your organization spends, including other keys and the Playground, and is the source of truth. Rough guide per question and answer: Haiku well under a cent, Sonnet one to a few cents, Opus about twice Sonnet, more with web search or long chats.
 
 ## Development
 

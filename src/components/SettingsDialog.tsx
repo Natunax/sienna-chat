@@ -1,8 +1,11 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
 import { api, errorText, formatUsd, MODELS, type Usage } from "../api";
 import { setUsage } from "../store";
 import { CloseIcon, KeyIcon } from "./icons";
 import { KeyForm } from "./KeyForm";
+
+const CONSOLE_USAGE_URL = "https://platform.claude.com/settings/billing";
 
 interface Props {
   usage: Usage | null;
@@ -78,7 +81,11 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
       </section>
 
       <section className="setting">
-        <h3>Kosten diesen Monat</h3>
+        <h3>Kosten in Sienna diesen Monat</h3>
+        <p className="setting-hint">
+          Nur was diese App verbraucht hat, nach den Schätzungen des SDK. Die Claude Console zeigt alles, was über deine
+          Organisation läuft, auch andere Keys und den Playground.
+        </p>
         {usage && Object.keys(usage.byModel ?? {}).length ? (
           <dl className="cost-list">
             {Object.entries(usage.byModel)
@@ -90,20 +97,23 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
                 </div>
               ))}
             <div className="cost-row is-total">
-              <dt>Gesamt</dt>
+              <dt>Gesamt in Sienna</dt>
               <dd>{formatUsd(usage.usd)}</dd>
             </div>
           </dl>
         ) : (
           <p className="setting-hint">Noch keine Kosten in diesem Monat.</p>
         )}
+        <button type="button" className="link-button cost-link" onClick={() => void openUrl(CONSOLE_USAGE_URL)}>
+          Gesamtverbrauch in der Console ansehen
+        </button>
       </section>
 
       <section className="setting">
         <h3>Monatsbudget</h3>
         <p className="setting-hint">
-          Ist das Budget erreicht, nimmt die App keine Nachrichten mehr an. Setz zusätzlich ein Ausgabenlimit in der
-          Claude Console.
+          Gilt nur für Sienna: Ist es erreicht, nimmt die App keine Nachrichten mehr an. Die harte Grenze für alles ist
+          das Ausgabenlimit in der Claude Console.
         </p>
         <div className="setting-row">
           <label className="budget-field">

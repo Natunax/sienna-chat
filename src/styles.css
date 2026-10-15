@@ -1462,6 +1462,11 @@ a:focus-visible {
   color: var(--label);
 }
 
+.cost-link {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
 .budget-field {
   display: flex;
   align-items: center;

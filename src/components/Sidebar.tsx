@@ -175,10 +175,19 @@ export function Sidebar(props: Props) {
       </nav>
 
       <div className="sidebar-foot">
-        <button type="button" className="usage" onClick={onSettings} title="Einstellungen (⌘,)">
+        <button
+          type="button"
+          className="usage"
+          onClick={onSettings}
+          title={
+            usage
+              ? `Diesen Monat in Sienna, von ${formatUsd(usage.budget)} Budget. Den Gesamtverbrauch deiner Organisation zeigt die Claude Console. Einstellungen (⌘,)`
+              : "Einstellungen (⌘,)"
+          }
+        >
           <span className="usage-text">
             <span className="usage-amount">
-              {usage ? `${formatUsd(usage.usd)} von ${formatUsd(usage.budget)}` : "Guthaben"}
+              {usage ? `${formatUsd(usage.usd)} in Sienna` : "Kosten"}
             </span>
             <span className="usage-month">{monthName}</span>
           </span>
