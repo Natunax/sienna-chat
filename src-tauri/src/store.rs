@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatSummary {
     pub id: String,
@@ -233,9 +233,7 @@ impl Store {
         let _guard = self.guard();
         write_atomic(&self.chat_path(id), &bytes)?;
 
-        let mut list = self.read_index();
-        list.retain(|entry| entry.id != id);
-        list.push(ChatSummary {
+        let summary = ChatSummary {
             id: id.to_string(),
             title,
             updated_at,
@@ -243,7 +241,14 @@ impl Store {
             project_id: project_of(chat),
             project_dir: dir_of(chat),
             branch_of: branch_of(chat),
-        });
+        };
+        let mut list = self.read_index();
+        // Most saves change only the chat itself; the index stays as it is.
+        if list.contains(&summary) {
+            return Ok(());
+        }
+        list.retain(|entry| entry.id != id);
+        list.push(summary);
         self.write_index(&list)
     }
 

@@ -21,11 +21,13 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   if (node.tagName === "A") node.setAttribute("title", node.getAttribute("href") ?? "");
 });
 
-function renderBlock(token: Token, links: TokensList["links"]): string {
+function renderBlock(token: Token, links: TokensList["links"], keep: boolean): string {
   const hit = cache.get(token.raw);
   if (hit !== undefined) return hit;
   const list = Object.assign([token], { links }) as TokensList;
   const html = DOMPurify.sanitize(marked.parser(list), PURIFY);
+  // A block still growing in a streamed answer would only push finished ones out.
+  if (!keep) return html;
   if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value!);
   cache.set(token.raw, html);
   return html;
@@ -36,12 +38,14 @@ export interface Block {
   html: string;
 }
 
-export function renderBlocks(text: string): Block[] {
+/** `final` is false while the answer streams: its last block is still growing. */
+export function renderBlocks(text: string, final = true): Block[] {
   const tokens = marked.lexer(text);
   const blocks: Block[] = [];
+  const last = tokens.findLastIndex((token) => token.type !== "space");
   tokens.forEach((token, index) => {
     if (token.type === "space") return;
-    blocks.push({ key: `${index}`, html: renderBlock(token, tokens.links) });
+    blocks.push({ key: `${index}`, html: renderBlock(token, tokens.links, final || index !== last) });
   });
   return blocks;
 }

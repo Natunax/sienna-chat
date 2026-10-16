@@ -92,6 +92,8 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
   const streaming =
     chat.messages.slice(Math.max(0, lastQuestionAt)).some((message) => message.streaming) || Boolean(chat.compacting);
   const empty = chat.messages.length === 0;
+  // Claude waits for an approval; the composer says so.
+  const waiting = chat.messages.slice(Math.max(0, lastQuestionAt)).some((message) => message.permissions?.length);
   const language = useLanguage();
   const project = projectFor(chat, useProjects());
   const firstRun = useSummaries().length === 0;
@@ -198,6 +200,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
       settings={settings}
       onSettings={changeSettings}
       streaming={streaming}
+      waiting={waiting}
       onSend={send}
       onStop={() => stopMessage(chat.id)}
       autoFocusKey={chat.id}

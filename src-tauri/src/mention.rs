@@ -25,12 +25,33 @@ pub struct Entry {
 
 /// Files and folders as Git would see them: hidden ones, `.gitignore`d ones
 /// and anything behind a symbolic link stay out.
+/// Folders of installed packages and build output: thousands of files nobody
+/// mentions, which would crowd out the project's own under the limit. Typing
+/// such a path by hand still works.
+const BULKY: [&str; 10] = [
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    ".next",
+    "Pods",
+    "venv",
+    "__pycache__",
+    "DerivedData",
+    "vendor",
+];
+
 fn walk(dir: &Path, depth: Option<usize>) -> ignore::Walk {
     WalkBuilder::new(dir)
         .hidden(true)
         .follow_links(false)
         .require_git(false)
         .max_depth(depth)
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || !entry.file_type().is_some_and(|kind| kind.is_dir())
+                || !BULKY.contains(&entry.file_name().to_string_lossy().as_ref())
+        })
         .sort_by_file_name(|a, b| a.cmp(b))
         .build()
 }

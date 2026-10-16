@@ -116,12 +116,13 @@ fn app_language() -> String {
     sys_locale::get_locale().unwrap_or_else(|| "en".into())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn key_status() -> bool {
     keychain::read().is_some()
 }
 
-// Disk, Keychain and process work stays off the main thread.
+// Disk, Keychain and process work stays off the main thread, and so do
+// commands that wait for the engine lock (it is held while the engine starts).
 #[tauri::command(async)]
 fn key_save(key: String, state: State<AppState>) -> Result<(), String> {
     keychain::save(&key)?;
@@ -384,7 +385,7 @@ fn project_check(path: String) -> Result<String, String> {
     project::validate(&path).map(|dir| dir.display().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn chat_stop(chat_id: String, state: State<AppState>) {
     if store::valid_id(&chat_id) {
         state
@@ -414,7 +415,7 @@ fn project_open_file(project_dir: String, path: String) -> Result<(), String> {
 }
 
 /// The user's answer to a change or command Claude asked to run.
-#[tauri::command]
+#[tauri::command(async)]
 fn chat_permission(chat_id: String, id: String, decision: String, state: State<AppState>) {
     if store::valid_id(&chat_id)
         && store::valid_id(&id)
@@ -521,7 +522,7 @@ fn project_guess_check(path: String) -> Result<String, String> {
 }
 
 /// Switches a project chat's mode, also while an answer runs.
-#[tauri::command]
+#[tauri::command(async)]
 fn chat_mode(chat_id: String, mode: String, state: State<AppState>) {
     if store::valid_id(&chat_id) && MODES.contains(&mode.as_str()) {
         state
@@ -537,13 +538,13 @@ fn voice_start(language: String, app: AppHandle, state: State<AppState>) -> Resu
 }
 
 /// Ends the microphone; the last words still arrive.
-#[tauri::command]
+#[tauri::command(async)]
 fn voice_stop(state: State<AppState>) {
     state.voice.stop();
 }
 
 /// Ends dictation at once.
-#[tauri::command]
+#[tauri::command(async)]
 fn voice_cancel(state: State<AppState>) {
     state.voice.cancel();
 }

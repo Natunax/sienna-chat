@@ -244,7 +244,7 @@ function MentionText({ text, projectDir }: { text: string; projectDir: string })
 
 function Markdown({ text, final }: { text: string; final: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
-  const blocks = useMemo(() => renderBlocks(text), [text]);
+  const blocks = useMemo(() => renderBlocks(text, final), [text, final]);
 
   useEffect(() => {
     const root = ref.current;

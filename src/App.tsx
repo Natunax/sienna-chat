@@ -1,5 +1,5 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type Chat } from "./api";
 import { ChatView } from "./components/ChatView";
 import type { ComposerSettings } from "./components/Composer";
@@ -141,6 +141,22 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [newChat]);
 
+  // Stable handlers let the memoized sidebar skip the re-render on every streamed delta.
+  const sidebarHandlers = useMemo(
+    () => ({
+      onSelect: (id: string) => void openChat(id),
+      onDelete: (id: string) => void removeChat(id),
+      onRename: (id: string, title: string) => void renameChat(id, title),
+      onPin: (id: string) => void togglePin(id),
+      onAddProject: () => void addProjectFromFolder(),
+      onRemoveProject: (id: string) => void removeProject(id),
+      onRenameProject: (id: string, name: string) => void renameProject(id, name),
+      onToggle: () => setSidebarOpen(false),
+      onSettings: () => setSettingsOpen(true),
+    }),
+    [openChat, removeChat, addProjectFromFolder],
+  );
+
   if (hasKey === null) return <div className="app-loading" data-tauri-drag-region />;
   if (!hasKey) return <Onboarding onSaved={() => setHasKey(true)} />;
 
@@ -154,17 +170,9 @@ export function App() {
           activeId={chat && chat.messages.length ? chat.id : null}
           activeProjectId={chat ? (projectFor(chat, projects)?.id ?? null) : null}
           usage={usage}
-          onSelect={(id) => void openChat(id)}
           onNew={newChat}
-          onDelete={(id) => void removeChat(id)}
-          onRename={(id, title) => void renameChat(id, title)}
-          onPin={(id) => void togglePin(id)}
-          onAddProject={() => void addProjectFromFolder()}
           onNewInProject={newChatIn}
-          onRemoveProject={(id) => void removeProject(id)}
-          onRenameProject={(id, name) => void renameProject(id, name)}
-          onToggle={() => setSidebarOpen(false)}
-          onSettings={() => setSettingsOpen(true)}
+          {...sidebarHandlers}
         />
       )}
       {chat && (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { memo, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { formatUsd, type ChatSummary, type Project, type Usage } from "../api";
 import { locale, t, useLanguage } from "../i18n";
 import { projectFor } from "../store";
@@ -246,7 +246,7 @@ function ProjectRow(props: {
   );
 }
 
-export function Sidebar(props: Props) {
+export const Sidebar = memo(function Sidebar(props: Props) {
   const { summaries, projects, activeId, activeProjectId, usage, onSelect, onNew, onDelete, onRename, onPin } = props;
   const { onToggle, onSettings, onAddProject, onNewInProject, onRemoveProject, onRenameProject, projectError } = props;
   const [query, setQuery] = useState("");
@@ -484,4 +484,4 @@ export function Sidebar(props: Props) {
       </div>
     </aside>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type KeyboardEvent } from "react";
 import {
   api,
   MODELS,
@@ -44,6 +44,8 @@ interface Props {
   settings: ComposerSettings;
   onSettings: (change: Partial<ComposerSettings>) => void;
   streaming: boolean;
+  /** Claude waits for the user to allow or decline a step. */
+  waiting?: boolean;
   onSend: (text: string, attachments: OutgoingAttachment[]) => void;
   onStop: () => void;
   autoFocusKey: string;
@@ -310,7 +312,11 @@ export function Composer(props: Props) {
   const [mentionActive, setMentionActive] = useState(0);
   const [mentionClosed, setMentionClosed] = useState(false);
   const mention = project && !slashOpen ? mentionAt(text, caret) : null;
-  const ranked = mention && entries ? rankEntries(entries, mention.query) : [];
+  const mentionQuery = mention?.query ?? null;
+  const ranked = useMemo(
+    () => (mentionQuery !== null && entries ? rankEntries(entries, mentionQuery) : []),
+    [entries, mentionQuery],
+  );
   const mentionOpen = Boolean(mention) && !mentionClosed;
   const mentionIndex = Math.min(mentionActive, Math.max(ranked.length - 1, 0));
   const hasMention = Boolean(project) && text.includes("@");
@@ -337,7 +343,11 @@ export function Composer(props: Props) {
   }, [mention?.query, mention === null]);
 
   // The paths that exist, so only real mentions are marked in the text.
-  const known = new Set(entries?.flatMap((entry) => (entry.dir ? [entry.path, `${entry.path}/`] : [entry.path])));
+  const known = useMemo(
+    () =>
+      new Set(hasMention ? entries?.flatMap((entry) => (entry.dir ? [entry.path, `${entry.path}/`] : [entry.path])) : []),
+    [entries, hasMention],
+  );
 
   /** Puts the picked path in place of what was typed after `@`; Tab on a folder lists what is inside. */
   const pickMention = (entry: ProjectEntry, into: boolean) => {
@@ -662,7 +672,15 @@ export function Composer(props: Props) {
             ref={area}
             className="composer-input"
             rows={1}
-            placeholder={voice.active ? t("voice.placeholder") : t("composer.placeholder")}
+            placeholder={
+              voice.active
+                ? t("voice.placeholder")
+                : props.waiting
+                  ? t("composer.waiting")
+                  : project
+                    ? t("composer.placeholderProject")
+                    : t("composer.placeholder")
+            }
             value={text}
             onChange={(event) => {
               // Typing takes over: the dictated words stay, the microphone goes off.

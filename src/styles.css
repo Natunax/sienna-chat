@@ -1178,6 +1178,15 @@ button.tool-toggle:hover .tool-name,
 }
 
 /* A change or command waiting for the user's answer. */
+/* The card takes focus so ⌘↩ and Esc answer it; a quiet edge shows that, not the system ring. */
+.permission:focus {
+  outline: none;
+}
+
+.permission:focus-visible {
+  box-shadow: var(--shadow-composer), 0 0 0 1px var(--focus);
+}
+
 .permission {
   margin: 14px 0 6px;
   padding: 12px;
@@ -1872,9 +1881,10 @@ button.tool-toggle:hover .tool-name,
   text-align: left;
 }
 
+/* The chosen row: a quiet tint, as in the other menus, not a filled bar. */
 .slash-item.is-active {
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--accent-soft);
+  color: var(--label);
 }
 
 .slash-command {
@@ -2027,19 +2037,19 @@ button.tool-toggle:hover .tool-name,
 }
 
 .mention-item.is-active {
-  background: var(--accent);
+  background: var(--accent-soft);
 }
 
-.mention-item.is-active,
-.mention-item.is-active > svg,
-.mention-item.is-active .mention-name,
-.mention-item.is-active .mention-name b,
-.mention-item.is-active .mention-path {
-  color: var(--on-accent);
+.mention-item.is-active > svg {
+  color: var(--accent-text);
+}
+
+.mention-item.is-active .mention-name {
+  color: var(--label);
 }
 
 .mention-item.is-active .mention-path {
-  opacity: 0.8;
+  color: var(--label-2);
 }
 
 .mention-empty {
