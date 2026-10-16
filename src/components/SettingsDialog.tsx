@@ -17,6 +17,7 @@ const SHORTCUTS: { keys: string; label: TextKey }[] = [
   { keys: "⌘,", label: "shortcut.settings" },
   { keys: "⌘.", label: "shortcut.stop" },
   { keys: "/", label: "shortcut.commands" },
+  { keys: "⌥Space", label: "shortcut.dictate" },
   { keys: "⌘↩", label: "shortcut.allow" },
   { keys: "Esc", label: "shortcut.deny" },
   { keys: "1–4", label: "shortcut.modes" },

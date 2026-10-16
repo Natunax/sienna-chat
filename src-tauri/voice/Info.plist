@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.natunax.sienna.voice</string>
+	<key>CFBundleName</key>
+	<string>sienna-voice</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Sienna listens only while you dictate into the input field.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Sienna turns your dictation into text on this Mac. No audio leaves it.</string>
+</dict>
+</plist>

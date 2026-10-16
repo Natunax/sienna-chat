@@ -217,3 +217,11 @@ export const KeyIcon = (p: IconProps) => (
     <path d="m9.5 10.5 7-7M14 6l2 2M12 8l1.5 1.5" />
   </Icon>
 );
+
+export const MicIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="7.5" y="2.5" width="5" height="9.5" rx="2.5" />
+    <path d="M4.75 9.5a5.25 5.25 0 0 0 10.5 0" />
+    <path d="M10 14.75v2.75" />
+  </Icon>
+);

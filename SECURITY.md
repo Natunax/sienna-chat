@@ -16,6 +16,7 @@ In scope, for example:
 - requests billed to anything other than the configured API key
 - script execution or navigation in the app window through a model answer
 - reading files outside the app's data folder and the chat's project folder
+- the microphone staying on after dictation ends, audio leaving the Mac, or dictated text being sent without the user pressing send
 - a file change or command running without approval in a mode that should ask, a risky command (see README) running without asking, or a change landing outside the project folder
 
 Out of scope: what the Claude models answer, and bugs in the Claude Agent SDK or Tauri themselves (report those upstream).

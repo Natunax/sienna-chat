@@ -315,6 +315,15 @@ export function installDevMock() {
         }
         case "project_guess_check":
           return "npm test";
+        case "voice_start":
+          return startDictation();
+        case "voice_stop":
+          finishDictation();
+          return null;
+        case "voice_cancel":
+          dictation?.timers.forEach(clearTimeout);
+          dictation = null;
+          return null;
         case "chat_permission":
           waitingOn?.((payload as { decision: string }).decision);
           waitingOn = null;
@@ -325,6 +334,40 @@ export function installDevMock() {
     },
     { shouldMockEvents: true },
   );
+}
+
+// Dictation: a sentence that arrives word by word, with a level that moves.
+let dictation: { generation: number; timers: number[]; heard: string } | null = null;
+let dictations = 0;
+
+function startDictation(): number {
+  dictation?.timers.forEach(clearTimeout);
+  const generation = ++dictations;
+  const words = (english ? "Add a test for the empty cart" : "Schreib einen Test für den leeren Warenkorb").split(" ");
+  const run = { generation, timers: [] as number[], heard: "" };
+  dictation = run;
+  const later = (ms: number, event: Record<string, unknown>) =>
+    run.timers.push(window.setTimeout(() => void emit("voice", { ...event, generation }), ms));
+  later(300, { type: "ready" });
+  words.forEach((_, index) => {
+    const text = words.slice(0, index + 1).join(" ");
+    run.timers.push(window.setTimeout(() => (run.heard = text), 700 + index * 380));
+    later(700 + index * 380, { type: "partial", text });
+  });
+  for (let ms = 350; ms < 700 + words.length * 380; ms += 90) later(ms, { type: "level", value: Math.random() });
+  return generation;
+}
+
+function finishDictation() {
+  const run = dictation;
+  if (!run) return;
+  run.timers.forEach(clearTimeout);
+  dictation = null;
+  const text = run.heard ? `${run.heard}.` : "";
+  setTimeout(() => {
+    void emit("voice", { type: "final", text, generation: run.generation });
+    void emit("voice", { type: "end", generation: run.generation });
+  }, 400);
 }
 
 /** `?demo=chat` opens the sample chat and `?lang=en` switches to English, for README screenshots. */

@@ -2,6 +2,7 @@ mod engine;
 mod keychain;
 mod project;
 mod store;
+mod voice;
 
 use engine::Engine;
 use serde::Deserialize;
@@ -9,10 +10,12 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use store::{ChatSummary, Project, Store, Usage};
 use tauri::{AppHandle, Manager, RunEvent, State};
+use voice::Voice;
 
 struct AppState {
     store: Arc<Store>,
     engine: Engine,
+    voice: Voice,
 }
 
 pub(crate) const MODELS: [&str; 4] = [
@@ -512,6 +515,24 @@ fn chat_mode(chat_id: String, mode: String, state: State<AppState>) {
     }
 }
 
+/// Starts dictation in `de` or `en`; the text arrives as `voice` events.
+#[tauri::command(async)]
+fn voice_start(language: String, app: AppHandle, state: State<AppState>) -> Result<u64, String> {
+    state.voice.start(&app, &language)
+}
+
+/// Ends the microphone; the last words still arrive.
+#[tauri::command]
+fn voice_stop(state: State<AppState>) {
+    state.voice.stop();
+}
+
+/// Ends dictation at once.
+#[tauri::command]
+fn voice_cancel(state: State<AppState>) {
+    state.voice.cancel();
+}
+
 /// The window may only show the app itself. A link in an answer that slips
 /// past the click handler must not turn the window into a browser.
 fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
@@ -534,6 +555,7 @@ pub fn run() {
             app.manage(AppState {
                 store: Arc::new(Store::new(root)),
                 engine: Engine::default(),
+                voice: Voice::default(),
             });
             Ok(())
         })
@@ -563,6 +585,9 @@ pub fn run() {
             chat_revert_files,
             project_set_check,
             project_guess_check,
+            voice_start,
+            voice_stop,
+            voice_cancel,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build the app");
@@ -571,6 +596,7 @@ pub fn run() {
         if let RunEvent::Exit = event {
             if let Some(state) = handle.try_state::<AppState>() {
                 state.engine.stop();
+                state.voice.cancel();
             }
         }
     });

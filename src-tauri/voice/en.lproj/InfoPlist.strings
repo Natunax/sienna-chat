@@ -1,0 +1,2 @@
+"NSMicrophoneUsageDescription" = "Sienna listens only while you dictate into the input field.";
+"NSSpeechRecognitionUsageDescription" = "Sienna turns your dictation into text on this Mac. No audio leaves it.";

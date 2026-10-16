@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type KeyboardEvent } from "react";
 import {
   api,
   MODELS,
@@ -15,6 +15,7 @@ import { addProject } from "../store";
 import { PICKER_ACCEPT, readAttachment, TEXT_MEDIA_TYPE } from "../attachments";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { errorText, t } from "../i18n";
+import { useVoice } from "../voice";
 import { CompareChip } from "./CompareChip";
 import { ContextMeter } from "./ContextMeter";
 import { ModeMenu } from "./ModeMenu";
@@ -27,6 +28,7 @@ import {
   ShieldCheckIcon,
   FolderIcon,
   GlobeIcon,
+  MicIcon,
   StopIcon,
 } from "./icons";
 
@@ -87,6 +89,12 @@ export function composing(event: KeyboardEvent<HTMLElement>): boolean {
   return event.nativeEvent.isComposing || event.keyCode === 229;
 }
 
+/** Dictated text after what was typed before, with one space between. */
+function joinDictation(before: string, dictated: string): string {
+  if (!dictated) return before;
+  return before && !/\s$/.test(before) ? `${before} ${dictated}` : before + dictated;
+}
+
 /** The text typed after a leading slash, while it is still one word. */
 function slashQuery(text: string): string | null {
   const match = /^\/(\S*)$/.exec(text);
@@ -144,9 +152,71 @@ export function Composer(props: Props) {
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
 
+  // Dictation fills the input field after what was typed; it never sends.
+  const typedBefore = useRef("");
+  const voice = useVoice({
+    onText: (dictated) => setText(joinDictation(typedBefore.current, dictated)),
+    onNotice: (key) => setNotice(t(key)),
+  });
+  const startVoice = () => {
+    setNotice(null);
+    typedBefore.current = text;
+    area.current?.focus();
+    void voice.start();
+  };
+  const toggleVoice = () => (voice.active ? voice.stop() : startVoice());
+  const discardVoice = () => {
+    voice.cancel();
+    setText(typedBefore.current);
+  };
+
   useEffect(() => {
     area.current?.focus();
+    // Another chat: the microphone goes off, the text stays.
+    voice.cancel();
   }, [autoFocusKey]);
+
+  // ⌥Space: hold to talk, or tap to start and tap again to stop. Leaving the
+  // window ends the microphone.
+  const voiceRef = useRef({ voice, startVoice });
+  voiceRef.current = { voice, startVoice };
+  useEffect(() => {
+    let pressedAt = 0;
+    const down = (event: globalThis.KeyboardEvent) => {
+      if (event.code !== "Space" || !event.altKey || event.metaKey || event.ctrlKey) return;
+      // Not while another field, a dialog or an approval has the keys.
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("input, [role=dialog], [role=alertdialog]")) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      const { voice, startVoice } = voiceRef.current;
+      if (voice.active) {
+        pressedAt = 0;
+        voice.stop();
+      } else {
+        pressedAt = Date.now();
+        startVoice();
+      }
+    };
+    const up = (event: globalThis.KeyboardEvent) => {
+      if (event.code !== "Space" || !pressedAt) return;
+      if (Date.now() - pressedAt > 400) voiceRef.current.voice.stop();
+      pressedAt = 0;
+    };
+    // Not while it starts: macOS may be asking for the microphone then.
+    const leave = () => voiceRef.current.voice.state === "listening" && voiceRef.current.voice.stop();
+    const hidden = () => document.hidden && leave();
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", leave);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", leave);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, []);
 
   // The text box grows with its content, and again when the window width changes the wrapping.
   useLayoutEffect(() => {
@@ -227,6 +297,8 @@ export function Composer(props: Props) {
 
   const submit = () => {
     if (!canSend) return;
+    // What was heard until now goes out; nothing comes after it.
+    voice.cancel();
     onSend(text.trim(), files);
     files.forEach((file) => file.previewUrl && URL.revokeObjectURL(file.previewUrl));
     setText("");
@@ -235,6 +307,11 @@ export function Composer(props: Props) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (voice.active && event.key === "Escape") {
+      event.preventDefault();
+      discardVoice();
+      return;
+    }
     if (slashOpen && !composing(event)) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
@@ -447,9 +524,13 @@ export function Composer(props: Props) {
             ref={area}
             className="composer-input"
             rows={1}
-            placeholder={t("composer.placeholder")}
+            placeholder={voice.active ? t("voice.placeholder") : t("composer.placeholder")}
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={(event) => {
+              // Typing takes over: the dictated words stay, the microphone goes off.
+              voice.cancel();
+              setText(event.target.value);
+            }}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             aria-label={t("composer.label")}
@@ -459,6 +540,17 @@ export function Composer(props: Props) {
             aria-activedescendant={slashOpen ? `slash-${matches[active]?.id}` : undefined}
             aria-autocomplete="list"
           />
+          <button
+            type="button"
+            className={`voice-button is-${voice.state}`}
+            style={{ "--level": voice.level } as CSSProperties}
+            onClick={toggleVoice}
+            aria-pressed={voice.active}
+            aria-label={voice.active ? t("voice.stop") : t("voice.start")}
+            title={voice.active ? t("voice.stopHint") : t("voice.startHint")}
+          >
+            <MicIcon size={16} />
+          </button>
           {streaming ? (
             <button
               type="button"
@@ -482,6 +574,12 @@ export function Composer(props: Props) {
             </button>
           )}
         </div>
+        {voice.active && (
+          <div className="composer-voice" role="status">
+            <span className="voice-dot" aria-hidden="true" />
+            {voice.state === "finishing" ? t("voice.finishing") : t("voice.listening")}
+          </div>
+        )}
         {notice && <div className="composer-notice">{notice}</div>}
       </div>
       {/* As in Claude Code: the mode on the left, model and context on the right. */}

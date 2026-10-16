@@ -54,7 +54,16 @@
     ],
     "resources": {
       "../sidecar/dist/engine.mjs": "sidecar/engine.mjs",
-      "../sidecar/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude": "sidecar/claude"
+      "../sidecar/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude": "sidecar/claude",
+      "voice/de.lproj/InfoPlist.strings": "de.lproj/InfoPlist.strings",
+      "voice/en.lproj/InfoPlist.strings": "en.lproj/InfoPlist.strings"
+    },
+    "externalBin": [
+      "binaries/sienna-voice"
+    ],
+    "macOS": {
+      "entitlements": "Entitlements.plist",
+      "minimumSystemVersion": "13.0"
     }
   }
 }

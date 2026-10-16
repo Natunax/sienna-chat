@@ -1846,8 +1846,8 @@ button.tool-toggle:hover .tool-name,
    the full width on top and the buttons move to a row below. */
 .composer-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas: "plus input send";
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "plus input voice send";
   align-items: end;
   gap: 4px;
 }
@@ -1864,11 +1864,15 @@ button.tool-toggle:hover .tool-name,
   grid-area: send;
 }
 
+.composer-row > .voice-button {
+  grid-area: voice;
+}
+
 @container (max-width: 300px) {
   .composer-row {
     grid-template-areas:
-      "input input input"
-      "plus . send";
+      "input input input input"
+      "plus . voice send";
     row-gap: 2px;
   }
 
@@ -2175,6 +2179,55 @@ button.tool-toggle:hover .tool-name,
 
 .send-button.is-stop:hover {
   background: var(--label-2);
+}
+
+/* Dictation: quiet until it listens, then a ring that follows the voice. */
+.voice-button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: 2px;
+  border-radius: 50%;
+  color: var(--label-2);
+  transition: background-color 120ms, color 120ms, box-shadow 80ms linear;
+}
+
+.voice-button:hover {
+  background: var(--fill-hover);
+  color: var(--label);
+}
+
+.voice-button.is-starting,
+.voice-button.is-listening,
+.voice-button.is-finishing {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.voice-button.is-listening {
+  box-shadow: 0 0 0 calc(1px + var(--level, 0) * 5px) color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.voice-button.is-starting,
+.voice-button.is-finishing {
+  animation: pulse-text 1.2s ease-in-out infinite;
+}
+
+.composer-voice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 8px 2px;
+  font-size: 12px;
+  color: var(--label-2);
+}
+
+.voice-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 .composer-chips {
@@ -2911,7 +2964,8 @@ button.tool-toggle:hover .tool-name,
   .tool-chevron,
   .structured-go,
   .context-fill,
-  .meter-fill {
+  .meter-fill,
+  .voice-button {
     transition: none;
   }
 }

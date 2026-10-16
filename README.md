@@ -39,6 +39,7 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 - Images, PDFs and text files (code, Markdown, CSV, JSON, logs) by button, drag and drop or paste
 - Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.1 per chat, with five effort levels from low to max
 - Regenerate or edit the last question, copy any answer, and chat titles written by Haiku
+- Dictation as in Claude Code: hold ⌥Space or click the microphone. Speech is recognized on your Mac, and the text lands in the input field for you to check before you send
 
 **Coding in a project folder**
 - Add a folder as a project; its chats read and search it, and its `CLAUDE.md` is included
@@ -127,6 +128,7 @@ Destructive commands (`sudo`, recursive `rm`, `git push`, `git reset --hard` and
 | ⌘, | Settings |
 | ↩ / ⇧↩ | Send / new line |
 | ⌘. | Stop the answer |
+| ⌥Space | Dictate: hold to talk, or tap to start and stop (Esc discards) |
 | ⌘↩ / Esc | Allow / decline an approval |
 | / | Commands |
 | F2 | Rename a chat or project |
@@ -152,7 +154,8 @@ flowchart LR
 | Path | What it is |
 | --- | --- |
 | `src/` | React UI: `store.ts` holds chats and routes engine events, `components/` the views, `i18n.ts` the texts, `diff.ts` the line diff |
-| `src-tauri/src/` | Rust shell: `lib.rs` commands, `engine.rs` engine process, `store.rs` storage, `project.rs` folder checks, `keychain.rs` |
+| `src-tauri/src/` | Rust shell: `lib.rs` commands, `engine.rs` engine process, `voice.rs` dictation, `store.rs` storage, `project.rs` folder checks, `keychain.rs` |
+| `src-tauri/voice/` | The dictation helper in Swift, built by `build.rs` and bundled next to the app |
 | `sidecar/index.mjs` | Chat engine on the Claude Agent SDK, bundled into `sidecar/dist/engine.mjs` for the app |
 | `sidecar/project.mjs` | The guard for project folders, modes and destructive commands, tested in `project.test.mjs` |
 | `sidecar/templates.mjs` | JSON schemas of the templates |
@@ -175,6 +178,11 @@ Sienna lets a language model change files and run commands on your Mac, so the b
   - `CLAUDE.md` is read only as a regular file inside the folder.
   - `@path` mentions and slash commands are never expanded.
   - `WebFetch` is left out, so a web page cannot make the model fetch an attacker's URL.
+- **Dictation stays on your Mac.**
+  - A small helper recognizes speech with Apple's Speech framework and requires on-device recognition. Without it there is no fallback to a server; Sienna tells you how to download the language instead.
+  - Audio is never stored. The microphone is on only while the button glows, and goes off when you send, switch chats, leave the window, or after five minutes.
+  - Dictated text is never sent on its own, so a misheard word or a voice from a video cannot start work in your project.
+  - The helper runs without the API key, and Rust passes on only known events with checked text.
 - **The window is locked down.**
   - Answers are sanitized (marked + DOMPurify) and shown under a strict Content Security Policy. Remote images are not loaded.
   - Links show their target and open only `http` and `https`, in your browser.
