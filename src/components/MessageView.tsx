@@ -54,77 +54,158 @@ function ToolIcon({ name }: { name: string }) {
 }
 
 const FILE_TOOLS = ["Read", "Edit", "Write"];
+/** Tools that only look around; several in a row fold into one line, as in Claude Code. */
+const QUIET_TOOLS = ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch"];
 
-/** The tools an answer used; changes and command output open below the row, files in the editor. */
-function Tools({ tools, projectDir, reverted }: { tools: ToolUse[]; projectDir?: string | null; reverted?: boolean }) {
-  const [open, setOpen] = useState<number | null>(null);
-  const [missing, setMissing] = useState<number | null>(null);
-  const shown = open === null ? undefined : tools[open];
+type ToolGroup = { quiet: boolean; items: { tool: ToolUse; index: number }[] };
+
+function groupTools(tools: ToolUse[]): ToolGroup[] {
+  const groups: ToolGroup[] = [];
+  tools.forEach((tool, index) => {
+    // A declined or failed step stays in view.
+    const quiet = QUIET_TOOLS.includes(tool.name) && !tool.denied;
+    const last = groups[groups.length - 1];
+    if (quiet && last?.quiet) last.items.push({ tool, index });
+    else groups.push({ quiet, items: [{ tool, index }] });
+  });
+  // A single quiet step needs no fold.
+  return groups.flatMap((group) =>
+    group.quiet && group.items.length < 2 ? [{ ...group, quiet: false }] : [group],
+  );
+}
+
+/** "Ran 4 commands, read 2 files, searched 3 times". */
+function toolSummary(tools: ToolUse[]): string {
+  const count = (names: string[]) => tools.filter((tool) => names.includes(tool.name)).length;
+  const parts: [number, TextKey, TextKey][] = [
+    [count(["Bash"]), "tools.bash.one", "tools.bash.other"],
+    [count(["Read"]), "tools.read.one", "tools.read.other"],
+    [count(["Grep", "Glob"]), "tools.search.one", "tools.search.other"],
+    [count(["WebSearch", "WebFetch"]), "tools.web.one", "tools.web.other"],
+  ];
+  const text = parts
+    .filter(([n]) => n > 0)
+    .map(([n, one, other]) => t(n === 1 ? one : other, { n }))
+    .join(", ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+interface ToolRowProps {
+  tool: ToolUse;
+  projectDir?: string | null;
+  reverted?: boolean;
+}
+
+/** One step: what Claude did and on what; a change or output opens below it. */
+function ToolRow({ tool, projectDir, reverted }: ToolRowProps) {
+  const [open, setOpen] = useState(false);
+  const [missing, setMissing] = useState(false);
+  const state = tool.denied ? " is-denied" : tool.failed ? " is-failed" : "";
+  const expandable = Boolean(tool.change || tool.output !== undefined);
+  const name = (
+    <>
+      <ToolIcon name={tool.name} />
+      <span className="tool-name">{TOOL_LABELS[tool.name] ? t(TOOL_LABELS[tool.name]) : tool.name}</span>
+    </>
+  );
+  // A file that was only proposed and declined may not exist.
+  const openable = projectDir && FILE_TOOLS.includes(tool.name) && tool.detail && !tool.denied;
   return (
     <>
-      <div className="tools">
-        {tools.map((tool, index) => {
-          const state = tool.denied ? " is-denied" : tool.failed ? " is-failed" : "";
-          const expandable = Boolean(tool.change || tool.output !== undefined);
-          const name = (
-            <>
-              <ToolIcon name={tool.name} />
-              <span className="tool-name">{TOOL_LABELS[tool.name] ? t(TOOL_LABELS[tool.name]) : tool.name}</span>
-            </>
-          );
-          // A file that was only proposed and declined may not exist.
-          const openable = projectDir && FILE_TOOLS.includes(tool.name) && tool.detail && !tool.denied;
-          return (
-            <div key={index} className={`tool-chip${state}${open === index ? " is-open" : ""}`}>
-              {expandable ? (
-                <button
-                  type="button"
-                  className="tool-toggle"
-                  aria-expanded={open === index}
-                  onClick={() => setOpen(open === index ? null : index)}
-                >
-                  {name}
-                  <ChevronRightIcon size={12} className="tool-chevron" />
-                </button>
-              ) : (
-                <span className="tool-toggle">{name}</span>
-              )}
-              {openable ? (
-                <button
-                  type="button"
-                  className="tool-detail tool-file"
-                  title={t("tool.open", { path: tool.detail })}
-                  onClick={() =>
-                    void api
-                      .projectOpenFile(projectDir, tool.detail)
-                      .then(() => setMissing(null))
-                      .catch(() => setMissing(index))
-                  }
-                >
-                  {tool.detail}
-                </button>
-              ) : (
-                tool.detail && <span className="tool-detail">{tool.detail}</span>
-              )}
-              {tool.denied && <span className="tool-state">{t("tool.denied")}</span>}
-              {reverted && tool.change && !tool.denied && <span className="tool-state">{t("revert.label")}</span>}
-              {!tool.denied && tool.failed && <span className="tool-state">{t("tool.failed")}</span>}
-              {missing === index && <span className="tool-state is-error">{t("error.fileMissing")}</span>}
-            </div>
-          );
-        })}
+      <div className={`tool-chip${state}${open ? " is-open" : ""}`}>
+        {expandable ? (
+          <button type="button" className="tool-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {name}
+            <ChevronRightIcon size={12} className="tool-chevron" />
+          </button>
+        ) : (
+          <span className="tool-toggle">{name}</span>
+        )}
+        {openable ? (
+          <button
+            type="button"
+            className="tool-detail tool-file"
+            title={t("tool.open", { path: tool.detail })}
+            onClick={() =>
+              void api
+                .projectOpenFile(projectDir, tool.detail)
+                .then(() => setMissing(false))
+                .catch(() => setMissing(true))
+            }
+          >
+            {tool.detail}
+          </button>
+        ) : (
+          tool.detail && (
+            <span className="tool-detail" title={tool.detail}>
+              {tool.detail}
+            </span>
+          )
+        )}
+        {tool.denied && <span className="tool-state">{t("tool.denied")}</span>}
+        {reverted && tool.change && !tool.denied && <span className="tool-state">{t("revert.label")}</span>}
+        {!tool.denied && tool.failed && <span className="tool-state">{t("tool.failed")}</span>}
+        {missing && <span className="tool-state is-error">{t("error.fileMissing")}</span>}
       </div>
-      {shown?.change && (
+      {open && tool.change && (
         <div className="tool-panel">
-          <DiffView before={shown.change.before} after={shown.change.after} numbered={shown.name === "Write"} />
+          <DiffView before={tool.change.before} after={tool.change.after} numbered={tool.name === "Write"} />
         </div>
       )}
-      {shown && !shown.change && shown.output !== undefined && (
+      {open && !tool.change && tool.output !== undefined && (
         <pre className="tool-panel tool-output">
-          <code>{shown.output || t("tool.noOutput")}</code>
+          {/* The row cuts a long command; here it shows in full. */}
+          {tool.name === "Bash" && tool.detail && <code className="tool-command">$ {tool.detail}</code>}
+          <code>{tool.output || t("tool.noOutput")}</code>
         </pre>
       )}
     </>
+  );
+}
+
+/** Several steps that only looked around, folded into one line until opened. */
+function ToolFold({ group, active, ...row }: { group: ToolGroup; active: boolean } & Omit<ToolRowProps, "tool">) {
+  const [open, setOpen] = useState(false);
+  const tools = group.items.map((item) => item.tool);
+  const failed = tools.filter((tool) => tool.failed).length;
+  // While the answer runs, the step under way shows next to the count.
+  const current = active ? tools[tools.length - 1] : null;
+  return (
+    <div className={`tool-fold${open ? " is-open" : ""}`}>
+      <button type="button" className="tool-fold-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="tool-fold-summary">{toolSummary(tools)}</span>
+        {failed > 0 && <span className="tool-state is-error">{t("tools.failed", { n: failed })}</span>}
+        {current && !open && <span className="tool-detail">{current.detail}</span>}
+        <ChevronRightIcon size={12} className="tool-chevron" />
+      </button>
+      {open && (
+        <div className="tool-fold-body">
+          {group.items.map(({ tool, index }) => (
+            <ToolRow key={index} tool={tool} {...row} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The tools an answer used; changes and command output open below the row, files in the editor. */
+function Tools({
+  tools,
+  active,
+  ...row
+}: { tools: ToolUse[]; active: boolean } & Omit<ToolRowProps, "tool">) {
+  const groups = groupTools(tools);
+  return (
+    <div className="tools">
+      {groups.map((group, at) =>
+        group.quiet ? (
+          <ToolFold key={group.items[0].index} group={group} active={active && at === groups.length - 1} {...row} />
+        ) : (
+          group.items.map(({ tool, index }) => <ToolRow key={index} tool={tool} {...row} />)
+        ),
+      )}
+    </div>
   );
 }
 
@@ -372,7 +453,7 @@ function MessageViewImpl({
     <div className={`msg msg-assistant${message.lane ? " is-lane" : ""}`} aria-busy={streaming}>
       {showModel && modelName && <div className="msg-model">{modelName}</div>}
       {(message.thinking || waiting) && <Thinking text={message.thinking ?? ""} active={waiting} />}
-      {message.tools?.length ? <Tools tools={message.tools} projectDir={projectDir} reverted={message.reverted} /> : null}
+      {message.tools?.length ? <Tools tools={message.tools} active={streaming} projectDir={projectDir} reverted={message.reverted} /> : null}
       {structured && message.format ? (
         <StructuredView format={message.format} data={structured} onFollowUp={onFollowUp} />
       ) : (

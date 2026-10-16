@@ -46,6 +46,7 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 - Claude edits files and runs commands. Changes show as a diff and commands in full, and a click on a file path opens it in your editor
 - Permission modes as in Claude Code: **Auto** (default), **Manual**, **Accept edits**, **Plan** and, behind a confirmation, **Bypass permissions**
 - Plan mode only reads and ends with a plan you carry out in one click
+- Steps that only look around fold into one line ("Ran 4 commands, read 2 files"), as in Claude Code; reading commands never ask
 
 **Beyond Claude Code**
 - **Branches:** continue from any answer in a new chat; the original stays untouched
@@ -170,7 +171,7 @@ Sienna lets a language model change files and run commands on your Mac, so the b
 - **Reading is limited to the project folder.** A hook checks every path, search pattern and glob, resolves symbolic links, and refuses `~` and variables. `Edit` and `Write` are limited the same way and never touch a `.git` folder.
 - **Commands are the one wide door.** `Bash` runs with your user's rights in the project folder.
   - In Auto and Bypass permissions it runs in macOS's sandbox: writes stay in the folder, and credentials (`~/.ssh`, `~/.aws`, keychains, shell history and the like) and Sienna's own data cannot be read.
-  - In Manual and Accept edits mode every command asks first.
+  - In Manual and Accept edits mode every command asks first, except plain reading ones (`ls`, `cat`, `grep`, `find`, `git log` and the like) in every mode, Plan included. They run without asking only when the line has no variables, substitutions, subshells or redirects, and every path in it stays in the folder.
   - Destructive commands ask in every mode, also behind quotes, `env`, `xargs` or `bash -c`. This guards against accidents, not a determined attacker, so read what you allow.
 - **The check command runs outside the sandbox.** After changes you did not approve one by one, Sienna asks before running it.
 - **Folders and instructions.**

@@ -172,6 +172,17 @@ async function streamCodeAnswer(chatId: string) {
   const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   void emit("engine", { type: "session", chatId, sessionId: "55555555-5555-4555-8555-555555555555" });
   await pause(500);
+  // A look around first, folded into one line in the answer.
+  const look = [
+    ["l1", "Bash", "ls -la && git log --oneline | head -20 && cat README* 2>/dev/null | head -80 && sed -n 80,400p docs/architecture.md | head -150"],
+    ["l2", "Glob", "**/*.{json,md,ts,tsx}"],
+    ["l3", "Grep", "total|quantity|discount|coupon|shipping|tax|currency|rounding|price"],
+  ];
+  for (const [id, name, detail] of look) {
+    void emit("engine", { type: "tool", chatId, id, name, detail });
+    if (name === "Bash") void emit("engine", { type: "toolResult", chatId, id, failed: false, output: "total 48\ndrwxr-xr-x  12 dev  staff   384 Oct 16 09:12 .\n3f2a1c9 fix: round totals\n" });
+    await pause(300);
+  }
   void emit("engine", { type: "tool", chatId, id: "t1", name: "Read", detail: "src/cart.ts" });
   await pause(400);
   void emit("engine", { type: "tool", chatId, id: "t2", name: "Edit", detail: "src/cart.ts" });

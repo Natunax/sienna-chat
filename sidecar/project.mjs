@@ -83,6 +83,122 @@ export function isRisky(command) {
   return all.some((words, index) => riskyWords(words, all[index - 1]));
 }
 
+// Commands that only read. They run without asking in every mode when the
+// whole command line is plain (no variables, substitutions, subshells or
+// redirects other than to /dev/null) and every path it names stays in the folder.
+const READ_COMMANDS = [
+  "cd", "pwd", "ls", "cat", "head", "tail", "wc", "stat", "du", "tree", "sort", "uniq", "cut",
+  "tr", "nl", "diff", "basename", "dirname", "realpath", "echo", "which", "grep", "egrep", "fgrep", "rg",
+  "find", "sed", "git",
+];
+const READ_GIT = ["log", "show", "diff", "status", "ls-files", "rev-parse", "blame", "shortlog", "describe", "grep", "branch", "tag", "remote"];
+// Options that write a file, run another program or never end: long ones,
+// and single letters that also count inside a group such as `-ro`.
+const WRITING_OPTIONS = { sort: ["--output"], tail: ["--follow"], rg: ["--pre"] };
+const WRITING_LETTERS = { sort: "o", tree: "o", tail: "fF" };
+
+/**
+ * Splits a command line into simple commands of plain words, or returns null
+ * when it uses anything beyond plain words joined by `&&`, `||`, `;` and `|`.
+ */
+function plainCommands(command) {
+  const text = String(command ?? "")
+    .replace(/(^|[\s;&|])(\d|&)?>>?\s*\/dev\/null(?=$|[\s;&|])/g, "$1")
+    .replace(/(^|[\s;&|])\d?>&\d(?=$|[\s;&|])/g, "$1");
+  const commands = [[]];
+  let word = null;
+  const end = () => {
+    if (word !== null) commands[commands.length - 1].push(word);
+    word = null;
+  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === "'") {
+      const close = text.indexOf("'", i + 1);
+      if (close < 0) return null;
+      word = (word ?? "") + text.slice(i + 1, close);
+      i = close;
+    } else if (c === '"') {
+      let value = "";
+      for (i++; i < text.length && text[i] !== '"'; i++) {
+        if (text[i] === "$" || text[i] === "`") return null;
+        if (text[i] === "\\" && i + 1 < text.length) i++;
+        value += text[i];
+      }
+      if (i >= text.length) return null;
+      word = (word ?? "") + value;
+    } else if (c === "\\") {
+      if (text[i + 1] === "\n") i++;
+      else word = (word ?? "") + (text[++i] ?? "");
+    } else if (/\s/.test(c) && c !== "\n") {
+      end();
+    } else if (c === ";" || c === "|" || c === "\n" || (c === "&" && text[i + 1] === "&")) {
+      end();
+      if ((c === "|" || c === "&") && text[i + 1] === c) i++;
+      commands.push([]);
+    } else if ("&$`()<>".includes(c)) {
+      return null;
+    } else {
+      word = (word ?? "") + c;
+    }
+  }
+  end();
+  return commands.filter((words) => words.length);
+}
+
+function readsOnly(name, args) {
+  if (!READ_COMMANDS.includes(name)) return false;
+  const long = WRITING_OPTIONS[name] ?? [];
+  const letters = WRITING_LETTERS[name] ?? "";
+  if (args.some((arg) => long.some((option) => arg.startsWith(option)))) return false;
+  if (args.some((arg) => /^-[^-]/.test(arg) && [...letters].some((letter) => arg.includes(letter)))) return false;
+  if (name === "find") return !args.some((arg) => /^-(exec|ok|delete|fprint|fls)/.test(arg));
+  if (name === "uniq") return args.filter((arg) => !arg.startsWith("-")).length <= 1;
+  // `sed -n 80,120p file` and nothing else: other scripts can write or run.
+  if (name === "sed") {
+    const flags = args.filter((arg) => arg.startsWith("-"));
+    const [script] = args.filter((arg) => !arg.startsWith("-"));
+    return flags.every((flag) => ["-n", "-E", "-r"].includes(flag)) && flags.includes("-n") && /^\d+(,\d+)?p$/.test(script ?? "");
+  }
+  if (name === "git") {
+    const [sub, ...rest] = args;
+    if (!READ_GIT.includes(sub)) return false;
+    if (rest.some((arg) => /^--(output|ext-diff|open-files-in-pager)/.test(arg) || /^-O/.test(arg))) return false;
+    // Listing only: these also create, rename and delete.
+    if (["branch", "tag", "remote"].includes(sub)) {
+      return rest.every((arg) => ["-a", "-r", "-v", "-vv", "-l", "--list", "--all", "--show-current"].includes(arg));
+    }
+  }
+  return true;
+}
+
+/**
+ * Whether a command only reads inside `root`: every simple command is a known
+ * reading one, and every path it names, also after `cd`, stays in the folder.
+ */
+export function isReadOnly(command, root) {
+  const commands = plainCommands(command);
+  if (!commands?.length) return false;
+  const top = realPath(root);
+  let cwd = top;
+  const inside = (path) => isInside(top, realPath(resolve(cwd, path)));
+  for (const [name, ...args] of commands) {
+    if (name.includes("/") || !readsOnly(name, args)) return false;
+    for (const arg of args) {
+      if (arg.startsWith("~") || arg.includes("\0")) return false;
+      // An option's value can name a file too (`--file=/etc/x`, `-f/etc/x`).
+      if (arg.startsWith("-")) {
+        if (arg.includes("/") || arg.includes("..")) return false;
+      } else if (!inside(arg)) return false;
+    }
+    if (name === "cd") {
+      if (args.length !== 1) return false;
+      cwd = realPath(resolve(cwd, args[0]));
+    }
+  }
+  return true;
+}
+
 const MAX_INSTRUCTIONS_BYTES = 64 * 1024;
 
 /** The real path, following symbolic links; for a path that does not exist yet, its nearest real parent. */
@@ -134,7 +250,7 @@ export function projectGuard(projectDir, webTools, { mode = () => "default", onE
 
   // No decision: Claude Code's permission mode decides (auto mode's classifier).
   const undecided = {};
-  const planOnly = "Plan mode: only read and investigate, then present a plan. Do not change files or run commands.";
+  const planOnly = "Plan mode: only read and investigate, then present a plan. Do not change files or run commands other than reading ones.";
   // A second model's answer next to the chat's own (comparing models) never touches the folder.
   const readOnly = "This answer is compared with another model's; describe changes and commands instead of making them.";
 
@@ -144,6 +260,8 @@ export function projectGuard(projectDir, webTools, { mode = () => "default", onE
     if (webTools.includes(tool)) return decide("allow");
     // Commands run in the project folder.
     if (RUN_TOOLS.includes(tool)) {
+      // Looking around never needs an answer, also in Plan mode.
+      if (isReadOnly(input.tool_input?.command, root)) return decide("allow");
       if (current === "plan") return deny(planOnly);
       if (current === "readonly") return deny(readOnly);
       if (isRisky(input.tool_input?.command)) return decide("ask");
