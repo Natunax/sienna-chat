@@ -3,3 +3,4 @@ dist/
 .DS_Store
 sidecar/dist/
 src-tauri/binaries/
+.impeccable/
