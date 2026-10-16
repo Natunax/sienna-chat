@@ -173,7 +173,7 @@ Sienna lets a language model change files and run commands on your Mac, so the b
 - **Reading is limited to the project folder.** A hook checks every path, search pattern and glob, resolves symbolic links, and refuses `~` and variables. `Edit` and `Write` are limited the same way and never touch a `.git` folder.
 - **Commands are the one wide door.** `Bash` runs with your user's rights in the project folder.
   - In Auto and Bypass permissions it runs in macOS's sandbox: writes stay in the folder, and credentials (`~/.ssh`, `~/.aws`, keychains, shell history and the like) and Sienna's own data cannot be read.
-  - In Manual and Accept edits mode every command asks first, except plain reading ones (`ls`, `cat`, `grep`, `find`, `git log` and the like) in every mode, Plan included. They run without asking only when the line has no variables, substitutions, subshells or redirects, and every path in it stays in the folder.
+  - In Manual and Accept edits mode every command asks first, except plain reading ones in every mode, Plan included: `ls`, `cat`, `head`, `grep`, `rg`, `find`, `sed -n 1,20p`, read-only `git` and a few more, each with a fixed list of options. Anything the check does not fully understand asks: globs, braces, comments, quotes with escapes, variables, redirects, `..`, links leading out, options that write or run programs. `git` runs without asking only when the project folder is the top of its repository.
   - Destructive commands ask in every mode, also behind quotes, `env`, `xargs` or `bash -c`. This guards against accidents, not a determined attacker, so read what you allow.
 - **The check command runs outside the sandbox.** After changes you did not approve one by one, Sienna asks before running it.
 - **Folders and instructions.**

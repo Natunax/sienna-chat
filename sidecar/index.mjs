@@ -610,7 +610,7 @@ class ChatSession {
             name: block.name,
             detail: this.relative(
               String(input.command ?? input.query ?? input.url ?? input.pattern ?? input.file_path ?? ""),
-            ).slice(0, 500),
+            ).slice(0, 4000),
           });
         }
         return;

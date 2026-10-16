@@ -46,7 +46,8 @@ pub fn list(root: &Path) -> Vec<Entry> {
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let kind = entry.file_type()?;
-            if kind.is_symlink() {
+            // Links and special files such as pipes are never offered.
+            if !kind.is_file() && !kind.is_dir() {
                 return None;
             }
             let path = relative(root, entry.path())?;
@@ -110,12 +111,37 @@ fn resolve(root: &Path, mention: &str) -> Option<PathBuf> {
         return None;
     }
     let real = root.join(rel).canonicalize().ok()?;
-    real.starts_with(root).then_some(real)
+    // A link inside the folder may still point at a hidden file such as `.env`.
+    let hidden = real
+        .strip_prefix(root)
+        .ok()?
+        .components()
+        .any(|part| part.as_os_str().to_string_lossy().starts_with('.'));
+    (real.starts_with(root) && !hidden).then_some(real)
 }
 
 /// Content cannot close its own tag and pose as the user's words.
 fn escape(text: &str) -> String {
-    text.replace("</mentioned_", "<\\/mentioned_")
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("</") {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at + 2..];
+        let tag = tail
+            .get(..10)
+            .is_some_and(|word| word.eq_ignore_ascii_case("mentioned_"));
+        out.push_str(if tag { "<\\/" } else { "</" });
+        rest = tail;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// A file name in the tag's attribute: no quotes or line breaks.
+fn attribute(path: &str) -> String {
+    path.chars()
+        .filter(|c| *c != '"' && !c.is_control())
+        .collect()
 }
 
 fn folder_listing(root: &Path, dir: &Path) -> String {
@@ -137,6 +163,18 @@ fn folder_listing(root: &Path, dir: &Path) -> String {
     lines.join("\n")
 }
 
+/// A file's text, never more than the limit, even if it grew since its size was read.
+fn read_limited(path: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(MAX_FILE_BYTES)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    String::from_utf8(bytes).ok()
+}
+
 /// The context for a message's mentions, or nothing when it has none that
 /// exist in the folder.
 pub fn context(root: &Path, text: &str) -> Option<String> {
@@ -146,7 +184,7 @@ pub fn context(root: &Path, text: &str) -> Option<String> {
         let Some(real) = resolve(root, &mention) else {
             continue;
         };
-        let Some(path) = relative(root, &real) else {
+        let Some(path) = relative(root, &real).map(|path| attribute(&path)) else {
             continue;
         };
         if real.is_dir() {
@@ -157,9 +195,14 @@ pub fn context(root: &Path, text: &str) -> Option<String> {
             ));
             continue;
         }
-        let size = real.metadata().map(|meta| meta.len()).unwrap_or(u64::MAX);
+        // Only regular files: a pipe or device would block the send.
+        let size = real
+            .metadata()
+            .ok()
+            .filter(|meta| meta.is_file())
+            .map_or(u64::MAX, |meta| meta.len());
         let content = (size <= MAX_FILE_BYTES && (size as usize) <= budget)
-            .then(|| std::fs::read_to_string(&real).ok())
+            .then(|| read_limited(&real))
             .flatten();
         match content {
             Some(content) => {
@@ -208,6 +251,12 @@ mod tests {
         fs::write(base.join("outside/key.txt"), "secret").unwrap();
         #[cfg(unix)]
         std::os::unix::fs::symlink(base.join("outside"), root.join("link")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(root.join(".env"), root.join("env")).unwrap();
+        std::process::Command::new("mkfifo")
+            .arg(root.join("pipe"))
+            .status()
+            .unwrap();
         let root = root.canonicalize().unwrap();
 
         let paths: Vec<String> = list(&root).into_iter().map(|entry| entry.path).collect();
@@ -215,10 +264,11 @@ mod tests {
 
         let text = context(
             &root,
-            "@src/main.rs @src/ @.env @../outside/key.txt @link/key.txt @/etc/hosts @~/x",
+            "@src/main.rs @src/ @.env @../outside/key.txt @link/key.txt @/etc/hosts @~/x @env @pipe",
         )
         .unwrap();
         assert!(text.contains("fn main() {} <\\/mentioned_file>"));
+        assert!(text.contains("<mentioned_file path=\"pipe\" omitted=\"true\" />"));
         assert!(text.contains("<mentioned_folder path=\"src/\">\nsrc/main.rs\n"));
         assert!(
             !text.contains("quokka") && !text.contains("secret") && !text.contains("localhost")

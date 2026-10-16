@@ -70,7 +70,11 @@ export function useVoice(handlers: Handlers) {
           break;
       }
     });
+    // A reload or a closing window ends the microphone too.
+    const leave = () => current.current !== null && void api.voiceCancel();
+    window.addEventListener("pagehide", leave);
     return () => {
+      window.removeEventListener("pagehide", leave);
       void stop.then((unlisten) => unlisten());
       // Leaving the view never leaves the microphone on.
       if (current.current !== null) void api.voiceCancel();

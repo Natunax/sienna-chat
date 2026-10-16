@@ -136,52 +136,82 @@ test("puts the project's CLAUDE.md into the prompt, but no file from outside", (
 });
 
 test("reading commands run without asking, but only inside the folder", async () => {
+  mkdirSync(join(root, ".git"), { recursive: true });
+  writeFileSync(join(root, "files0"), "../outside/key.txt\0");
   const reading = [
-    "ls -la && git log --oneline | head -20 && cat README* 2>/dev/null | head -80",
+    "ls -la && git log --oneline | head -20 && cat CLAUDE.md 2>/dev/null | head -80",
     `cd ${root}/src && head -40 main.rs`,
+    "cd src && ls",
     "sed -n 80,400p CLAUDE.md | head -150",
-    'grep -rn "fn\\|main" src 2>&1 | head',
-    "find src -name '*.rs' | wc -l",
+    "grep -rn 'fn|main' src 2>&1 | head",
+    "find src -name '*.rs' -type f | wc -l",
     "git status && git diff --stat && git branch -a",
-    "cd src; ls ..",
+    "git log -5 --pretty=format:%h",
   ];
   for (const command of reading) assert.equal(isReadOnly(command, root), true, command);
   const asking = [
+    // Paths outside, in every spelling.
     "cat ~/.ssh/id_rsa",
     `cat ${base}/outside/key.txt`,
     "cat ../outside/key.txt",
     "cat link/key.txt",
+    "cd src; ls ..",
     "cd .. && ls",
     "cd",
+    "cd -",
+    "cd nowhere/a/b/c ; cat ../../../../outside/key.txt",
+    "cd src ; cat main.rs",
+    "ls src && cd src && ls",
+    // Shell syntax the check does not follow.
+    "ls #'\ncat ../outside/key.txt #'",
+    "ls\ncat CLAUDE.md",
+    'cat "..\\\n/outside/key.txt"',
+    "cat {../outside/key.txt,CLAUDE.md}",
+    "cat CLAUDE*",
+    "cat =ls",
     "ls $HOME",
     'cat "$HOME/x"',
     "echo $(whoami)",
     "cat `which ls`",
     "echo hi > notes.txt",
     "cat < /etc/passwd",
+    "ls & ls",
+    "(ls)",
+    "/bin/ls",
+    "GIT_PAGER=sh git log",
+    "ls | sh",
+    // Options that write, run programs, follow links or read lists of files.
     "grep -f/etc/passwd src",
+    "grep -R x src",
     "grep --file=../outside/key.txt src",
-    "sort -ro out.txt CLAUDE.md",
+    "sort --out=out.txt CLAUDE.md",
+    "sort --files0-from=files0",
+    "sort -o out.txt CLAUDE.md",
     "tail -f CLAUDE.md",
+    "tail --fol CLAUDE.md",
     "find . -exec cat {} +",
+    "find -L . -name x",
     "find . -delete",
     "sed -i s/a/b/ CLAUDE.md",
     "sed -n 1w/tmp/x CLAUDE.md",
     "rg --pre=sh x",
+    "rg -L x",
+    "git grep --open='touch pwned' x",
+    "git grep -nOtouch x",
     "git -C /tmp log",
     "git branch -D main",
     "git diff --output=x",
+    "git diff --ext-diff",
     "git push",
-    "GIT_PAGER=sh git log",
-    "ls | sh",
-    "ls & ls",
-    "(ls)",
-    "/bin/ls",
+    "tree -R",
     "npm test",
     "",
   ];
-  for (const command of asking) assert.equal(isReadOnly(command, root), false, command);
+  for (const command of asking) assert.equal(isReadOnly(command, root), false, JSON.stringify(command));
   for (const mode of ["default", "plan", "readonly"]) {
     assert.equal(decision(await guard(mode)({ tool_name: "Bash", tool_input: { command: "git log | head" } })), "allow", mode);
   }
+  rmSync(join(root, ".git"), { recursive: true });
+  // A folder inside a larger repository: git would show the rest of it.
+  assert.equal(isReadOnly("git log", join(root, "src")), false);
 });

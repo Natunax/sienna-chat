@@ -574,6 +574,14 @@ pub fn run() {
             });
             Ok(())
         })
+        // A reload of the window never leaves the microphone on.
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                if let Some(state) = webview.try_state::<AppState>() {
+                    state.voice.cancel();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             app_language,
             key_status,

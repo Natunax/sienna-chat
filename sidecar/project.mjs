@@ -83,32 +83,66 @@ export function isRisky(command) {
   return all.some((words, index) => riskyWords(words, all[index - 1]));
 }
 
-// Commands that only read. They run without asking in every mode when the
-// whole command line is plain (no variables, substitutions, subshells or
-// redirects other than to /dev/null) and every path it names stays in the folder.
-const READ_COMMANDS = [
-  "cd", "pwd", "ls", "cat", "head", "tail", "wc", "stat", "du", "tree", "sort", "uniq", "cut",
-  "tr", "nl", "diff", "basename", "dirname", "realpath", "echo", "which", "grep", "egrep", "fgrep", "rg",
-  "find", "sed", "git",
-];
-const READ_GIT = ["log", "show", "diff", "status", "ls-files", "rev-parse", "blame", "shortlog", "describe", "grep", "branch", "tag", "remote"];
-// Options that write a file, run another program or never end: long ones,
-// and single letters that also count inside a group such as `-ro`.
-const WRITING_OPTIONS = { sort: ["--output"], tail: ["--follow"], rg: ["--pre"] };
-const WRITING_LETTERS = { sort: "o", tree: "o", tail: "fF" };
+// Commands that only read. They run without asking in every mode, but only
+// when the command line is plain and every option is on the command's own
+// list: anything the check does not fully understand asks, as before.
+// Unquoted, only these characters: no globs, braces, comments, `~`,
+// variables, substitutions, escapes or redirects (other than to /dev/null).
+const PLAIN = /^[\p{L}\p{N}_./:@%+,=-]$/u;
+
+const flags = (pattern) => (arg) => pattern.test(arg);
 
 /**
- * Splits a command line into simple commands of plain words, or returns null
- * when it uses anything beyond plain words joined by `&&`, `||`, `;` and `|`.
+ * For each command, the options it may use; `takes` lists options that take
+ * the next word as their value (checked as a path like any other word).
  */
+const READ_COMMANDS = {
+  pwd: { ok: flags(/^$/) },
+  ls: { ok: flags(/^-[1aAlhrtSFdGRonpc]+$/) },
+  cat: { ok: flags(/^-[nbsvet]+$/) },
+  head: { ok: flags(/^-(\d+|[nc]\d*)$/), takes: ["-n", "-c"] },
+  tail: { ok: flags(/^-(\d+|[nc]\d*|r)$/), takes: ["-n", "-c"] },
+  wc: { ok: flags(/^-[lwcm]+$/) },
+  du: { ok: flags(/^-([shc]+|d\d*)$/), takes: ["-d"] },
+  sort: { ok: flags(/^-[nrufb]+$/) },
+  uniq: { ok: flags(/^-[cdu]+$/), positional: 1 },
+  diff: { ok: flags(/^-[uqbwi]+$/) },
+  basename: { ok: flags(/^$/) },
+  dirname: { ok: flags(/^$/) },
+  realpath: { ok: flags(/^$/) },
+  echo: { ok: flags(/^-[ne]$/) },
+  which: { ok: flags(/^-a$/) },
+  grep: {
+    ok: flags(/^(-[rniIlLcvwxhHosEFq]+|-[ABCm]\d*|-e|--(include|exclude|exclude-dir)=.+|--color=never)$/),
+    takes: ["-A", "-B", "-C", "-m", "-e"],
+  },
+  rg: {
+    ok: flags(/^(-[inwlcSsFvH]+|-[ABCmgt]\d*|-e|--(hidden|files|no-heading|line-number)|--(glob|type)=.+)$/),
+    takes: ["-A", "-B", "-C", "-m", "-g", "-t", "-e"],
+  },
+  find: {
+    ok: flags(/^-(name|iname|path|ipath|type|maxdepth|mindepth|empty|print|not|o|a)$/),
+    takes: ["-name", "-iname", "-path", "-ipath", "-type", "-maxdepth", "-mindepth"],
+  },
+  // Only `sed -n 80,120p file`: other scripts can write or run commands.
+  sed: { ok: flags(/^-n$/), script: /^\d+(,\d+)?p$/ },
+};
+READ_COMMANDS.egrep = READ_COMMANDS.grep;
+READ_COMMANDS.fgrep = READ_COMMANDS.grep;
+
+const GIT_READ = ["log", "show", "diff", "status", "ls-files", "rev-parse", "blame", "branch", "tag", "remote", "describe", "shortlog"];
+const GIT_OPTIONS =
+  /^(-[pnsv]|-\d+|-vv|--(oneline|stat|shortstat|numstat|name-only|name-status|graph|decorate|all|no-color|cached|staged|patch|reverse|abbrev-commit|no-merges|first-parent|summary|short|porcelain|show-current|list|others|modified)|--(pretty|format|since|until|after|before|author|max-count)=[^/]*)$/;
+
+/** Splits a command line into plain words per simple command, with the operator before each; null when it is not plain. */
 function plainCommands(command) {
   const text = String(command ?? "")
     .replace(/(^|[\s;&|])(\d|&)?>>?\s*\/dev\/null(?=$|[\s;&|])/g, "$1")
     .replace(/(^|[\s;&|])\d?>&\d(?=$|[\s;&|])/g, "$1");
-  const commands = [[]];
+  const commands = [{ joiner: null, words: [] }];
   let word = null;
   const end = () => {
-    if (word !== null) commands[commands.length - 1].push(word);
+    if (word !== null) commands[commands.length - 1].words.push(word);
     word = null;
   };
   for (let i = 0; i < text.length; i++) {
@@ -116,87 +150,111 @@ function plainCommands(command) {
     if (c === "'") {
       const close = text.indexOf("'", i + 1);
       if (close < 0) return null;
-      word = (word ?? "") + text.slice(i + 1, close);
+      const value = text.slice(i + 1, close);
+      if (/[\n\r]/.test(value)) return null;
+      word = (word ?? "") + value;
       i = close;
     } else if (c === '"') {
-      let value = "";
-      for (i++; i < text.length && text[i] !== '"'; i++) {
-        if (text[i] === "$" || text[i] === "`") return null;
-        if (text[i] === "\\" && i + 1 < text.length) i++;
-        value += text[i];
-      }
-      if (i >= text.length) return null;
+      const close = text.indexOf('"', i + 1);
+      if (close < 0) return null;
+      const value = text.slice(i + 1, close);
+      // In double quotes the shell still expands `$`, backticks, `!` and escapes.
+      if (/[$`\\!\n\r]/.test(value)) return null;
       word = (word ?? "") + value;
-    } else if (c === "\\") {
-      if (text[i + 1] === "\n") i++;
-      else word = (word ?? "") + (text[++i] ?? "");
-    } else if (/\s/.test(c) && c !== "\n") {
+      i = close;
+    } else if (c === " " || c === "\t") {
       end();
-    } else if (c === ";" || c === "|" || c === "\n" || (c === "&" && text[i + 1] === "&")) {
+    } else if (c === ";" || c === "|" || c === "&") {
       end();
-      if ((c === "|" || c === "&") && text[i + 1] === c) i++;
-      commands.push([]);
-    } else if ("&$`()<>".includes(c)) {
-      return null;
-    } else {
+      let joiner = c;
+      if ((c === "|" || c === "&") && text[i + 1] === c) joiner += text[++i];
+      if (joiner === "&") return null;
+      commands.push({ joiner, words: [] });
+    } else if (PLAIN.test(c) && !(c === "=" && word === null)) {
       word = (word ?? "") + c;
+    } else {
+      return null;
     }
   }
   end();
-  return commands.filter((words) => words.length);
+  return commands.every((command) => command.words.length) ? commands : null;
 }
 
-function readsOnly(name, args) {
-  if (!READ_COMMANDS.includes(name)) return false;
-  const long = WRITING_OPTIONS[name] ?? [];
-  const letters = WRITING_LETTERS[name] ?? "";
-  if (args.some((arg) => long.some((option) => arg.startsWith(option)))) return false;
-  if (args.some((arg) => /^-[^-]/.test(arg) && [...letters].some((letter) => arg.includes(letter)))) return false;
-  if (name === "find") return !args.some((arg) => /^-(exec|ok|delete|fprint|fls)/.test(arg));
-  if (name === "uniq") return args.filter((arg) => !arg.startsWith("-")).length <= 1;
-  // `sed -n 80,120p file` and nothing else: other scripts can write or run.
-  if (name === "sed") {
-    const flags = args.filter((arg) => arg.startsWith("-"));
-    const [script] = args.filter((arg) => !arg.startsWith("-"));
-    return flags.every((flag) => ["-n", "-E", "-r"].includes(flag)) && flags.includes("-n") && /^\d+(,\d+)?p$/.test(script ?? "");
-  }
+/** Whether `args` only use options the command allows. */
+function allowedArgs(name, args, gitRepo) {
   if (name === "git") {
     const [sub, ...rest] = args;
-    if (!READ_GIT.includes(sub)) return false;
-    if (rest.some((arg) => /^--(output|ext-diff|open-files-in-pager)/.test(arg) || /^-O/.test(arg))) return false;
-    // Listing only: these also create, rename and delete.
-    if (["branch", "tag", "remote"].includes(sub)) {
-      return rest.every((arg) => ["-a", "-r", "-v", "-vv", "-l", "--list", "--all", "--show-current"].includes(arg));
+    // In a folder inside a larger repository, git would show the rest of it.
+    if (!gitRepo || !GIT_READ.includes(sub)) return false;
+    if (["branch", "tag", "remote"].includes(sub)) return rest.every((arg) => /^(-[arvl]|-vv|--(list|all|show-current))$/.test(arg));
+    return rest.every((arg) => !arg.startsWith("-") || arg === "--" || GIT_OPTIONS.test(arg));
+  }
+  const rules = READ_COMMANDS[name];
+  if (!rules) return false;
+  let positional = 0;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg.startsWith("-") && arg !== "-") {
+      if (!rules.ok(arg)) return false;
+      if (rules.takes?.includes(arg)) i++;
+    } else {
+      if (rules.script && positional === 0 && !rules.script.test(arg)) return false;
+      positional++;
     }
   }
-  return true;
+  return !rules.positional || positional <= rules.positional;
 }
 
 /**
  * Whether a command only reads inside `root`: every simple command is a known
- * reading one, and every path it names, also after `cd`, stays in the folder.
+ * reading one with known options, and every other word, read as a path, stays
+ * in the folder. `cd` may only come first, into an existing folder, with `&&`.
  */
 export function isReadOnly(command, root) {
   const commands = plainCommands(command);
   if (!commands?.length) return false;
   const top = realPath(root);
   let cwd = top;
-  const inside = (path) => isInside(top, realPath(resolve(cwd, path)));
-  for (const [name, ...args] of commands) {
-    if (name.includes("/") || !readsOnly(name, args)) return false;
-    for (const arg of args) {
-      if (arg.startsWith("~") || arg.includes("\0")) return false;
-      // An option's value can name a file too (`--file=/etc/x`, `-f/etc/x`).
-      if (arg.startsWith("-")) {
-        if (arg.includes("/") || arg.includes("..")) return false;
-      } else if (!inside(arg)) return false;
-    }
+  let gitRepo = null;
+  for (const [index, { words }] of commands.entries()) {
+    const [name, ...args] = words;
     if (name === "cd") {
-      if (args.length !== 1) return false;
-      cwd = realPath(resolve(cwd, args[0]));
+      if (index !== 0 || args.length !== 1 || commands[1]?.joiner !== "&&") return false;
+      const target = args[0];
+      if (target.startsWith("-") || target.startsWith("+") || target.split("/").includes("..")) return false;
+      const next = realPath(resolve(cwd, target));
+      if (!isInside(top, next) || !isDirectory(next)) return false;
+      cwd = next;
+      continue;
+    }
+    if (name === "git" && gitRepo === null) gitRepo = isGitTop(top);
+    if (!allowedArgs(name, args, gitRepo)) return false;
+    for (const arg of args) {
+      // Option values were checked above; everything else may be a path.
+      if (arg.startsWith("-")) continue;
+      if (arg.split("/").includes("..")) return false;
+      if (!isInside(top, realPath(resolve(cwd, arg)))) return false;
     }
   }
   return true;
+}
+
+function isDirectory(path) {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** The project folder is the top of its git repository, not a folder inside a larger one. */
+function isGitTop(root) {
+  try {
+    statSync(join(root, ".git"));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const MAX_INSTRUCTIONS_BYTES = 64 * 1024;
