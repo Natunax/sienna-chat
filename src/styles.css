@@ -1926,8 +1926,161 @@ button.tool-toggle:hover .tool-name,
   grid-area: plus;
 }
 
-.composer-row > .composer-input {
+.composer-row > .composer-field {
   grid-area: input;
+}
+
+/* The text box and, behind it, a copy of its text that marks the mentions.
+   Both share one grid cell, font and padding, so the marks sit under the words. */
+.composer-field {
+  display: grid;
+  min-width: 0;
+}
+
+.composer-field > * {
+  grid-area: 1 / 1;
+}
+
+.composer-mirror {
+  overflow: hidden;
+  padding: 6px 4px;
+  color: transparent;
+  font: 15px/20px var(--font);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+}
+
+.composer-input {
+  position: relative;
+  overflow-wrap: break-word;
+}
+
+.mention-mark {
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: transparent;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* The project's files for "@", in the slash menu's shell. */
+.mention-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 6px;
+  z-index: 25;
+  display: grid;
+  gap: 1px;
+  width: min(460px, calc(100% - 12px));
+  padding: 5px;
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-pop);
+  animation: pop 140ms ease-out both;
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: var(--label);
+  font-size: 13px;
+  text-align: left;
+}
+
+.mention-item > svg {
+  flex-shrink: 0;
+  color: var(--label-3);
+}
+
+.mention-name {
+  flex-shrink: 0;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--label-2);
+}
+
+/* The typed letters stand out from the rest of the name. */
+.mention-name b {
+  font-weight: 600;
+  color: var(--label);
+}
+
+.mention-path {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--label-3);
+  font-size: 12px;
+}
+
+.mention-item.is-active {
+  background: var(--accent);
+}
+
+.mention-item.is-active,
+.mention-item.is-active > svg,
+.mention-item.is-active .mention-name,
+.mention-item.is-active .mention-name b,
+.mention-item.is-active .mention-path {
+  color: var(--on-accent);
+}
+
+.mention-item.is-active .mention-path {
+  opacity: 0.8;
+}
+
+.mention-empty {
+  padding: 8px 10px;
+  color: var(--label-2);
+  font-size: 13px;
+}
+
+.mention-hint {
+  display: flex;
+  gap: 14px;
+  margin-top: 4px;
+  padding: 6px 10px 3px;
+  border-top: 1px solid var(--separator);
+  color: var(--label-3);
+  font-size: 11.5px;
+}
+
+.mention-hint kbd {
+  font: inherit;
+  color: var(--label-2);
+}
+
+/* A mention in a sent message: the path, set apart and clickable. */
+.bubble-mention {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: inherit;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+button.bubble-mention {
+  cursor: pointer;
+}
+
+button.bubble-mention:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .composer-row > .send-button {
@@ -1946,7 +2099,8 @@ button.tool-toggle:hover .tool-name,
     row-gap: 2px;
   }
 
-  .composer-input {
+  .composer-input,
+  .composer-mirror {
     padding-left: 8px;
   }
 }

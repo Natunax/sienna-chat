@@ -11,6 +11,7 @@ import {
 } from "../api";
 import { storedErrorText, t, type TextKey } from "../i18n";
 import { loadHighlighter, renderBlocks } from "../markdown";
+import { mentionPath, splitMentions } from "../mentions";
 import { shortTokens } from "./ContextMeter";
 import { DiffView } from "./DiffView";
 import {
@@ -206,6 +207,38 @@ function Tools({
         ),
       )}
     </div>
+  );
+}
+
+/** A question with its `@` mentions set apart; a mentioned file opens in the editor. */
+function MentionText({ text, projectDir }: { text: string; projectDir: string }) {
+  return (
+    <>
+      {splitMentions(text).map((part, index) => {
+        if (!part.mention) return part.text;
+        const path = mentionPath(part.text);
+        // "@Claude" is a name, not a path.
+        if (!/[./]/.test(path)) return part.text;
+        if (path.endsWith("/")) {
+          return (
+            <span key={index} className="bubble-mention">
+              {part.text}
+            </span>
+          );
+        }
+        return (
+          <button
+            key={index}
+            type="button"
+            className="bubble-mention"
+            title={t("mention.open", { path })}
+            onClick={() => void api.projectOpenFile(projectDir, path).catch(() => {})}
+          >
+            {part.text}
+          </button>
+        );
+      })}
+    </>
   );
 }
 
@@ -424,7 +457,9 @@ function MessageViewImpl({
             ))}
           </div>
         ) : null}
-        {message.text && <div className="bubble">{message.text}</div>}
+        {message.text && (
+          <div className="bubble">{projectDir ? <MentionText text={message.text} projectDir={projectDir} /> : message.text}</div>
+        )}
         {onRedo && (
           <div className="msg-actions">
             <button

@@ -326,6 +326,13 @@ export function installDevMock() {
         }
         case "project_guess_check":
           return "npm test";
+        case "project_files":
+          return [
+            "README.md", "package.json", "tsconfig.json", "docs", "docs/architecture.md", "docs/read me.md",
+            "src", "src/cart.ts", "src/cart.test.ts", "src/checkout", "src/checkout/payment.ts",
+            "src/checkout/shipping.ts", "src/components", "src/components/CartView.tsx",
+            "src/components/CheckoutButton.tsx", "src/legacy", "src/legacy/old-cart.ts", "src/main.ts",
+          ].map((path) => ({ path, dir: !path.includes(".") }));
         case "voice_start":
           return startDictation();
         case "voice_stop":

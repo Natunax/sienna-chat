@@ -43,6 +43,7 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 
 **Coding in a project folder**
 - Add a folder as a project; its chats read and search it, and its `CLAUDE.md` is included
+- `@` mentions as in Claude Code: type `@` for a fuzzy list of the project's files and folders. A mentioned file's content goes along with the message, a folder as its listing
 - Claude edits files and runs commands. Changes show as a diff and commands in full, and a click on a file path opens it in your editor
 - Permission modes as in Claude Code: **Auto** (default), **Manual**, **Accept edits**, **Plan** and, behind a confirmation, **Bypass permissions**
 - Plan mode only reads and ends with a plan you carry out in one click
@@ -132,6 +133,7 @@ Destructive commands (`sudo`, recursive `rm`, `git push`, `git reset --hard` and
 | ⌥Space | Dictate: hold to talk, or tap to start and stop (Esc discards) |
 | ⌘↩ / Esc | Allow / decline an approval |
 | / | Commands |
+| @ | Mention a file or folder (⇥ opens a folder) |
 | F2 | Rename a chat or project |
 
 ## How it works
@@ -155,7 +157,7 @@ flowchart LR
 | Path | What it is |
 | --- | --- |
 | `src/` | React UI: `store.ts` holds chats and routes engine events, `components/` the views, `i18n.ts` the texts, `diff.ts` the line diff |
-| `src-tauri/src/` | Rust shell: `lib.rs` commands, `engine.rs` engine process, `voice.rs` dictation, `store.rs` storage, `project.rs` folder checks, `keychain.rs` |
+| `src-tauri/src/` | Rust shell: `lib.rs` commands, `engine.rs` engine process, `mention.rs` `@` mentions, `voice.rs` dictation, `store.rs` storage, `project.rs` folder checks, `keychain.rs` |
 | `src-tauri/voice/` | The dictation helper in Swift, built by `build.rs` and bundled next to the app |
 | `sidecar/index.mjs` | Chat engine on the Claude Agent SDK, bundled into `sidecar/dist/engine.mjs` for the app |
 | `sidecar/project.mjs` | The guard for project folders, modes and destructive commands, tested in `project.test.mjs` |
@@ -177,7 +179,7 @@ Sienna lets a language model change files and run commands on your Mac, so the b
 - **Folders and instructions.**
   - Project folders must be inside your home folder, and not in a hidden folder or `~/Library`.
   - `CLAUDE.md` is read only as a regular file inside the folder.
-  - `@path` mentions and slash commands are never expanded.
+  - The SDK never expands `@path` mentions or slash commands. Sienna resolves `@` mentions itself in Rust: only paths inside the folder, never hidden or `.gitignore`d ones or symbolic links leading out, at most 100 KB per file and 300 KB per message.
   - `WebFetch` is left out, so a web page cannot make the model fetch an attacker's URL.
 - **Dictation stays on your Mac.**
   - A small helper recognizes speech with Apple's Speech framework and requires on-device recognition. Without it there is no fallback to a server; Sienna tells you how to download the language instead.

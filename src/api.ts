@@ -201,6 +201,12 @@ export interface Chat {
   autoEdits?: boolean;
 }
 
+/** A file or folder of a project, relative to its folder, for `@` mentions. */
+export interface ProjectEntry {
+  path: string;
+  dir: boolean;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -278,6 +284,7 @@ export const api = {
   }) => invoke<void>("chat_revert_files", { request }),
   projectSetCheck: (id: string, check: string) => invoke<void>("project_set_check", { id, check }),
   projectGuessCheck: (path: string) => invoke<string>("project_guess_check", { path }),
+  projectFiles: (path: string) => invoke<ProjectEntry[]>("project_files", { path }),
   chatPermission: (chatId: string, id: string, decision: PermissionDecision) =>
     invoke<void>("chat_permission", { chatId, id, decision }),
   projectOpenFile: (projectDir: string, path: string) => invoke<void>("project_open_file", { projectDir, path }),

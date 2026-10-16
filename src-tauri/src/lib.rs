@@ -1,5 +1,6 @@
 mod engine;
 mod keychain;
+mod mention;
 mod project;
 mod store;
 mod voice;
@@ -230,12 +231,20 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         return Err("error.budgetReached".into());
     }
 
-    let project_dir = request
+    let project_root = request
         .project_dir
         .as_deref()
         .map(project::validate)
-        .transpose()?
-        .map(|dir| dir.display().to_string());
+        .transpose()?;
+    // `@path` mentions bring the file or folder along; the window keeps the text as typed.
+    let text = match project_root
+        .as_deref()
+        .and_then(|root| mention::context(root, &request.text))
+    {
+        Some(context) => format!("{}\n\n{context}", request.text),
+        None => request.text.clone(),
+    };
+    let project_dir = project_root.map(|dir| dir.display().to_string());
 
     let line = json!({
         "type": "send",
@@ -244,7 +253,7 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         "model": request.model,
         "effort": request.effort,
         "web": request.web,
-        "text": request.text,
+        "text": text,
         "costSoFar": request.cost_so_far,
         "rewind": request.rewind,
         "rewindTo": request.rewind_to,
@@ -471,6 +480,12 @@ fn project_set_check(id: String, check: String, state: State<AppState>) -> Resul
     state.store.set_project_check(&id, &check)
 }
 
+/// The files and folders `@` can mention in a project chat.
+#[tauri::command(async)]
+fn project_files(path: String) -> Result<Vec<mention::Entry>, String> {
+    Ok(mention::list(&project::validate(&path)?))
+}
+
 /// Suggests a check command from the files in a project folder.
 #[tauri::command(async)]
 fn project_guess_check(path: String) -> Result<String, String> {
@@ -585,6 +600,7 @@ pub fn run() {
             chat_revert_files,
             project_set_check,
             project_guess_check,
+            project_files,
             voice_start,
             voice_stop,
             voice_cancel,

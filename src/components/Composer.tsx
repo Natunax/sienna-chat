@@ -9,8 +9,10 @@ import {
   type OutgoingAttachment,
   type PermissionMode,
   type Project,
+  type ProjectEntry,
   type TemplateId,
 } from "../api";
+import { mentionAt, mentionPath, mentionText, rankEntries, splitMentions } from "../mentions";
 import { addProject } from "../store";
 import { PICKER_ACCEPT, readAttachment, TEXT_MEDIA_TYPE } from "../attachments";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -151,6 +153,14 @@ export function Composer(props: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const mirror = useRef<HTMLDivElement>(null);
+  // Where the caret goes once a picked mention is in the text box.
+  const placeCaret = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (placeCaret.current === null) return;
+    area.current?.setSelectionRange(placeCaret.current, placeCaret.current);
+    placeCaret.current = null;
+  }, [text]);
 
   // Dictation fills the input field after what was typed; it never sends.
   const typedBefore = useRef("");
@@ -293,6 +303,57 @@ export function Composer(props: Props) {
     if (query === null) setSlashClosed(false);
   }, [query]);
 
+  // `@` mentions: the project's files, loaded when one is typed and kept a little while.
+  const [caret, setCaret] = useState(0);
+  const [entries, setEntries] = useState<ProjectEntry[] | null>(null);
+  const loaded = useRef<{ project: string; at: number } | null>(null);
+  const [mentionActive, setMentionActive] = useState(0);
+  const [mentionClosed, setMentionClosed] = useState(false);
+  const mention = project && !slashOpen ? mentionAt(text, caret) : null;
+  const ranked = mention && entries ? rankEntries(entries, mention.query) : [];
+  const mentionOpen = Boolean(mention) && !mentionClosed;
+  const mentionIndex = Math.min(mentionActive, Math.max(ranked.length - 1, 0));
+  const hasMention = Boolean(project) && text.includes("@");
+
+  useEffect(() => {
+    if (!project || !hasMention) return;
+    const fresh = loaded.current?.project === project && Date.now() - loaded.current.at < 15_000;
+    if (fresh) return;
+    loaded.current = { project, at: Date.now() };
+    api
+      .projectFiles(project)
+      .then((list) => loaded.current?.project === project && setEntries(list))
+      .catch(() => setEntries([]));
+  }, [project, hasMention, mention?.query]);
+
+  useEffect(() => {
+    setEntries(null);
+    loaded.current = null;
+  }, [project]);
+
+  useEffect(() => {
+    setMentionActive(0);
+    if (!mention) setMentionClosed(false);
+  }, [mention?.query, mention === null]);
+
+  // The paths that exist, so only real mentions are marked in the text.
+  const known = new Set(entries?.flatMap((entry) => (entry.dir ? [entry.path, `${entry.path}/`] : [entry.path])));
+
+  /** Puts the picked path in place of what was typed after `@`; Tab on a folder lists what is inside. */
+  const pickMention = (entry: ProjectEntry, into: boolean) => {
+    if (!mention) return;
+    const path = entry.dir ? `${entry.path}/` : entry.path;
+    let token = mentionText(path);
+    // Still typing inside a quoted folder: the quote closes later.
+    if (into && token.endsWith('"')) token = token.slice(0, -1);
+    const inserted = into ? token : `${token} `;
+    const next = text.slice(0, mention.start) + inserted + text.slice(caret);
+    const at = mention.start + inserted.length;
+    setText(next);
+    setCaret(at);
+    placeCaret.current = at;
+  };
+
   const canSend = !streaming && (text.trim().length > 0 || files.length > 0);
 
   const submit = () => {
@@ -311,6 +372,25 @@ export function Composer(props: Props) {
       event.preventDefault();
       discardVoice();
       return;
+    }
+    if (mentionOpen && !composing(event)) {
+      if ((event.key === "ArrowDown" || event.key === "ArrowUp") && ranked.length) {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        setMentionActive((mentionIndex + step + ranked.length) % ranked.length);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMentionClosed(true);
+        return;
+      }
+      const picked = ranked[mentionIndex];
+      if (picked && ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab")) {
+        event.preventDefault();
+        pickMention(picked.entry, event.key === "Tab" && picked.entry.dir);
+        return;
+      }
     }
     if (slashOpen && !composing(event)) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -380,6 +460,48 @@ export function Composer(props: Props) {
                 {template.blocked && <span className="slash-reason">{template.blocked}</span>}
               </button>
             ))}
+          </div>
+        )}
+        {mentionOpen && mention && (
+          <div className="mention-menu" role="listbox" id="mention-menu" aria-label={t("mention.label")}>
+            {entries === null ? (
+              <div className="mention-empty">{t("mention.loading")}</div>
+            ) : ranked.length === 0 ? (
+              <div className="mention-empty">{t("mention.none", { query: mention.query })}</div>
+            ) : (
+              ranked.map(({ entry, hits }, index) => {
+                const slash = entry.path.lastIndexOf("/");
+                const name = entry.path.slice(slash + 1);
+                const parent = slash > 0 ? entry.path.slice(0, slash) : "";
+                const matched = new Set(hits);
+                return (
+                  <button
+                    key={entry.path}
+                    type="button"
+                    role="option"
+                    id={`mention-${index}`}
+                    aria-selected={index === mentionIndex}
+                    className={`mention-item${index === mentionIndex ? " is-active" : ""}`}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setMentionActive(index)}
+                    onClick={() => pickMention(entry, false)}
+                  >
+                    {entry.dir ? <FolderIcon size={14} /> : <DocumentIcon size={14} />}
+                    <span className="mention-name">
+                      {[...name].map((char, at) =>
+                        matched.has(slash + 1 + at) ? <b key={at}>{char}</b> : char,
+                      )}
+                      {entry.dir && "/"}
+                    </span>
+                    {parent && <span className="mention-path">{parent}</span>}
+                  </button>
+                );
+              })
+            )}
+            <div className="mention-hint" aria-hidden="true">
+              <span><kbd>↩</kbd> {t("mention.take")}</span>
+              <span><kbd>⇥</kbd> {t("mention.into")}</span>
+            </div>
           </div>
         )}
         {chips && (
@@ -520,6 +642,22 @@ export function Composer(props: Props) {
               event.target.value = "";
             }}
           />
+          <div className="composer-field">
+          {/* Marks the mentions behind the text; the text box itself draws the text. */}
+          {hasMention && (
+            <div className="composer-mirror" ref={mirror} aria-hidden="true">
+              {splitMentions(text).map((part, index) =>
+                part.mention && known.has(mentionPath(part.text)) ? (
+                  <mark key={index} className="mention-mark">
+                    {part.text}
+                  </mark>
+                ) : (
+                  part.text
+                ),
+              )}
+              {"\u200b"}
+            </div>
+          )}
           <textarea
             ref={area}
             className="composer-input"
@@ -530,16 +668,28 @@ export function Composer(props: Props) {
               // Typing takes over: the dictated words stay, the microphone goes off.
               voice.cancel();
               setText(event.target.value);
+              setCaret(event.target.selectionStart);
+            }}
+            onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+            onScroll={(event) => {
+              if (mirror.current) mirror.current.scrollTop = event.currentTarget.scrollTop;
             }}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             aria-label={t("composer.label")}
             role="combobox"
-            aria-expanded={slashOpen}
-            aria-controls={slashOpen ? "slash-menu" : undefined}
-            aria-activedescendant={slashOpen ? `slash-${matches[active]?.id}` : undefined}
+            aria-expanded={slashOpen || mentionOpen}
+            aria-controls={slashOpen ? "slash-menu" : mentionOpen ? "mention-menu" : undefined}
+            aria-activedescendant={
+              slashOpen
+                ? `slash-${matches[active]?.id}`
+                : mentionOpen && ranked.length
+                  ? `mention-${mentionIndex}`
+                  : undefined
+            }
             aria-autocomplete="list"
           />
+          </div>
           <button
             type="button"
             className={`voice-button is-${voice.state}`}
