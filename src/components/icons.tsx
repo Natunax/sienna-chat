@@ -56,9 +56,11 @@ export const ArrowUpIcon = (p: IconProps) => (
   </Icon>
 );
 
+/** Stop, as in Claude Code: a ring with a small filled square. */
 export const StopIcon = (p: IconProps) => (
-  <Icon {...p} stroke="none">
-    <rect x="6.5" y="6.5" width="7" height="7" rx="1.75" fill="currentColor" />
+  <Icon {...p}>
+    <circle cx="10" cy="10" r="7.25" />
+    <rect x="7.6" y="7.6" width="4.8" height="4.8" rx="1" fill="currentColor" stroke="none" />
   </Icon>
 );
 

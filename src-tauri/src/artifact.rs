@@ -31,16 +31,23 @@ fn csp() -> String {
     )
 }
 
-/// An SVG on its own page, centered on white like an image.
+/// Tells the panel how large the page's content is, for "fit" and "fill":
+/// the box around what is visible (text, images, controls, and boxes with a
+/// background, border or shadow), leaving out wrappers that fill the whole
+/// view. Only two numbers go out, by `postMessage` to the panel.
+const MEASURE: &str = r#"<script>(()=>{const send=()=>{const d=document,body=d.body;if(!body)return;const W=innerWidth,H=innerHeight;let l=1/0,t=1/0,r=-1/0,b=-1/0;const add=x=>{if(x.width<1||x.height<1||(x.width>=W-1&&x.height>=H-1))return;l=Math.min(l,x.left+scrollX);t=Math.min(t,x.top+scrollY);r=Math.max(r,x.right+scrollX);b=Math.max(b,x.bottom+scrollY)};const walk=d.createTreeWalker(body,4);const range=d.createRange();for(let n=walk.nextNode(),i=0;n&&i<4000;n=walk.nextNode(),i++){if(n.nodeValue.trim()){range.selectNodeContents(n);add(range.getBoundingClientRect())}}const all=body.querySelectorAll('*');for(let i=0;i<all.length&&i<4000;i++){const e=all[i];if(/^(IMG|SVG|CANVAS|VIDEO|INPUT|BUTTON|SELECT|TEXTAREA|PROGRESS|METER)$/i.test(e.tagName)){add(e.getBoundingClientRect());continue}const s=getComputedStyle(e);if(s.visibility==='hidden')continue;const bg=s.backgroundColor,shown=(bg&&bg!=='transparent'&&!/rgba\([^)]*,\s*0\)$/.test(bg))||s.backgroundImage!=='none'||parseFloat(s.borderTopWidth)>0||parseFloat(s.borderLeftWidth)>0||s.boxShadow!=='none';if(shown)add(e.getBoundingClientRect())}if(!(r>l&&b>t)){l=0;t=0;r=d.documentElement.scrollWidth;b=d.documentElement.scrollHeight}parent.postMessage({sienna:'size',l:l,t:t,w:r-l,h:b-t,vw:innerWidth,vh:innerHeight},'*')};addEventListener('load',send);addEventListener('resize',send);try{new ResizeObserver(send).observe(document.documentElement)}catch(e){}})()</script>"#;
+
+/// The page for the frame: an SVG on its own page, centered on white like
+/// an image; both with the measuring script at the end.
 fn page(kind: &str, content: &str) -> String {
     if kind == "svg" {
         format!(
             "<!doctype html><html><head><meta charset=\"utf-8\"><style>html,body{{margin:0;height:100%}}\
              body{{display:grid;place-items:center;background:#fff}}svg{{max-width:100%;max-height:100vh}}</style>\
-             </head><body>{content}</body></html>"
+             </head><body>{content}{MEASURE}</body></html>"
         )
     } else {
-        content.to_string()
+        format!("{content}{MEASURE}")
     }
 }
 
@@ -136,7 +143,7 @@ mod tests {
         assert!(artifacts.stage("js", "x").is_err());
         let token = artifacts.stage("html", "<p>hi</p>").unwrap();
         let response = artifacts.serve(&format!("/{token}"));
-        assert_eq!(response.body(), b"<p>hi</p>");
+        assert!(response.body().starts_with(b"<p>hi</p><script>"));
         let policy = response.headers()["content-security-policy"]
             .to_str()
             .unwrap();

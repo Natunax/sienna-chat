@@ -2424,14 +2424,14 @@ button.bubble-mention:hover {
   color: var(--label-3);
 }
 
-/* Stop: a filled circle in the text color with a small rounded square. */
+/* Stop, as in Claude Code: no fill, a ring in the text color. */
 .send-button.is-stop {
-  background: var(--label);
-  color: var(--surface-raised);
+  background: none;
+  color: var(--label);
 }
 
 .send-button.is-stop:hover {
-  background: var(--label-2);
+  background: var(--fill-hover);
 }
 
 /* Dictation: quiet until it listens, then a ring that follows the voice. */
@@ -3681,4 +3681,19 @@ button.bubble-mention:hover {
   position: absolute;
   inset: 0;
   overflow: hidden;
+}
+
+/* Fit and fill: quiet text buttons before the zoom steps. */
+.artifact-fit {
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.artifact-fit:hover {
+  background: var(--fill-hover);
+  color: var(--label);
 }

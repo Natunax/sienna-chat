@@ -732,7 +732,7 @@ export function Composer(props: Props) {
               aria-label={t("composer.stop")}
               title={t("composer.stopHint")}
             >
-              <StopIcon size={15} />
+              <StopIcon size={20} />
             </button>
           ) : (
             <button

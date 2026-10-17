@@ -6,7 +6,13 @@ import { ArtifactIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIco
 import { CopyButton, Markdown } from "./MessageView";
 
 /** Zoom steps of the preview and code, as in a browser. */
-const ZOOMS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+const MIN_ZOOM = ZOOMS[0];
+const MAX_ZOOM = ZOOMS[ZOOMS.length - 1];
+const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+
+/** The content's box in page pixels and the frame's view, as the page reports them. */
+type Size = { l: number; t: number; w: number; h: number; vw: number; vh: number };
 
 interface Props {
   /** Every version of the artifact, oldest first. */
@@ -21,8 +27,28 @@ interface Props {
  * HTML and SVG run in a frame from Rust's `artifact:` scheme with their own
  * strict policy and no access to the app (`src-tauri/src/artifact.rs`).
  */
-function SealedFrame({ artifact, zoom }: { artifact: Artifact; zoom: number }) {
+function SealedFrame({ artifact, zoom, onSize }: { artifact: Artifact; zoom: number; onSize: (size: Size) => void }) {
   const [src, setSrc] = useState<string | null>(null);
+  const frame = useRef<HTMLIFrameElement>(null);
+
+  // The page reports the size of its content (Rust adds the script); only two
+  // numbers from this very frame are taken.
+  const report = useRef(onSize);
+  report.current = onSize;
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== frame.current?.contentWindow) return;
+      const data = event.data as Record<string, unknown> | null;
+      if (data?.sienna !== "size") return;
+      const keys = ["l", "t", "w", "h", "vw", "vh"] as const;
+      const values = keys.map((key) => data[key]);
+      if (!values.every((value) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) < 100_000)) return;
+      const [l, t, w, h, vw, vh] = values as number[];
+      if (w > 0 && h > 0 && vw > 0 && vh > 0) report.current({ l, t, w, h, vw, vh });
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
   const kind = artifact.kind === "svg" ? "svg" : "html";
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +69,7 @@ function SealedFrame({ artifact, zoom }: { artifact: Artifact; zoom: number }) {
     // zooming out leaves no empty area to scroll into.
     <div className="artifact-frame-box">
     <iframe
+      ref={frame}
       className="artifact-frame"
       title={artifact.title}
       // Scripts run, but in an opaque origin: no app, no storage, no top navigation, no pop-ups.
@@ -95,10 +122,29 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
   const previewable = artifact.kind !== "code";
   const [view, setView] = useState<"preview" | "source">("preview");
   const [saved, setSaved] = useState<string | null>(null);
-  const [zoomAt, setZoomAt] = useState(ZOOMS.indexOf(1));
-  const zoom = ZOOMS[zoomAt];
+  const [zoom, setZoom] = useState(1);
+  const [size, setSize] = useState<Size | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const showing = previewable ? view : "source";
-  const zoomBy = (step: number) => setZoomAt((at) => Math.min(ZOOMS.length - 1, Math.max(0, at + step)));
+  // + and − go to the next step, also from a zoom that fit or fill chose.
+  const zoomBy = (step: number) =>
+    setZoom((current) => {
+      const next = step > 0 ? ZOOMS.find((entry) => entry > current + 0.001) : [...ZOOMS].reverse().find((entry) => entry < current - 0.001);
+      return next ?? current;
+    });
+  /** Fit: the whole content in view. Fill: its width across the panel. */
+  const fitTo = (mode: "fit" | "fill") => {
+    const body = bodyRef.current;
+    if (!body || !size) return;
+    // Centered content stays centered at any zoom, so only its own size
+    // counts; content against the left or top keeps its margin there, and
+    // gets the same margin on the other side.
+    const span = (start: number, length: number, view: number) =>
+      Math.abs(start - (view - start - length)) < 8 ? length / 0.94 : length + 2 * Math.max(0, start);
+    const width = body.clientWidth / span(size.l, size.w, size.vw);
+    const height = body.clientHeight / span(size.t, size.h, size.vh);
+    setZoom(clampZoom(mode === "fit" ? Math.min(width, height) : width));
+  };
 
   // ⌘+ / ⌘− / ⌘0 zoom the preview, as in a browser.
   const zoomable = showing === "preview";
@@ -108,7 +154,7 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
       if (!event.metaKey || event.altKey || event.ctrlKey) return;
       if (event.key === "+" || event.key === "=") zoomBy(1);
       else if (event.key === "-") zoomBy(-1);
-      else if (event.key === "0") setZoomAt(ZOOMS.indexOf(1));
+      else if (event.key === "0") setZoom(1);
       else return;
       event.preventDefault();
     };
@@ -138,7 +184,7 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
         </div>
       );
     }
-    return <SealedFrame artifact={artifact} zoom={zoom} />;
+    return <SealedFrame artifact={artifact} zoom={zoom} onSize={setSize} />;
   }, [showing, artifact, zoom]);
 
   return (
@@ -179,13 +225,23 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
         <div className="artifact-actions">
           {zoomable && (
           <div className="artifact-zoom-control" role="group" aria-label={t("artifact.zoom")}>
-            <button type="button" className="icon-button" disabled={zoomAt === 0} onClick={() => zoomBy(-1)} aria-label={t("artifact.zoomOut")} title={`${t("artifact.zoomOut")} (⌘−)`}>
+            {size && artifact.kind !== "markdown" && (
+              <>
+                <button type="button" className="artifact-fit" onClick={() => fitTo("fit")} title={t("artifact.fitHint")}>
+                  {t("artifact.fit")}
+                </button>
+                <button type="button" className="artifact-fit" onClick={() => fitTo("fill")} title={t("artifact.fillHint")}>
+                  {t("artifact.fill")}
+                </button>
+              </>
+            )}
+            <button type="button" className="icon-button" disabled={zoom <= MIN_ZOOM} onClick={() => zoomBy(-1)} aria-label={t("artifact.zoomOut")} title={`${t("artifact.zoomOut")} (⌘−)`}>
               <MinusIcon size={14} />
             </button>
-            <button type="button" className="artifact-zoom-value" onClick={() => setZoomAt(ZOOMS.indexOf(1))} title={`${t("artifact.zoomReset")} (⌘0)`}>
+            <button type="button" className="artifact-zoom-value" onClick={() => setZoom(1)} title={`${t("artifact.zoomReset")} (⌘0)`}>
               {Math.round(zoom * 100)} %
             </button>
-            <button type="button" className="icon-button" disabled={zoomAt === ZOOMS.length - 1} onClick={() => zoomBy(1)} aria-label={t("artifact.zoomIn")} title={`${t("artifact.zoomIn")} (⌘+)`}>
+            <button type="button" className="icon-button" disabled={zoom >= MAX_ZOOM} onClick={() => zoomBy(1)} aria-label={t("artifact.zoomIn")} title={`${t("artifact.zoomIn")} (⌘+)`}>
               <PlusIcon size={14} />
             </button>
           </div>
@@ -201,7 +257,9 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
           </button>
         </div>
       </div>
-      <div className="artifact-body">{body}</div>
+      <div className="artifact-body" ref={bodyRef}>
+        {body}
+      </div>
     </aside>
   );
 }
