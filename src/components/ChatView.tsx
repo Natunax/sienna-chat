@@ -16,6 +16,7 @@ import { ArtifactPanel } from "./ArtifactPanel";
 import { SidePanel, type SideTab } from "./SidePanel";
 import { ArtifactCompare, type CompareSide } from "./ArtifactCompare";
 import { WorkcopyBar } from "./WorkcopyBar";
+import { QueueList } from "./QueueList";
 import {
   answerLanePermission,
   answerPermission,
@@ -23,6 +24,7 @@ import {
   compactChat,
   implementPlan,
   projectFor,
+  queueMessage,
   redoLast,
   revertChanges,
   rewindPoint,
@@ -242,10 +244,13 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
   const lastPlan = chat.messages[ownLast];
   const canImplement = Boolean(lastPlan?.plan && lastPlan.text && !lastPlan.error && !streaming);
 
+  // While anything runs, a message waits in the queue above the input.
   const send = (text: string, attachments: OutgoingAttachment[]) => {
     stuck.current = true;
-    void sendMessage(chat.id, text, attachments);
+    if (streaming) queueMessage(chat.id, text, attachments);
+    else void sendMessage(chat.id, text, attachments);
   };
+  const ownRunning = chat.messages.some((message) => message.streaming && !message.lane);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -451,7 +456,10 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
           )}
         </div>
       </div>
-      <div className="dock">{composer}</div>
+      <div className="dock">
+        <QueueList chatId={chat.id} running={ownRunning} />
+        {composer}
+      </div>
 
       {dragging && (
         <div className="drop-overlay" aria-hidden="true">

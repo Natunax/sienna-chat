@@ -39,6 +39,8 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 - Images, PDFs and text files (code, Markdown, CSV, JSON, logs) by button, drag and drop or paste
 - Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.1 per chat, with five effort levels from low to max, and **Ultracode**: the highest effort, with two read-only helpers (a researcher and an adversarial verifier) Claude briefs in parallel in a project chat or with web search
 - Regenerate or edit the last question, copy any answer, and chat titles written by Haiku
+- Answers show text and steps in the order they happened, as in Claude Code
+- Keep writing while Claude works: messages wait in a queue and go out when the answer is done, or **Send now** puts one into the running answer, where Claude takes it in at its next step
 - A stopwatch on every answer: live while it runs, then how long it took
 - Dictation as in Claude Code: hold ⌥Space or click the microphone. Speech is recognized on your Mac, and the text lands in the input field for you to check before you send
 

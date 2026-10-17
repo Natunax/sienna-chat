@@ -173,6 +173,13 @@ async function streamCodeAnswer(chatId: string) {
   const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   void emit("engine", { type: "session", chatId, sessionId: "55555555-5555-4555-8555-555555555555" });
   await pause(500);
+  void emit("engine", {
+    type: "delta",
+    chatId,
+    text: english ? "I'll look at how the cart adds up first." : "Ich sehe mir zuerst an, wie der Warenkorb rechnet.",
+    thinking: "",
+  });
+  await pause(300);
   // A look around first, folded into one line in the answer.
   const look = [
     ["l1", "Bash", "ls -la && git log --oneline | head -20 && cat README* 2>/dev/null | head -80 && sed -n 80,400p docs/architecture.md | head -150"],
@@ -186,6 +193,13 @@ async function streamCodeAnswer(chatId: string) {
   }
   void emit("engine", { type: "tool", chatId, id: "t1", name: "Read", detail: "src/cart.ts" });
   await pause(400);
+  void emit("engine", {
+    type: "delta",
+    chatId,
+    text: english ? "\n\nThe total ignores the quantity. I'll fix it:" : "\n\nDie Summe ignoriert die Menge. Ich korrigiere das:",
+    thinking: "",
+  });
+  await pause(200);
   void emit("engine", { type: "tool", chatId, id: "t2", name: "Edit", detail: "src/cart.ts" });
   const edit = await ask(chatId, {
     id: crypto.randomUUID(),
@@ -353,6 +367,12 @@ export function installDevMock() {
           dictation?.timers.forEach(clearTimeout);
           dictation = null;
           return null;
+        case "chat_steer": {
+          // The running answer takes it in at its next step.
+          const steer = payload as { chatId: string; id: string };
+          setTimeout(() => void emit("engine", { type: "steered", chatId: steer.chatId, id: steer.id }), 700);
+          return null;
+        }
         case "chat_permission":
           {
             const answer = payload as { id: string; decision: string };

@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useSyncExternalStore } from "react";
 import {
   type Artifact,
+  type Steer,
   api,
   DEFAULT_MODE,
   TEMPLATES,
@@ -710,6 +711,8 @@ function requestTitle(chat: Chat) {
 }
 
 export function stopMessage(id: string) {
+  // Stopped means stopped: waiting messages stay until sent by hand.
+  if (queues.has(id)) halted.add(id);
   void api.chatStop(id);
   for (const [laneId, lane] of lanes) if (lane.chatId === id) void api.chatStop(laneId);
 }
@@ -726,6 +729,14 @@ function storedChange(request: PermissionRequest): FileChange {
 }
 
 /** Changes the tool entry with this id in the chat's last answer. */
+/** Where something new goes in an answer: after its text so far and after everything that came before. */
+export function placeIn(message: Message): { textAt: number; step: number } {
+  return {
+    textAt: message.text.length,
+    step: (message.tools?.length ?? 0) + (message.artifacts?.length ?? 0) + (message.steers?.length ?? 0),
+  };
+}
+
 /** A message with one of its tools changed. */
 function withTool(message: Message, toolId: string | null | undefined, change: (tool: ToolUse) => ToolUse): Message {
   if (!toolId || !message.tools?.some((tool) => tool.id === toolId)) return message;
@@ -809,6 +820,102 @@ export function setMode(chatId: string, mode: PermissionMode) {
   void api.chatMode(chatId, mode).catch(() => {});
 }
 
+// ───────── Messages while an answer runs ─────────
+// Written while Claude works, a message waits in the chat's queue and goes out
+// as soon as everything has finished. "Send now" puts it into the running
+// answer instead: Claude takes it in at its next step.
+
+export interface Queued {
+  id: string;
+  text: string;
+  attachments: Outgoing[];
+}
+
+const queues = new Map<string, Queued[]>();
+const queueListeners = new Set<() => void>();
+const EMPTY_QUEUE: Queued[] = [];
+
+function setQueue(chatId: string, queue: Queued[]) {
+  if (queue.length) queues.set(chatId, queue);
+  else queues.delete(chatId);
+  queueListeners.forEach((listener) => listener());
+}
+
+export function useQueue(chatId: string): Queued[] {
+  return useSyncExternalStore(
+    (listener) => {
+      queueListeners.add(listener);
+      return () => queueListeners.delete(listener);
+    },
+    () => queues.get(chatId) ?? EMPTY_QUEUE,
+  );
+}
+
+export function queueMessage(chatId: string, text: string, attachments: Outgoing[]) {
+  halted.delete(chatId);
+  setQueue(chatId, [...(queues.get(chatId) ?? []), { id: crypto.randomUUID(), text, attachments }]);
+  drainQueue(chatId);
+}
+
+export function removeQueued(chatId: string, id: string) {
+  setQueue(chatId, (queues.get(chatId) ?? []).filter((entry) => entry.id !== id));
+}
+
+/** Whether anything still runs in the chat: an answer, a compaction, or messages sent into one. */
+function chatBusy(chat: Chat): boolean {
+  return Boolean(
+    chat.compacting || chat.messages.some((message) => message.streaming || message.steers?.some((steer) => !steer.taken)),
+  );
+}
+
+/** Chats stopped by hand; their queue waits for the user. */
+const halted = new Set<string>();
+
+/** Sends the next waiting message once nothing runs any more. */
+function drainQueue(chatId: string) {
+  const chat = chats.get(chatId);
+  const [next, ...rest] = queues.get(chatId) ?? [];
+  if (!chat || !next || chatBusy(chat) || halted.has(chatId)) return;
+  setQueue(chatId, rest);
+  void sendMessage(chatId, next.text, next.attachments);
+}
+
+/** "Send now": a waiting message goes into the running answer. Text only. */
+export function steerNow(chatId: string, id: string) {
+  const chat = chats.get(chatId);
+  const entry = queues.get(chatId)?.find((item) => item.id === id);
+  if (!chat || !entry) return;
+  const running = chat.messages.some((message) => message.streaming && !message.lane);
+  // Into a running answer goes text only.
+  if (running && (entry.attachments.length || !entry.text.trim())) return;
+  halted.delete(chatId);
+  removeQueued(chatId, id);
+  if (!running) {
+    // Nothing to send it into (or only the compared model still writes): it goes out as a message.
+    if (chatBusy(chat)) setQueue(chatId, [entry, ...(queues.get(chatId) ?? [])]);
+    else void sendMessage(chatId, entry.text, entry.attachments);
+    return;
+  }
+  updateChat(chatId, (current) =>
+    updateLastAssistant(current, (message) => ({
+      ...message,
+      steers: [...(message.steers ?? []), { id, text: entry.text, ...placeIn(message) }],
+    })),
+  );
+  persist(chatId);
+  api.chatSteer(chatId, id, entry.text).catch(() => onEngineEvent({ type: "steerReturned", chatId, id }));
+}
+
+/** Changes the message that holds a steer. */
+function withSteer(chat: Chat, id: string, change: (message: Message, steer: Steer) => Message): Chat {
+  const index = chat.messages.findIndex((message) => message.steers?.some((steer) => steer.id === id));
+  if (index < 0) return chat;
+  const messages = chat.messages.slice();
+  const message = messages[index];
+  messages[index] = change(message, message.steers!.find((steer) => steer.id === id)!);
+  return { ...chat, messages };
+}
+
 /** Carries out the plan of the last answer in the given mode. */
 export async function implementPlan(chatId: string, mode: PermissionMode) {
   setMode(chatId, mode);
@@ -836,6 +943,10 @@ type EngineEvent =
       structured?: unknown;
       error: string | null;
     }
+  | { type: "steered"; chatId: string; id: string }
+  | { type: "steerTurn"; chatId: string; id: string }
+  | { type: "steerReturned"; chatId: string; id: string }
+  | { type: "idle"; chatId: string }
   | { type: "title"; chatId: string; title: string }
   | { type: "context"; chatId: string; used: number; window: number; categories?: ContextCategory[] }
   | { type: "compacting"; chatId: string }
@@ -906,7 +1017,7 @@ function onLaneEvent(lane: { chatId: string; messageId: string }, laneId: string
     updateChat(lane.chatId, (chat) => updateMessage(chat, lane.messageId, update));
   switch (event.type) {
     case "artifact":
-      change((message) => ({ ...message, artifacts: [...(message.artifacts ?? []), event.artifact] }));
+      change((message) => ({ ...message, artifacts: [...(message.artifacts ?? []), { ...event.artifact, ...placeIn(message) }] }));
       return;
     case "session":
       change((message) => ({ ...message, laneSession: event.sessionId }));
@@ -920,7 +1031,10 @@ function onLaneEvent(lane: { chatId: string; messageId: string }, laneId: string
       }));
       return;
     case "tool":
-      change((message) => ({ ...message, tools: [...(message.tools ?? []), { id: event.id, name: event.name, detail: event.detail }] }));
+      change((message) => ({
+        ...message,
+        tools: [...(message.tools ?? []), { id: event.id, name: event.name, detail: event.detail, ...placeIn(message) }],
+      }));
       return;
     case "toolResult":
       change((message) =>
@@ -958,6 +1072,7 @@ function onLaneEvent(lane: { chatId: string; messageId: string }, laneId: string
       }));
       updateChat(lane.chatId, (chat) => ({ ...chat, costUsd: chat.costUsd + event.costUsd }));
       persist(lane.chatId);
+      drainQueue(lane.chatId);
       return;
     default:
       return;
@@ -988,14 +1103,15 @@ function onEngineEvent(event: EngineEvent) {
       return;
     case "artifact":
       updateChat(event.chatId, (chat) =>
-        updateLastAssistant(chat, (message) => ({ ...message, artifacts: [...(message.artifacts ?? []), event.artifact] })),
+        updateLastAssistant(chat, (message) => ({ ...message, artifacts: [...(message.artifacts ?? []), { ...event.artifact, ...placeIn(message) }] })),
       );
       return;
     case "tool":
       updateChat(event.chatId, (chat) =>
         updateLastAssistant(chat, (message) => ({
           ...message,
-          tools: [...(message.tools ?? []), { id: event.id, name: event.name, detail: event.detail }],
+          // Where in the text it happened, so the answer shows text and steps in order.
+          tools: [...(message.tools ?? []), { id: event.id, name: event.name, detail: event.detail, ...placeIn(message) }],
         })),
       );
       return;
@@ -1094,6 +1210,54 @@ function onEngineEvent(event: EngineEvent) {
         const chat = chats.get(event.chatId);
         if (chat) requestTitle(chat);
       }
+      drainQueue(event.chatId);
+      return;
+    case "steered":
+      updateChat(event.chatId, (chat) =>
+        withSteer(chat, event.id, (message) => ({
+          ...message,
+          steers: message.steers!.map((steer) => (steer.id === event.id ? { ...steer, taken: true } : steer)),
+        })),
+      );
+      persist(event.chatId);
+      return;
+    case "steerTurn": {
+      // The answer ended before taking the message in; it gets an answer of its
+      // own, shown as a question and answer like any other.
+      const chat = chats.get(event.chatId);
+      const holder = chat?.messages.find((message) => message.steers?.some((steer) => steer.id === event.id));
+      const steer = holder?.steers?.find((entry) => entry.id === event.id);
+      if (!chat || !steer) return;
+      const question: Message = { id: crypto.randomUUID(), role: "user", text: steer.text };
+      const answer: Message = { id: crypto.randomUUID(), role: "assistant", text: "", streaming: true, startedAt: Date.now() };
+      updateChat(event.chatId, (current) => {
+        const moved = withSteer(current, event.id, (message) => ({
+          ...message,
+          steers: message.steers!.filter((entry) => entry.id !== event.id),
+        }));
+        return { ...moved, messages: [...moved.messages, question, answer], updatedAt: Date.now() };
+      });
+      persist(event.chatId);
+      return;
+    }
+    case "steerReturned": {
+      // Nothing ran any more: it waits in the queue again, first in line.
+      const chat = chats.get(event.chatId);
+      const steer = chat?.messages.flatMap((message) => message.steers ?? []).find((entry) => entry.id === event.id);
+      if (!steer) return;
+      updateChat(event.chatId, (current) =>
+        withSteer(current, event.id, (message) => ({
+          ...message,
+          steers: message.steers!.filter((entry) => entry.id !== event.id),
+        })),
+      );
+      setQueue(event.chatId, [{ id: steer.id, text: steer.text, attachments: [] }, ...(queues.get(event.chatId) ?? [])]);
+      persist(event.chatId);
+      drainQueue(event.chatId);
+      return;
+    }
+    case "idle":
+      drainQueue(event.chatId);
       return;
     case "context":
       updateChat(event.chatId, (chat) => ({
@@ -1126,6 +1290,7 @@ function onEngineEvent(event: EngineEvent) {
         return event.error ? withNote(next, { id: crypto.randomUUID(), role: "note", text: "", error: event.error }) : next;
       });
       persist(event.chatId);
+      drainQueue(event.chatId);
       return;
     case "title": {
       const chat = chats.get(event.chatId);

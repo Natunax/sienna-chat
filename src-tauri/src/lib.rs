@@ -399,6 +399,30 @@ fn project_check(path: String) -> Result<String, String> {
     project::validate(&path).map(|dir| dir.display().to_string())
 }
 
+/// A message into the chat's running answer ("Send now"); text only. If the
+/// answer has ended meanwhile, the engine hands it back to be sent as usual.
+#[tauri::command(async)]
+fn chat_steer(
+    chat_id: String,
+    id: String,
+    text: String,
+    state: State<AppState>,
+) -> Result<(), String> {
+    if !store::valid_id(&chat_id) || !store::valid_id(&id) {
+        return Err("error.invalidRequest".into());
+    }
+    if text.trim().is_empty() {
+        return Err("error.messageEmpty".into());
+    }
+    if text.chars().count() > MAX_TEXT_CHARS {
+        return Err("error.messageTooLong".into());
+    }
+    state.engine.notify(
+        &json!({ "type": "steer", "chatId": chat_id, "uuid": id, "text": text }).to_string(),
+    );
+    Ok(())
+}
+
 #[tauri::command(async)]
 fn chat_stop(chat_id: String, state: State<AppState>) {
     if store::valid_id(&chat_id) {
@@ -820,6 +844,7 @@ pub fn run() {
             workcopy_apply,
             workcopy_discard,
             artifact_save,
+            chat_steer,
             browser_open,
             browser_bounds,
             browser_visible,

@@ -368,7 +368,8 @@ export function Composer(props: Props) {
     placeCaret.current = at;
   };
 
-  const canSend = !streaming && (text.trim().length > 0 || files.length > 0);
+  // While Claude works, a message waits in the queue and goes out after the answer.
+  const canSend = text.trim().length > 0 || files.length > 0;
 
   const submit = () => {
     if (!canSend) return;
@@ -695,7 +696,9 @@ export function Composer(props: Props) {
                 ? t("voice.placeholder")
                 : props.waiting
                   ? t("composer.waiting")
-                  : project
+                  : streaming
+                    ? t("composer.placeholderBusy")
+                    : project
                     ? t("composer.placeholderProject")
                     : t("composer.placeholder")
             }
@@ -737,7 +740,7 @@ export function Composer(props: Props) {
           >
             <MicIcon size={16} />
           </button>
-          {streaming ? (
+          {streaming && !canSend ? (
             <button
               type="button"
               className="send-button is-stop"
@@ -753,8 +756,8 @@ export function Composer(props: Props) {
               className="send-button"
               onClick={submit}
               disabled={!canSend}
-              aria-label={t("composer.send")}
-              title={t("composer.sendHint")}
+              aria-label={t(streaming ? "composer.queue" : "composer.send")}
+              title={t(streaming ? "composer.queueHint" : "composer.sendHint")}
             >
               <ArrowUpIcon size={15} />
             </button>

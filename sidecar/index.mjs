@@ -191,6 +191,8 @@ const TITLE_PROMPT = [
   "Reply with the title only: at most six words, no quotation marks, no final period, in the language of the conversation.",
 ].join("\n");
 const DELTA_FLUSH_MS = 32;
+// How long after an answer a message sent into it may still start its own.
+const STEER_WAIT_MS = 2500;
 // What an approval card and a stored change show at most, per side.
 const MAX_CHANGE_CHARS = 200_000;
 const MAX_OUTPUT_CHARS = 8000;
@@ -368,6 +370,10 @@ class ChatSession {
     /** Commands that ran in the sandbox without asking; they can change what the check runs. */
     this.unaskedCommands = [];
     this.sandboxed = needsSandbox(config);
+    /** Messages sent into the running answer that Claude has not taken in yet, by uuid. */
+    this.steers = new Set();
+    /** After an answer that left some of them: waits whether they start an answer of their own. */
+    this.steerWait = null;
     this.checkRounds = 0;
     /** Stops a running check when the answer is stopped. */
     this.checkStop = null;
@@ -676,6 +682,29 @@ class ChatSession {
     });
   }
 
+  /**
+   * A message into the running answer ("Send now"). Claude Code takes it in at
+   * the answer's next step; if the answer ends first, it starts an answer of
+   * its own, which the window then shows as a new question.
+   */
+  steer(content, uuid) {
+    this.steers.add(uuid);
+    this.inbox.push({
+      type: "user",
+      message: { role: "user", content },
+      parent_tool_use_id: null,
+      uuid,
+      priority: "next",
+      client_composed: true,
+    });
+  }
+
+  /** A message sent into the answer was taken in. */
+  steered(uuid) {
+    if (!this.steers.delete(uuid)) return;
+    emit({ type: "steered", chatId: this.chatId, id: uuid });
+  }
+
   /** Summarizes the conversation so far; the only command Sienna ever sends. */
   compact() {
     clearTimeout(this.idleTimer);
@@ -707,6 +736,17 @@ class ChatSession {
 
   handle(message) {
     if (message.parent_tool_use_id) return;
+    // An answer ended with messages still waiting: a new turn now answers the first of them.
+    if (this.steerWait && (message.type === "stream_event" || message.type === "assistant")) {
+      clearTimeout(this.steerWait);
+      this.steerWait = null;
+      const [id] = this.steers;
+      this.steers.delete(id);
+      emit({ type: "steerTurn", chatId: this.chatId, id });
+    }
+    // Claude Code echoes a message it took into the running answer, and names it on the answer's frames.
+    if (message.type === "user" && message.isReplay && message.uuid) this.steered(message.uuid);
+    for (const uuid of message.user_message_uuids ?? []) this.steered(uuid);
     switch (message.type) {
       case "system":
         if (message.subtype === "init") {
@@ -832,6 +872,19 @@ class ChatSession {
           structured: this.config.format && !failed ? (message.structured_output ?? null) : null,
           error: failed ? describeError(message) : null,
         });
+        // Messages sent in that the answer did not take in run as answers of their own,
+        // right after it; if none starts, they were taken in after all.
+        if (this.steers.size) {
+          this.busy = true;
+          this.steerWait = setTimeout(() => {
+            this.steerWait = null;
+            for (const id of this.steers) emit({ type: "steered", chatId: this.chatId, id });
+            this.steers.clear();
+            this.busy = false;
+            emit({ type: "idle", chatId: this.chatId });
+          }, STEER_WAIT_MS);
+          return;
+        }
         // A second model's answer is done once it is written; its session stays for a branch.
         if (this.config.lane) {
           this.close();
@@ -1146,6 +1199,17 @@ function onCommand(line) {
     return;
   }
   switch (command.type) {
+    case "steer": {
+      const session = sessions.get(command.chatId);
+      const uuid = typeof command.uuid === "string" ? command.uuid : randomUUID();
+      // Nothing running any more: the window sends it as an ordinary message.
+      if (!session?.busy || session.compacting) {
+        emit({ type: "steerReturned", chatId: command.chatId, id: uuid });
+        return;
+      }
+      session.steer(toContent(String(command.text ?? ""), command.attachments), uuid);
+      return;
+    }
     case "send":
       onSend(command).catch((error) =>
         emit({ type: "done", chatId: command.chatId, costUsd: 0, error: describeError(error) }),

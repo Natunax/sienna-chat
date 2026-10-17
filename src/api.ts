@@ -92,6 +92,20 @@ export interface ToolUse {
   /** A command's output, the end of it if long. */
   output?: string;
   change?: FileChange;
+  /** How much of the answer's text came before this step; older chats have none (steps first). */
+  textAt?: number;
+  /** Its place among the answer's steps, artifacts and messages sent in between. */
+  step?: number;
+}
+
+/** A message the user sent into a running answer ("Send now"), shown where it went in. */
+export interface Steer {
+  id: string;
+  text: string;
+  textAt: number;
+  step: number;
+  /** Claude took it into the running answer. */
+  taken?: boolean;
 }
 
 /** A change or command waiting for the user's approval. */
@@ -132,6 +146,9 @@ export interface Artifact {
   kind: "html" | "svg" | "markdown" | "code";
   language?: string;
   content: string;
+  /** Where in its answer it came, as for steps. */
+  textAt?: number;
+  step?: number;
 }
 
 export interface AttachmentMeta {
@@ -149,6 +166,8 @@ export interface Message {
   attachments?: AttachmentMeta[];
   /** Artifacts this answer made, each a version of its id. */
   artifacts?: Artifact[];
+  /** Messages the user sent into this answer while it ran. */
+  steers?: Steer[];
   costUsd?: number;
   error?: string | null;
   streaming?: boolean;
@@ -284,6 +303,7 @@ export const api = {
   usageGet: () => invoke<Usage>("usage_get"),
   budgetSet: (usd: number) => invoke<Usage>("budget_set", { usd }),
   chatStop: (chatId: string) => invoke<void>("chat_stop", { chatId }),
+  chatSteer: (chatId: string, id: string, text: string) => invoke<void>("chat_steer", { chatId, id, text }),
   chatSend: (request: {
     chatId: string;
     sessionId: string | null;

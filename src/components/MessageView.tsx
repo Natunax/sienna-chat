@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   api,
   formatUsd,
@@ -9,6 +9,7 @@ import {
   type PermissionRequest,
   type ToolUse,
   type Artifact,
+  type Steer,
 } from "../api";
 import { locale, storedErrorText, t, type TextKey } from "../i18n";
 import { loadHighlighter, renderBlocks } from "../markdown";
@@ -219,6 +220,65 @@ function Tools({
           group.items.map(({ tool, index }) => <ToolRow key={index} tool={tool} {...row} />)
         ),
       )}
+    </div>
+  );
+}
+
+type FlowItem =
+  | { kind: "text"; key: string; text: string }
+  | { kind: "tools"; key: string; tools: ToolUse[] }
+  | { kind: "artifact"; key: string; artifact: Artifact }
+  | { kind: "steer"; key: string; steer: Steer };
+
+/**
+ * An answer in the order it happened: text, then the steps it took, then more
+ * text, with artifacts and messages sent in between where they came. Steps of
+ * older chats know no place and come first, as they used to.
+ */
+function flowOf(message: Message): FlowItem[] {
+  type Event = { at: number; step: number; item: FlowItem; tool?: ToolUse };
+  const events: Event[] = [
+    ...(message.tools ?? []).map((tool, index) => ({
+      at: tool.textAt ?? 0,
+      step: tool.step ?? index,
+      tool,
+      item: { kind: "tools" as const, key: `g${index}`, tools: [tool] },
+    })),
+    ...(message.artifacts ?? []).map((artifact, index) => ({
+      at: artifact.textAt ?? 0,
+      step: artifact.step ?? 10_000 + index,
+      item: { kind: "artifact" as const, key: `a${index}`, artifact },
+    })),
+    ...(message.steers ?? []).map((steer) => ({
+      at: steer.textAt,
+      step: steer.step,
+      item: { kind: "steer" as const, key: `s${steer.id}`, steer },
+    })),
+  ].sort((a, b) => a.at - b.at || a.step - b.step);
+  const items: FlowItem[] = [];
+  let cursor = 0;
+  const text = message.text;
+  for (const event of events) {
+    const at = Math.min(event.at, text.length);
+    if (at > cursor) {
+      if (text.slice(cursor, at).trim()) items.push({ kind: "text", key: `t${cursor}`, text: text.slice(cursor, at) });
+      cursor = at;
+    }
+    const last = items[items.length - 1];
+    // Steps in a row stay one group, so looking around still folds into one line.
+    if (event.tool && last?.kind === "tools") last.tools.push(event.tool);
+    else items.push(event.item.kind === "tools" ? { ...event.item, tools: [...event.item.tools] } : event.item);
+  }
+  if (text.slice(cursor).trim()) items.push({ kind: "text", key: `t${cursor}`, text: text.slice(cursor) });
+  return items;
+}
+
+/** A message the user sent into the running answer, where it went in. */
+function SteerNote({ steer }: { steer: Steer }) {
+  return (
+    <div className={`msg-steer${steer.taken ? " is-taken" : ""}`}>
+      <span className="msg-steer-label">{t(steer.taken ? "steer.taken" : "steer.waiting")}</span>
+      <p className="msg-steer-text">{steer.text}</p>
     </div>
   );
 }
@@ -610,6 +670,15 @@ function MessageViewImpl({
   const revertable =
     !streaming && onRevert && !message.lane && !message.reverted && message.checkpoint && message.tools?.some((tool) => tool.change);
   const modelName = MODELS.find((entry) => entry.id === message.model)?.name;
+  const flow = flowOf(message);
+  const lastArtifact = message.artifacts?.at(-1);
+  const compareLink =
+    onCompareArtifacts && message.artifacts?.length ? (
+      <button type="button" className="artifact-compare-link" onClick={() => onCompareArtifacts(message.id)}>
+        <CompareIcon size={14} />
+        {t("compareArtifacts.open")}
+      </button>
+    ) : null;
   return (
     <div className={`msg msg-assistant${message.lane ? " is-lane" : ""}`} aria-busy={streaming}>
       {/* Compared side by side: the model and its time, so both read at a glance. */}
@@ -623,29 +692,44 @@ function MessageViewImpl({
       )}
       {/* Folded, only the sign that it is still at work shows. */}
       {(collapsed ? waiting && !message.text : message.thinking || waiting) && <Thinking text={message.thinking ?? ""} active={waiting} />}
-      {!collapsed && message.tools?.length ? <Tools tools={message.tools} active={streaming} projectDir={projectDir} reverted={message.reverted} /> : null}
-      {message.artifacts?.map((artifact, index) => (
-        <ArtifactCard key={index} artifact={artifact} onOpen={onArtifact ? () => onArtifact(artifact.id, artifact) : undefined} />
-      ))}
-      {/* Right under the artifact, so a long answer does not hide it. */}
-      {onCompareArtifacts && message.artifacts?.length ? (
-        <button type="button" className="artifact-compare-link" onClick={() => onCompareArtifacts(message.id)}>
-          <CompareIcon size={14} />
-          {t("compareArtifacts.open")}
-        </button>
-      ) : null}
-      {collapsed ? (
-        message.text && !message.format && (
-          <Fold>
-            <Markdown text={message.text} final={!streaming} />
-          </Fold>
-        )
-      ) : structured && message.format ? (
-        <StructuredView format={message.format} data={structured} onFollowUp={onFollowUp} />
+      {collapsed || message.format ? (
+        <>
+          {/* Folded or a template's data: steps first, the rest as a whole. */}
+          {!collapsed && message.tools?.length ? <Tools tools={message.tools} active={streaming} projectDir={projectDir} reverted={message.reverted} /> : null}
+          {message.artifacts?.map((artifact, index) => (
+            <ArtifactCard key={index} artifact={artifact} onOpen={onArtifact ? () => onArtifact(artifact.id, artifact) : undefined} />
+          ))}
+          {compareLink}
+          {collapsed
+            ? message.text &&
+              !message.format && (
+                <Fold>
+                  <Markdown text={message.text} final={!streaming} />
+                </Fold>
+              )
+            : structured && message.format
+              ? <StructuredView format={message.format} data={structured} onFollowUp={onFollowUp} />
+              : message.text && !streaming && <Markdown text={message.text} final />}
+        </>
       ) : (
-        message.text && !(message.format && streaming) && <Markdown text={message.text} final={!streaming} />
+        flow.map((item, index) => {
+          const last = index === flow.length - 1;
+          if (item.kind === "text") return <Markdown key={item.key} text={item.text} final={!streaming || !last} />;
+          if (item.kind === "tools") {
+            return <Tools key={item.key} tools={item.tools} active={streaming && last} projectDir={projectDir} reverted={message.reverted} />;
+          }
+          if (item.kind === "steer") return <SteerNote key={item.key} steer={item.steer} />;
+          const { artifact } = item;
+          return (
+            <Fragment key={item.key}>
+              <ArtifactCard artifact={artifact} onOpen={onArtifact ? () => onArtifact(artifact.id, artifact) : undefined} />
+              {/* Right under the last artifact, so a long answer does not hide it. */}
+              {artifact === lastArtifact && compareLink}
+            </Fragment>
+          );
+        })
       )}
-      {!collapsed && streaming && message.text && !message.format && !message.permissions?.length && (
+      {!collapsed && streaming && flow.at(-1)?.kind === "text" && !message.format && !message.permissions?.length && (
         <span className="caret" aria-hidden="true" />
       )}
       {onPermission &&
