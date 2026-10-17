@@ -24,6 +24,7 @@ import {
   togglePin,
   refreshUsage,
   startEngineListener,
+  setOpenChat,
   useChat,
   useSummaries,
   useUsage,
@@ -62,6 +63,8 @@ export function App() {
   const [projectError, setProjectError] = useState<string | null>(null);
   const usage = useUsage();
   const chat = useChat(activeId);
+  // The chat on screen counts as read; the sidebar's dot clears.
+  useEffect(() => setOpenChat(activeId), [activeId]);
 
   const newChat = useCallback(() => {
     const current = activeId ? getChat(activeId) : undefined;

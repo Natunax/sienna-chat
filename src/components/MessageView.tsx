@@ -18,6 +18,7 @@ import { DiffView } from "./DiffView";
 import {
   AlertIcon,
   ArtifactIcon,
+  CompareIcon,
   ClockIcon,
   BranchIcon,
   CheckIcon,
@@ -476,6 +477,8 @@ interface Props {
   fastest?: boolean;
   /** Both compared answers took about as long. */
   tie?: boolean;
+  /** Both compared answers made an artifact: open them side by side. */
+  onCompareArtifacts?: () => void;
 }
 
 function MessageViewImpl({
@@ -491,6 +494,7 @@ function MessageViewImpl({
   onArtifact,
   fastest,
   tie,
+  onCompareArtifacts,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [confirmRevert, setConfirmRevert] = useState(false);
@@ -584,6 +588,13 @@ function MessageViewImpl({
       {message.artifacts?.map((artifact, index) => (
         <ArtifactCard key={index} artifact={artifact} onOpen={onArtifact ? () => onArtifact(artifact.id, artifact) : undefined} />
       ))}
+      {/* Right under the artifact, so a long answer does not hide it. */}
+      {onCompareArtifacts && message.artifacts?.length ? (
+        <button type="button" className="artifact-compare-link" onClick={onCompareArtifacts}>
+          <CompareIcon size={14} />
+          {t("compareArtifacts.open")}
+        </button>
+      ) : null}
       {structured && message.format ? (
         <StructuredView format={message.format} data={structured} onFollowUp={onFollowUp} />
       ) : (

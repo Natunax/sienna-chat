@@ -129,6 +129,50 @@ export function getChat(id: string) {
 function putChat(chat: Chat) {
   chats.set(chat.id, chat);
   notifyChat(chat.id);
+  refreshStatus(chat);
+}
+
+/**
+ * What the sidebar shows next to a chat, as in Claude Code: it is working,
+ * it waits for an approval, or it finished while the user was elsewhere.
+ */
+export type ChatStatus = "running" | "waiting" | "done";
+let statuses = new Map<string, ChatStatus>();
+const statusListeners = new Set<Listener>();
+/** Finished while not open; cleared when the chat is opened. */
+const unread = new Set<string>();
+let openChatId: string | null = null;
+
+function refreshStatus(chat: Chat) {
+  const before = statuses.get(chat.id);
+  const live = chat.messages.some((message) => message.streaming) || Boolean(chat.compacting);
+  const waiting = chat.messages.some((message) => message.permissions?.length);
+  if (!live && (before === "running" || before === "waiting") && chat.id !== openChatId) unread.add(chat.id);
+  const now: ChatStatus | undefined = waiting ? "waiting" : live ? "running" : unread.has(chat.id) ? "done" : undefined;
+  if (now === before) return;
+  statuses = new Map(statuses);
+  if (now) statuses.set(chat.id, now);
+  else statuses.delete(chat.id);
+  statusListeners.forEach((listener) => listener());
+}
+
+/** The chat on screen: it is read, and its status clears once it is done. */
+export function setOpenChat(id: string | null) {
+  openChatId = id;
+  if (!id) return;
+  unread.delete(id);
+  const chat = chats.get(id);
+  if (chat) refreshStatus(chat);
+}
+
+export function useChatStatuses(): Map<string, ChatStatus> {
+  return useSyncExternalStore(
+    (listener) => {
+      statusListeners.add(listener);
+      return () => statusListeners.delete(listener);
+    },
+    () => statuses,
+  );
 }
 
 function upsertSummary(chat: Chat, keepPlace = false) {

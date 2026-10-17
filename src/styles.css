@@ -3880,29 +3880,21 @@ button.bubble-mention:hover {
    Over the whole chat: one toolbar for both, two equal columns with a hairline
    between them, each headed by its model, time, title and versions. */
 
-.compare-artifacts-button {
+.artifact-compare-link {
   display: inline-flex;
-  grid-column: 1 / -1;
-  justify-self: center;
   align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 16px;
-  background: var(--fill);
-  box-shadow: inset 0 0 0 0.5px var(--separator-strong);
-  color: var(--label);
-  font-size: 13px;
-  font-weight: 500;
-  transition: background-color 120ms;
-}
-
-.compare-artifacts-button:hover {
-  background: var(--fill-hover);
-}
-
-.compare-artifacts-button svg {
+  gap: 6px;
+  height: 28px;
+  margin: -6px 0 14px;
+  padding: 0 10px 0 8px;
+  border-radius: 8px;
   color: var(--accent-text);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.artifact-compare-link:hover {
+  background: var(--accent-soft);
 }
 
 .artifact-compare {
@@ -4021,4 +4013,50 @@ button.bubble-mention:hover {
 /* Small controls get a full click target. */
 .tool-file {
   padding-block: 4px;
+}
+
+/* ───────── Chat status in the sidebar ─────────
+   As in Claude Code: a dot before the title. Coral and pulsing while the
+   chat works, amber and pulsing while it waits for an approval, green and
+   still once it finished unseen. */
+
+.chat-status {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: 1px;
+}
+
+.chat-status.is-running {
+  background: var(--accent);
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+.chat-status.is-waiting {
+  background: var(--warning);
+  animation: status-pulse 0.9s ease-in-out infinite;
+}
+
+.chat-status.is-done {
+  background: var(--diff-add-text);
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-status {
+    animation: none !important;
+  }
 }

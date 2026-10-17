@@ -36,7 +36,7 @@ import {
   useSummaries,
 } from "../store";
 import { Composer, type ComposerSettings } from "./Composer";
-import { CompareIcon, SidebarIcon } from "./icons";
+import { SidebarIcon } from "./icons";
 import { MessageView } from "./MessageView";
 
 /** The empty chat greets by time of day. */
@@ -354,9 +354,17 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
               const clear = Math.abs(gap) > Math.max(500, 0.05 * Math.max(message.durationMs ?? 0, rival.durationMs ?? 0));
               const ownFaster = clear && gap > 0;
               const rivalFaster = clear && gap < 0;
+              // Both made an artifact: each card offers them side by side.
+              const comparable = Boolean(message.artifacts?.length && rival.artifacts?.length && !message.streaming && !rival.streaming);
+              const compareArtifacts = comparable
+                ? () => {
+                    setShown(null);
+                    setComparing({ own: message.id, lane: rival.id });
+                  }
+                : undefined;
               return (
                 <div key={`pair:${message.id}:${language}`} className="compare-row">
-                  {ownFaster ? cloneElement(view, { fastest: true }) : view}
+                  {cloneElement(view, { fastest: ownFaster, onCompareArtifacts: compareArtifacts })}
                   <div className="compare-lane">
                     <MessageView
                       key={`${rival.id}:${language}`}
@@ -368,24 +376,12 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
                       onArtifact={openArtifact}
                       fastest={rivalFaster}
                       tie={both && !clear}
+                      onCompareArtifacts={compareArtifacts}
                       showModel
                     />
                     {chat.projectDir && <WorkcopyBar chatId={chat.id} message={rival} />}
                   </div>
-                  {/* Both made an artifact: open them next to each other. */}
-                  {message.artifacts?.length && rival.artifacts?.length && !message.streaming && !rival.streaming ? (
-                    <button
-                      type="button"
-                      className="compare-artifacts-button"
-                      onClick={() => {
-                        setShown(null);
-                        setComparing({ own: message.id, lane: rival.id });
-                      }}
-                    >
-                      <CompareIcon size={15} />
-                      {t("compareArtifacts.open")}
-                    </button>
-                  ) : null}
+
                 </div>
               );
             })

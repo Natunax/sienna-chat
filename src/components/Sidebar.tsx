@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { formatUsd, type ChatSummary, type Project, type Usage } from "../api";
-import { locale, t, useLanguage } from "../i18n";
-import { projectFor } from "../store";
+import { locale, t, useLanguage, type TextKey } from "../i18n";
+import { projectFor, useChatStatuses, type ChatStatus } from "../store";
 import {
   BranchIcon,
   ChevronRightIcon,
@@ -68,9 +68,17 @@ function RenameField({ title, onDone }: { title: string; onDone: (title: string 
   );
 }
 
-function ChatRow({ chat, active, branch, onSelect, onDelete, onRename, onPin }: {
+const STATUS_LABELS: Record<ChatStatus, TextKey> = {
+  running: "status.running",
+  waiting: "status.waiting",
+  done: "status.done",
+};
+
+function ChatRow({ chat, active, branch, status, onSelect, onDelete, onRename, onPin }: {
   chat: ChatSummary;
   active: boolean;
+  /** Working, waiting for an approval, or finished unseen. */
+  status?: ChatStatus;
   /** Listed below the chat it branched off. */
   branch?: boolean;
   onSelect: () => void;
@@ -112,6 +120,9 @@ function ChatRow({ chat, active, branch, onSelect, onDelete, onRename, onPin }: 
         aria-current={active ? "page" : undefined}
         title={`${chat.title}\n${t("sidebar.renameHint")}`}
       >
+        {status && (
+          <span className={`chat-status is-${status}`} role="img" aria-label={t(STATUS_LABELS[status])} title={t(STATUS_LABELS[status])} />
+        )}
         {branch && <BranchIcon size={13} className="chat-row-branch" />}
         {chat.title}
       </button>
@@ -247,6 +258,7 @@ function ProjectRow(props: {
 }
 
 export const Sidebar = memo(function Sidebar(props: Props) {
+  const statuses = useChatStatuses();
   const { summaries, projects, activeId, activeProjectId, usage, onSelect, onNew, onDelete, onRename, onPin } = props;
   const { onToggle, onSettings, onAddProject, onNewInProject, onRemoveProject, onRenameProject, projectError } = props;
   const [query, setQuery] = useState("");
@@ -328,6 +340,7 @@ export const Sidebar = memo(function Sidebar(props: Props) {
       key={chat.id}
       chat={chat}
       active={chat.id === activeId}
+      status={statuses.get(chat.id)}
       branch={branch}
       onSelect={() => onSelect(chat.id)}
       onDelete={() => onDelete(chat.id)}
