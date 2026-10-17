@@ -190,6 +190,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
     return {
       model: MODELS.find((entry) => entry.id === (message.model ?? chat.model))?.name ?? message.model ?? "",
       durationMs: message.durationMs,
+      costUsd: message.costUsd,
       versions,
       start: Math.max(0, versions.indexOf(artifact)),
     };
@@ -366,6 +367,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
                       onBranch={branch}
                       onArtifact={openArtifact}
                       fastest={rivalFaster}
+                      tie={both && !clear}
                       showModel
                     />
                     {chat.projectDir && <WorkcopyBar chatId={chat.id} message={rival} />}

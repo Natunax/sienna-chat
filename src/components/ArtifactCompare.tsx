@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type Artifact } from "../api";
+import { formatUsd, type Artifact } from "../api";
 import { t } from "../i18n";
 import { CodeView, fitZoom, MAX_ZOOM, MIN_ZOOM, SealedFrame, stepZoom, type Size } from "./ArtifactPanel";
 import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, CompareIcon, MinusIcon, PlusIcon } from "./icons";
@@ -9,6 +9,7 @@ export interface CompareSide {
   /** The model that made it. */
   model: string;
   durationMs?: number;
+  costUsd?: number;
   /** Every version of its artifact, oldest first. */
   versions: Artifact[];
   /** The version shown at first. */
@@ -41,6 +42,7 @@ function Side({
       <header className="compare-side-head">
         <span className="compare-side-model">{side.model}</span>
         {side.durationMs !== undefined && <span className="compare-side-time">{formatDuration(side.durationMs)}</span>}
+        {side.costUsd ? <span className="compare-side-cost">{formatUsd(side.costUsd)}</span> : null}
         <span className="compare-side-title" title={artifact.title}>
           {artifact.title}
         </span>
@@ -84,6 +86,8 @@ export function ArtifactCompare({ sides, onClose }: { sides: [CompareSide, Compa
   const bodies = useRef<[HTMLDivElement | null, HTMLDivElement | null]>([null, null]);
   const root = useRef<HTMLElement>(null);
   const fitting = useRef<{ mode: "fit" | "fill"; left: number } | null>(null);
+  // Which of fit and fill the zoom follows, until the user zooms by hand.
+  const [fitMode, setFitMode] = useState<"fit" | "fill" | null>(null);
 
   const artifacts = [sides[0].versions[indexes[0]], sides[1].versions[indexes[1]]];
   const previewable = artifacts.some((artifact) => artifact.kind !== "code");
@@ -102,6 +106,7 @@ export function ArtifactCompare({ sides, onClose }: { sides: [CompareSide, Compa
     const next = target(mode, sizes);
     if (next === null) return;
     fitting.current = { mode, left: 4 };
+    setFitMode(mode);
     setZoom(next);
   };
   useEffect(() => {
@@ -118,10 +123,12 @@ export function ArtifactCompare({ sides, onClose }: { sides: [CompareSide, Compa
 
   const zoomBy = (step: number) => {
     fitting.current = null;
+    setFitMode(null);
     setZoom((current) => stepZoom(current, step));
   };
   const resetZoom = () => {
     fitting.current = null;
+    setFitMode(null);
     setZoom(1);
   };
 
@@ -185,10 +192,10 @@ export function ArtifactCompare({ sides, onClose }: { sides: [CompareSide, Compa
           <div className="artifact-zoom-control" role="group" aria-label={t("artifact.zoom")}>
             {measurable && sizes[0] && sizes[1] && (
               <>
-                <button type="button" className="artifact-fit" onClick={() => fitTo("fit")} title={t("compareArtifacts.fitHint")}>
+                <button type="button" className={`artifact-fit${fitMode === "fit" ? " is-active" : ""}`} aria-pressed={fitMode === "fit"} onClick={() => fitTo("fit")} title={t("compareArtifacts.fitHint")}>
                   {t("artifact.fit")}
                 </button>
-                <button type="button" className="artifact-fit" onClick={() => fitTo("fill")} title={t("compareArtifacts.fillHint")}>
+                <button type="button" className={`artifact-fit${fitMode === "fill" ? " is-active" : ""}`} aria-pressed={fitMode === "fill"} onClick={() => fitTo("fill")} title={t("compareArtifacts.fillHint")}>
                   {t("artifact.fill")}
                 </button>
               </>

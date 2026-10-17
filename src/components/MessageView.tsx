@@ -474,6 +474,8 @@ interface Props {
   onArtifact?: (id: string, version: Artifact) => void;
   /** Compared with another model, this answer was the quicker one. */
   fastest?: boolean;
+  /** Both compared answers took about as long. */
+  tie?: boolean;
 }
 
 function MessageViewImpl({
@@ -488,6 +490,7 @@ function MessageViewImpl({
   onFollowUp,
   onArtifact,
   fastest,
+  tie,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [confirmRevert, setConfirmRevert] = useState(false);
@@ -573,6 +576,7 @@ function MessageViewImpl({
           <span>{modelName}</span>
           <Elapsed message={message} className="msg-time" />
           {fastest && <span className="msg-fastest">{t("timer.fastest")}</span>}
+          {tie && <span className="msg-tie">{t("timer.tie")}</span>}
         </div>
       )}
       {(message.thinking || waiting) && <Thinking text={message.thinking ?? ""} active={waiting} />}

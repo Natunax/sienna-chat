@@ -191,6 +191,12 @@ pub struct Applied {
     conflicts: Vec<String>,
 }
 
+impl Applied {
+    pub fn conflicts_empty(&self) -> bool {
+        self.conflicts.is_empty()
+    }
+}
+
 /// The project file for a relative path: plain parts only, and its folder
 /// inside the project after links are resolved.
 fn target(project: &Path, rel: &str) -> Option<PathBuf> {
@@ -213,8 +219,9 @@ fn target(project: &Path, rel: &str) -> Option<PathBuf> {
 }
 
 /// Takes the copy's changes over into the project, file by file. A file the
-/// project changed too since the copy was made is left as it is.
-pub fn apply(work: &str, project: &Path) -> Result<Applied, String> {
+/// project changed too since the copy was made is left as it is, unless
+/// `force` names it: the user chose to replace it after seeing the conflict.
+pub fn apply(work: &str, project: &Path, force: &[String]) -> Result<Applied, String> {
     let list = changes(work)?;
     let (base, work) = folders(work)?;
     let mut result = Applied::default();
@@ -224,10 +231,19 @@ pub fn apply(work: &str, project: &Path) -> Result<Applied, String> {
             continue;
         };
         let original = base.join(&change.path);
-        let untouched = match change.kind {
-            Kind::Added => !dest.exists(),
-            Kind::Modified | Kind::Deleted => same(&dest, &original),
+        // Already as in the copy (taken over before): nothing to do.
+        let done_already = match change.kind {
+            Kind::Deleted => !dest.exists(),
+            Kind::Added | Kind::Modified => same(&dest, &work.join(&change.path)),
         };
+        if done_already {
+            continue;
+        }
+        let untouched = force.contains(&change.path)
+            || match change.kind {
+                Kind::Added => !dest.exists(),
+                Kind::Modified | Kind::Deleted => same(&dest, &original),
+            };
         if !untouched {
             result.conflicts.push(change.path);
             continue;
@@ -291,7 +307,7 @@ mod tests {
         kinds.sort_by(|a, b| a.0.cmp(&b.0));
         assert_eq!(kinds.len(), 4);
 
-        let result = apply(work, &project).unwrap();
+        let result = apply(work, &project, &[]).unwrap();
         assert_eq!(result.conflicts, ["src/b.rs"]);
         assert_eq!(fs::read_to_string(project.join("src/a.rs")).unwrap(), "a2");
         assert_eq!(
@@ -300,6 +316,10 @@ mod tests {
         );
         assert!(!project.join("src/c.rs").exists());
         assert_eq!(fs::read_to_string(project.join("src/new.rs")).unwrap(), "n");
+        // Replacing the conflict on purpose.
+        let forced = apply(work, &project, &["src/b.rs".to_string()]).unwrap();
+        assert!(forced.conflicts.is_empty());
+        assert_eq!(fs::read_to_string(project.join("src/b.rs")).unwrap(), "b2");
         assert!(changes(project.to_str().unwrap()).is_err());
         assert!(target(&project, "../x").is_none());
 

@@ -617,15 +617,22 @@ fn workcopy_changes(work: String) -> Result<Vec<workcopy::Change>, String> {
     workcopy::changes(&work)
 }
 
-/// Takes a working copy's changes over into the project and removes the copy.
+/// Takes a working copy's changes over into the project. The copy stays while
+/// files are left out, so the user can still replace them (`force`).
 #[tauri::command(async)]
-fn workcopy_apply(work: String, project_dir: String) -> Result<workcopy::Applied, String> {
+fn workcopy_apply(
+    work: String,
+    project_dir: String,
+    force: Option<Vec<String>>,
+) -> Result<workcopy::Applied, String> {
     let project = project::validate(&project_dir)?;
     if workcopy::is_work(&project) {
         return Err("error.projectInvalid".into());
     }
-    let result = workcopy::apply(&work, &project)?;
-    let _ = workcopy::discard(&work);
+    let result = workcopy::apply(&work, &project, &force.unwrap_or_default())?;
+    if result.conflicts_empty() {
+        let _ = workcopy::discard(&work);
+    }
     Ok(result)
 }
 

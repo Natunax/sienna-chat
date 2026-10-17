@@ -644,16 +644,22 @@ export function answerLanePermission(chatId: string, messageId: string, request:
   if (laneId) void api.chatPermission(laneId, request.id, decision).catch(() => {});
 }
 
-/** Takes a second model's changes over into the project, or drops them. */
-export async function finishWorkcopy(chatId: string, messageId: string, take: boolean) {
+/**
+ * Takes a second model's changes over into the project (`force` replaces
+ * files the project changed meanwhile), or drops them. The copy stays while
+ * files are left out.
+ */
+export async function finishWorkcopy(chatId: string, messageId: string, take: boolean, force: string[] = []) {
   const chat = chats.get(chatId);
   const message = chat?.messages.find((entry) => entry.id === messageId);
   if (!chat?.projectDir || !message?.laneDir) return null;
-  const result = take ? await api.workcopyApply(message.laneDir, chat.projectDir) : (await api.workcopyDiscard(message.laneDir), null);
-  updateChat(chatId, (current) =>
-    updateMessage(current, messageId, (entry) => ({ ...entry, laneDone: take ? "applied" : "discarded" })),
-  );
-  persist(chatId);
+  const result = take ? await api.workcopyApply(message.laneDir, chat.projectDir, force) : (await api.workcopyDiscard(message.laneDir), null);
+  if (!result || result.conflicts.length === 0) {
+    updateChat(chatId, (current) =>
+      updateMessage(current, messageId, (entry) => ({ ...entry, laneDone: take ? "applied" : "discarded" })),
+    );
+    persist(chatId);
+  }
   return result;
 }
 

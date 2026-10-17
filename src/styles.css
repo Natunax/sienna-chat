@@ -29,6 +29,7 @@
   --accent-text: #9c4527;
   --on-accent: #ffffff;
   --danger: #b8321f;
+  --warning: #9a5b00;
   --danger-soft: rgba(184, 50, 31, 0.1);
   --on-danger: #ffffff;
   --selection: rgba(181, 85, 47, 0.24);
@@ -75,6 +76,7 @@
     --accent-text: #eb9677;
     --on-accent: #1d1c1b;
     --danger: #ff6b5e;
+    --warning: #e3a33a;
     --danger-soft: rgba(255, 107, 94, 0.1);
     --on-danger: #1d1c1b;
     --selection: rgba(217, 119, 87, 0.32);
@@ -506,8 +508,8 @@ input[type="checkbox"] {
 .section-action {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 6px;
   color: var(--label-3);
 }
@@ -1501,8 +1503,33 @@ button.tool-toggle:hover .tool-name,
 }
 
 .workcopy-more {
-  color: var(--label-3);
   font-size: 12px;
+}
+
+.workcopy-hint {
+  margin: -4px 0 0;
+  color: var(--label-2);
+  font-size: 12px;
+}
+
+/* What went in reads as done; what was left out as a choice, not an error. */
+.workcopy-result {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--diff-add-text);
+  font-size: 12.5px;
+}
+
+.workcopy-result svg {
+  color: inherit;
+}
+
+.workcopy-warning {
+  margin: 0;
+  color: var(--warning);
+  font-size: 12.5px;
 }
 
 .workcopy-actions {
@@ -1511,7 +1538,6 @@ button.tool-toggle:hover .tool-name,
   gap: 8px;
 }
 
-.workcopy-conflicts,
 .workcopy-error {
   margin: 0;
   color: var(--danger);
@@ -3829,11 +3855,12 @@ button.bubble-mention:hover {
   color: var(--accent-text);
 }
 
+/* The quicker answer: green like an addition, so coral stays for live and primary. */
 .msg-fastest {
   padding: 1px 7px;
   border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-text);
+  background: color-mix(in srgb, var(--diff-add-text) 14%, transparent);
+  color: var(--diff-add-text);
   font-size: 11.5px;
   font-weight: 600;
 }
@@ -3931,7 +3958,7 @@ button.bubble-mention:hover {
 }
 
 .compare-side + .compare-side {
-  box-shadow: inset 0.5px 0 0 var(--separator-strong);
+  box-shadow: inset 1px 0 0 var(--separator-strong);
 }
 
 .compare-side-head {
@@ -3951,7 +3978,8 @@ button.bubble-mention:hover {
   font-weight: 600;
 }
 
-.compare-side-time {
+.compare-side-time,
+.compare-side-cost {
   flex-shrink: 0;
   color: var(--label-2);
   font-variant-numeric: tabular-nums;
@@ -3971,4 +3999,26 @@ button.bubble-mention:hover {
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+
+.msg-tie {
+  color: var(--label-2);
+  font-size: 11.5px;
+}
+
+/* Fit or Fill while the zoom follows it. */
+.artifact-fit.is-active {
+  background: var(--fill-active);
+  color: var(--label);
+}
+
+/* Long code lines wrap in the narrow panel instead of running out of view. */
+.artifact-code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Small controls get a full click target. */
+.tool-file {
+  padding-block: 4px;
 }

@@ -324,8 +324,8 @@ export const api = {
     }),
   workcopyCreate: (projectDir: string) => invoke<string>("workcopy_create", { projectDir }),
   workcopyChanges: (work: string) => invoke<WorkcopyChange[]>("workcopy_changes", { work }),
-  workcopyApply: (work: string, projectDir: string) =>
-    invoke<{ applied: string[]; conflicts: string[] }>("workcopy_apply", { work, projectDir }),
+  workcopyApply: (work: string, projectDir: string, force: string[] = []) =>
+    invoke<{ applied: string[]; conflicts: string[] }>("workcopy_apply", { work, projectDir, force }),
   workcopyDiscard: (work: string) => invoke<void>("workcopy_discard", { work }),
   voiceStart: (language: "de" | "en") => invoke<number>("voice_start", { language }),
   voiceStop: () => invoke<void>("voice_stop"),

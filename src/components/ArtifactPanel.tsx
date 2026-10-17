@@ -151,11 +151,13 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
   // A zoom by hand ends a fit still settling.
   const resetZoom = () => {
     fitting.current = null;
+    setFitMode(null);
     setZoom(1);
   };
   // + and − go to the next step, also from a zoom that fit or fill chose.
   const zoomBy = (step: number) => {
     fitting.current = null;
+    setFitMode(null);
     setZoom((current) => stepZoom(current, step));
   };
 
@@ -167,11 +169,14 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
   // A page that centers itself moves its content when the zoom changes the
   // view, so fit and fill check the new measurement a few times.
   const fitting = useRef<{ mode: "fit" | "fill"; left: number } | null>(null);
+  // Which of fit and fill the zoom follows, until the user zooms by hand.
+  const [fitMode, setFitMode] = useState<"fit" | "fill" | null>(null);
   const fitTo = (mode: "fit" | "fill") => {
     if (!size) return;
     const next = target(mode, size);
     if (next === null) return;
     fitting.current = { mode, left: 4 };
+    setFitMode(mode);
     setZoom(next);
   };
   useEffect(() => {
@@ -189,9 +194,13 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
   // ⌘+ / ⌘− / ⌘0 zoom the preview, as in a browser.
   const zoomable = showing === "preview";
   useEffect(() => {
-    if (!zoomable) return;
     const onKey = (event: KeyboardEvent) => {
-      if (!event.metaKey || event.altKey || event.ctrlKey) return;
+      if (event.key === "Escape" && !(event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement)) {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (!zoomable || !event.metaKey || event.altKey || event.ctrlKey) return;
       if (event.key === "+" || event.key === "=") zoomBy(1);
       else if (event.key === "-") zoomBy(-1);
       else if (event.key === "0") resetZoom();
@@ -267,10 +276,10 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
           <div className="artifact-zoom-control" role="group" aria-label={t("artifact.zoom")}>
             {size && artifact.kind !== "markdown" && (
               <>
-                <button type="button" className="artifact-fit" onClick={() => fitTo("fit")} title={t("artifact.fitHint")}>
+                <button type="button" className={`artifact-fit${fitMode === "fit" ? " is-active" : ""}`} aria-pressed={fitMode === "fit"} onClick={() => fitTo("fit")} title={t("artifact.fitHint")}>
                   {t("artifact.fit")}
                 </button>
-                <button type="button" className="artifact-fit" onClick={() => fitTo("fill")} title={t("artifact.fillHint")}>
+                <button type="button" className={`artifact-fit${fitMode === "fill" ? " is-active" : ""}`} aria-pressed={fitMode === "fill"} onClick={() => fitTo("fill")} title={t("artifact.fillHint")}>
                   {t("artifact.fill")}
                 </button>
               </>
