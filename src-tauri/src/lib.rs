@@ -613,7 +613,55 @@ fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
+/// Typed text stays as typed: macOS would otherwise turn quotes into
+/// typographic ones, `--` into a dash and apply text replacements in the
+/// window's fields, which breaks code written for Claude. WebKit reads these
+/// app preferences when the window's text fields are created.
+#[cfg(target_os = "macos")]
+fn plain_typing() {
+    use std::ffi::{c_char, c_void, CString};
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        static kCFBooleanFalse: *const c_void;
+        static kCFPreferencesCurrentApplication: *const c_void;
+        fn CFStringCreateWithCString(
+            alloc: *const c_void,
+            text: *const c_char,
+            encoding: u32,
+        ) -> *const c_void;
+        fn CFPreferencesSetAppValue(key: *const c_void, value: *const c_void, app: *const c_void);
+        fn CFPreferencesAppSynchronize(app: *const c_void) -> u8;
+        fn CFRelease(object: *const c_void);
+    }
+    const UTF8: u32 = 0x0800_0100;
+    for key in [
+        "WebAutomaticQuoteSubstitutionEnabled",
+        "WebAutomaticDashSubstitutionEnabled",
+        "WebAutomaticTextReplacementEnabled",
+        "WebAutomaticSpellingCorrectionEnabled",
+    ] {
+        let Ok(name) = CString::new(key) else {
+            continue;
+        };
+        // SAFETY: plain CoreFoundation calls with valid, released CFStrings.
+        unsafe {
+            let key = CFStringCreateWithCString(std::ptr::null(), name.as_ptr(), UTF8);
+            if key.is_null() {
+                continue;
+            }
+            CFPreferencesSetAppValue(key, kCFBooleanFalse, kCFPreferencesCurrentApplication);
+            CFRelease(key);
+        }
+    }
+    // SAFETY: as above.
+    unsafe {
+        CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication);
+    }
+}
+
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    plain_typing();
     let app = tauri::Builder::default()
         .plugin(navigation_guard())
         .register_uri_scheme_protocol("artifact", |context, request| {

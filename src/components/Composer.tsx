@@ -674,6 +674,9 @@ export function Composer(props: Props) {
             ref={area}
             className="composer-input"
             rows={1}
+            // Code is typed here: no autocorrect, as in an editor.
+            autoCorrect="off"
+            autoCapitalize="off"
             placeholder={
               voice.active
                 ? t("voice.placeholder")
