@@ -225,3 +225,18 @@ export const MicIcon = (p: IconProps) => (
     <path d="M10 14.75v2.75" />
   </Icon>
 );
+
+export const KeyboardIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="2.5" y="5" width="15" height="10" rx="2" />
+    <path d="M5.5 8h.01M8.5 8h.01M11.5 8h.01M14.5 8h.01M5.5 11h.01M14.5 11h.01M8 11.5h4" />
+  </Icon>
+);
+
+export const CoinsIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <ellipse cx="8" cy="6" rx="4.5" ry="2" />
+    <path d="M3.5 6v3c0 1.1 2 2 4.5 2s4.5-.9 4.5-2V6" />
+    <path d="M7.5 12.4v1.6c0 1.1 2 2 4.5 2s4.5-.9 4.5-2v-3c0-1-1.6-1.8-3.8-2" />
+  </Icon>
+);

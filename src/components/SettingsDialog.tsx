@@ -1,15 +1,14 @@
-import { setAutoApprove, useAutoApprove } from "../autoApprove";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { setAutoApprove, useAutoApprove } from "../autoApprove";
 import { api, formatUsd, MODELS, type Usage } from "../api";
 import { errorText, languageChoice, setLanguageChoice, t, type LanguageChoice, type TextKey } from "../i18n";
 import { setUsage } from "../store";
-import { CloseIcon, KeyIcon } from "./icons";
+import { CloseIcon, CoinsIcon, GearIcon, KeyboardIcon, KeyIcon, ShieldCheckIcon } from "./icons";
 import { KeyForm } from "./KeyForm";
 
 const CONSOLE_USAGE_URL = "https://platform.claude.com/settings/billing";
 
-// Language names stay in their own language, so each is recognizable in both.
 // Every shortcut of the app, listed in the settings.
 const SHORTCUTS: { keys: string; label: TextKey }[] = [
   { keys: "⌘N", label: "shortcut.new" },
@@ -26,11 +25,41 @@ const SHORTCUTS: { keys: string; label: TextKey }[] = [
   { keys: "F2", label: "shortcut.rename" },
 ];
 
+// Language names stay in their own language, so each is recognizable in both.
 const LANGUAGES: { id: LanguageChoice; name: string }[] = [
   { id: "system", name: "" },
   { id: "de", name: "Deutsch" },
   { id: "en", name: "English" },
 ];
+
+type PageId = "general" | "projects" | "key" | "costs" | "shortcuts";
+
+const PAGES: { id: PageId; label: TextKey; icon: (props: { size?: number }) => ReactNode }[] = [
+  { id: "general", label: "settings.nav.general", icon: GearIcon },
+  { id: "projects", label: "settings.nav.projects", icon: ShieldCheckIcon },
+  { id: "key", label: "settings.nav.key", icon: KeyIcon },
+  { id: "costs", label: "settings.nav.costs", icon: CoinsIcon },
+  { id: "shortcuts", label: "settings.nav.shortcuts", icon: KeyboardIcon },
+];
+
+/** One setting: what it is and what it does on the left, its control on the right. */
+function Row({ id, title, hint, children }: { id: string; title: string; hint?: string; children?: ReactNode }) {
+  return (
+    <div className="settings-row">
+      <div className="settings-row-text">
+        <div className="settings-row-title" id={`${id}-label`}>
+          {title}
+        </div>
+        {hint && (
+          <p className="settings-row-hint" id={`${id}-hint`}>
+            {hint}
+          </p>
+        )}
+      </div>
+      {children && <div className="settings-row-control">{children}</div>}
+    </div>
+  );
+}
 
 interface Props {
   usage: Usage | null;
@@ -41,6 +70,7 @@ interface Props {
 export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
   const autoApprove = useAutoApprove();
   const dialog = useRef<HTMLDialogElement>(null);
+  const [page, setPage] = useState<PageId>("general");
   const [replacing, setReplacing] = useState(false);
   const [budget, setBudget] = useState(String(usage?.budget ?? 100));
   const [keyMessage, setKeyMessage] = useState<string | null>(null);
@@ -82,168 +112,191 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
     }
   };
 
+  const current = PAGES.find((entry) => entry.id === page)!;
+  const byModel = Object.entries(usage?.byModel ?? {}).sort(([, a], [, b]) => b - a);
+
   return (
     <dialog
       ref={dialog}
-      className="dialog"
+      className="dialog settings"
       tabIndex={-1}
       onClose={onClose}
       onCancel={onClose}
       aria-labelledby="settings-title"
     >
-      <header className="dialog-head">
-        <h2 id="settings-title">{t("settings.title")}</h2>
-        <button type="button" className="icon-button" onClick={onClose} aria-label={t("settings.close")}>
+      <nav
+        className="settings-nav"
+        aria-labelledby="settings-title"
+        // Up and down move between the categories, as in a Mac sidebar.
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+          event.preventDefault();
+          const at = PAGES.findIndex((entry) => entry.id === page);
+          const next = PAGES[(at + (event.key === "ArrowDown" ? 1 : -1) + PAGES.length) % PAGES.length];
+          setPage(next.id);
+          event.currentTarget.querySelector<HTMLElement>(`[data-page="${next.id}"]`)?.focus();
+        }}
+      >
+        <h2 id="settings-title" className="settings-nav-title">
+          {t("settings.title")}
+        </h2>
+        {PAGES.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            data-page={id}
+            className={`settings-nav-item${id === page ? " is-active" : ""}`}
+            aria-current={id === page ? "page" : undefined}
+            onClick={() => setPage(id)}
+          >
+            <Icon size={16} />
+            {t(label)}
+          </button>
+        ))}
+      </nav>
+
+      <div className="settings-page">
+        <button type="button" className="icon-button settings-close" onClick={onClose} aria-label={t("settings.close")}>
           <CloseIcon />
         </button>
-      </header>
+        <h3 className="settings-page-title">{t(current.label)}</h3>
 
-      <section className="setting">
-        <h3>{t("settings.language")}</h3>
-        <div className="segmented setting-segmented" role="group" aria-label={t("settings.language")}>
-          {LANGUAGES.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              aria-pressed={option.id === language}
-              className={option.id === language ? "is-active" : undefined}
-              onClick={() => {
-                setLanguage(option.id);
-                setLanguageChoice(option.id);
-              }}
-            >
-              {option.id === "system" ? t("settings.languageSystem") : option.name}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="setting">
-        <div className="setting-switch-row">
-          <div>
-            <h3 id="auto-approve-label">{t("settings.autoApprove")}</h3>
-            <p className="setting-hint" id="auto-approve-hint">
-              {t("settings.autoApproveHint")}
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            className="switch"
-            aria-checked={autoApprove}
-            aria-labelledby="auto-approve-label"
-            aria-describedby="auto-approve-hint"
-            onClick={() => setAutoApprove(!autoApprove)}
-          >
-            <span className="switch-knob" />
-          </button>
-        </div>
-      </section>
-
-      <section className="setting">
-        <h3>{t("settings.key")}</h3>
-        {replacing ? (
-          <KeyForm
-            onSaved={() => {
-              setReplacing(false);
-              setKeyMessage(t("settings.keySaved"));
-            }}
-          />
-        ) : (
-          <div className="setting-row">
-            <span className="setting-value">
-              <KeyIcon size={16} />
-              {t("settings.keyStored")}
-            </span>
-            <span className="setting-actions">
-              <button type="button" className="secondary-button" onClick={() => setReplacing(true)}>
-                {t("settings.replace")}
-              </button>
-              {/* Removing the key ends every chat until a new one is entered, so it asks once more. */}
-              <button
-                type="button"
-                className={`secondary-button is-danger${confirmRemove ? " is-confirming" : ""}`}
-                onClick={() => (confirmRemove ? void removeKey() : setConfirmRemove(true))}
-              >
-                {t(confirmRemove ? "settings.removeConfirm" : "settings.remove")}
-              </button>
-            </span>
-          </div>
-        )}
-        {keyMessage && (
-          <p className="setting-message" role="status">
-            {keyMessage}
-          </p>
-        )}
-      </section>
-
-      <section className="setting">
-        <h3>{t("settings.costs")}</h3>
-        <p className="setting-hint">{t("settings.costsHint")}</p>
-        {usage && Object.keys(usage.byModel ?? {}).length ? (
-          <dl className="cost-list">
-            {Object.entries(usage.byModel)
-              .sort(([, a], [, b]) => b - a)
-              .map(([model, usd]) => (
-                <div key={model} className="cost-row">
-                  <dt>{MODELS.find((entry) => entry.id === model)?.name ?? t("model.other")}</dt>
-                  <dd>{formatUsd(usd)}</dd>
-                </div>
+        {page === "general" && (
+          <Row id="language" title={t("settings.language")} hint={t("settings.languageHint")}>
+            <div className="segmented settings-segmented" role="group" aria-labelledby="language-label">
+              {LANGUAGES.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={option.id === language}
+                  className={option.id === language ? "is-active" : undefined}
+                  onClick={() => {
+                    setLanguage(option.id);
+                    setLanguageChoice(option.id);
+                  }}
+                >
+                  {option.id === "system" ? t("settings.languageSystem") : option.name}
+                </button>
               ))}
-            <div className="cost-row is-total">
-              <dt>{t("settings.costsTotal")}</dt>
-              <dd>{formatUsd(usage.usd)}</dd>
             </div>
-          </dl>
-        ) : (
-          <p className="setting-hint">{t("settings.noCosts")}</p>
+          </Row>
         )}
-        <button type="button" className="link-button cost-link" onClick={() => void openUrl(CONSOLE_USAGE_URL)}>
-          {t("settings.console")}
-        </button>
-      </section>
 
-      <section className="setting">
-        <h3>{t("settings.budget")}</h3>
-        <p className="setting-hint">{t("settings.budgetHint")}</p>
-        <div className="setting-row">
-          <label className="budget-field">
-            <span>$</span>
-            <input
-              className="field"
-              inputMode="decimal"
-              value={budget}
-              onChange={(event) => {
-                setBudget(event.target.value);
-                setBudgetMessage(null);
-              }}
-              aria-label={t("settings.budgetLabel")}
-            />
-          </label>
-          <span className="setting-actions">
-            <span className="setting-status" role="status">
-              {budgetMessage}
-            </span>
-            <button type="button" className="secondary-button" onClick={() => void saveBudget()}>
-              {t("settings.budgetSave")}
+        {page === "projects" && (
+          <Row id="auto-approve" title={t("settings.autoApprove")} hint={t("settings.autoApproveHint")}>
+            <button
+              type="button"
+              role="switch"
+              className="switch"
+              aria-checked={autoApprove}
+              aria-labelledby="auto-approve-label"
+              aria-describedby="auto-approve-hint"
+              onClick={() => setAutoApprove(!autoApprove)}
+            >
+              <span className="switch-knob" />
             </button>
-          </span>
-        </div>
-      </section>
+          </Row>
+        )}
 
-      <section className="setting">
-        <h3>{t("settings.shortcuts")}</h3>
-        <dl className="shortcut-list">
-          {SHORTCUTS.map((shortcut) => (
-            <div key={shortcut.keys} className="shortcut-row">
-              <dt>{t(shortcut.label)}</dt>
-              <dd>
-                <kbd>{shortcut.keys}</kbd>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+        {page === "key" && (
+          <>
+            <Row id="key" title={t("settings.keyStored")} hint={t("settings.keyHint")}>
+              {!replacing && (
+                <>
+                  <button type="button" className="secondary-button" onClick={() => setReplacing(true)}>
+                    {t("settings.replace")}
+                  </button>
+                  {/* Removing the key ends every chat until a new one is entered, so it asks once more. */}
+                  <button
+                    type="button"
+                    className={`secondary-button is-danger${confirmRemove ? " is-confirming" : ""}`}
+                    onClick={() => (confirmRemove ? void removeKey() : setConfirmRemove(true))}
+                  >
+                    {t(confirmRemove ? "settings.removeConfirm" : "settings.remove")}
+                  </button>
+                </>
+              )}
+            </Row>
+            {replacing && (
+              <div className="settings-block">
+                <KeyForm
+                  onSaved={() => {
+                    setReplacing(false);
+                    setKeyMessage(t("settings.keySaved"));
+                  }}
+                />
+              </div>
+            )}
+            {keyMessage && (
+              <p className="settings-message" role="status">
+                {keyMessage}
+              </p>
+            )}
+          </>
+        )}
+
+        {page === "costs" && (
+          <>
+            <Row id="budget" title={t("settings.budget")} hint={t("settings.budgetHint")}>
+              <label className="budget-field">
+                <span aria-hidden="true">$</span>
+                <input
+                  className="field"
+                  inputMode="decimal"
+                  value={budget}
+                  onChange={(event) => {
+                    setBudget(event.target.value);
+                    setBudgetMessage(null);
+                  }}
+                  onKeyDown={(event) => event.key === "Enter" && void saveBudget()}
+                  aria-label={t("settings.budgetLabel")}
+                />
+              </label>
+              <button type="button" className="secondary-button" onClick={() => void saveBudget()}>
+                {t("settings.budgetSave")}
+              </button>
+            </Row>
+            {budgetMessage && (
+              <p className="settings-message" role="status">
+                {budgetMessage}
+              </p>
+            )}
+            <Row id="costs" title={t("settings.costs")} hint={t("settings.costsHint")} />
+            {byModel.length ? (
+              <dl className="cost-list">
+                {byModel.map(([model, usd]) => (
+                  <div key={model} className="cost-row">
+                    <dt>{MODELS.find((entry) => entry.id === model)?.name ?? t("model.other")}</dt>
+                    <dd>{formatUsd(usd)}</dd>
+                  </div>
+                ))}
+                <div className="cost-row is-total">
+                  <dt>{t("settings.costsTotal")}</dt>
+                  <dd>{formatUsd(usage?.usd ?? 0)}</dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="settings-empty">{t("settings.noCosts")}</p>
+            )}
+            <button type="button" className="link-button cost-link" onClick={() => void openUrl(CONSOLE_USAGE_URL)}>
+              {t("settings.console")}
+            </button>
+          </>
+        )}
+
+        {page === "shortcuts" && (
+          <dl className="shortcut-list">
+            {SHORTCUTS.map((shortcut) => (
+              <div key={shortcut.keys} className="shortcut-row">
+                <dt>{t(shortcut.label)}</dt>
+                <dd>
+                  <kbd>{shortcut.keys}</kbd>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
     </dialog>
   );
 }

@@ -3067,72 +3067,150 @@ button.bubble-mention:hover {
   background: rgba(0, 0, 0, 0.22);
 }
 
-.dialog-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 14px 6px 20px;
+/* ───────── Settings ─────────
+   As in Claude Code: categories on the left, one page of calm rows on the
+   right, each with its text on the left and its control on the right. */
+
+.dialog.settings {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  width: min(760px, calc(100vw - 48px));
+  height: min(540px, calc(100vh - 48px));
+  overflow: hidden;
 }
 
-.dialog-head h2 {
-  margin: 0;
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 16px 10px;
+  background: var(--fill);
+  box-shadow: inset -0.5px 0 0 var(--separator);
+}
+
+.settings-nav-title {
+  margin: 0 0 8px;
+  padding: 4px 10px;
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: var(--label);
+  font-size: 13px;
+  text-align: left;
+  transition: background-color 120ms;
+}
+
+.settings-nav-item > svg {
+  flex-shrink: 0;
+  color: var(--label-2);
+}
+
+.settings-nav-item:hover {
+  background: var(--fill-hover);
+}
+
+.settings-nav-item.is-active {
+  background: var(--fill-active);
+  font-weight: 500;
+}
+
+.settings-nav-item.is-active > svg {
+  color: var(--label);
+}
+
+.settings-page {
+  position: relative;
+  overflow-y: auto;
+  padding: 26px 32px 32px;
+}
+
+.settings-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+.settings-page-title {
+  margin: 0 0 6px;
   font: 600 15px var(--font-display);
 }
 
-.setting {
-  padding: 12px 20px 16px;
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 16px 0;
   border-bottom: 0.5px solid var(--separator);
 }
 
-.setting:last-of-type {
+.settings-row:last-child {
   border-bottom: 0;
 }
 
-.setting h3 {
-  margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 600;
+.settings-row-text {
+  min-width: 0;
+  max-width: 400px;
 }
 
-.setting-hint {
-  margin: -4px 0 12px;
+.settings-row-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.settings-row-hint {
+  margin: 4px 0 0;
   color: var(--label-2);
   font-size: 12px;
   line-height: 1.5;
 }
 
-.setting-row {
+.settings-row-control {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.setting-value {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--label-2);
-}
-
-.setting-actions {
-  display: flex;
   gap: 8px;
 }
 
-.setting-segmented {
+.settings-segmented {
+  width: 240px;
+}
+
+.settings-block {
+  padding: 4px 0 16px;
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.settings-message {
+  margin: -6px 0 0;
+  padding-bottom: 12px;
+  color: var(--label-2);
+  font-size: 12px;
+}
+
+.settings-empty {
   margin: 0;
-  max-width: 300px;
+  color: var(--label-2);
+  font-size: 13px;
 }
 
 .cost-list {
-  margin: 0;
+  margin: -4px 0 0;
 }
 
 .cost-row {
   display: flex;
   justify-content: space-between;
-  padding: 5px 0;
+  padding: 6px 0;
   font-size: 13px;
 }
 
@@ -3147,7 +3225,7 @@ button.bubble-mention:hover {
 
 .cost-row.is-total {
   margin-top: 4px;
-  padding-top: 9px;
+  padding-top: 10px;
   border-top: 0.5px solid var(--separator);
   font-weight: 600;
 }
@@ -3157,7 +3235,7 @@ button.bubble-mention:hover {
 }
 
 .cost-link {
-  margin-top: 10px;
+  margin-top: 14px;
   font-size: 12px;
 }
 
@@ -3165,15 +3243,8 @@ button.bubble-mention:hover {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 140px;
+  width: 104px;
   color: var(--label-3);
-}
-
-.setting-message {
-  margin: 0;
-  padding: 0 20px 16px;
-  color: var(--label-2);
-  font-size: 12px;
 }
 
 /* ───────── Accessibility ───────── */
@@ -3222,12 +3293,6 @@ button.bubble-mention:hover {
   }
 }
 
-/* Settings: status next to its button, and the list of shortcuts. */
-.setting-status {
-  color: var(--label-2);
-  font-size: 12px;
-}
-
 .secondary-button.is-danger.is-confirming {
   background: var(--danger);
   color: var(--on-danger);
@@ -3236,16 +3301,20 @@ button.bubble-mention:hover {
 
 .shortcut-list {
   display: grid;
-  gap: 2px;
-  margin: 0;
+  margin: 6px 0 0;
 }
 
 .shortcut-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 0;
+  padding: 9px 0;
+  border-bottom: 0.5px solid var(--separator);
   font-size: 13px;
+}
+
+.shortcut-row:last-child {
+  border-bottom: 0;
 }
 
 .shortcut-row dd {
@@ -3285,17 +3354,6 @@ button.bubble-mention:hover {
 
 /* ───────── Approve automatically ───────── */
 
-.setting-switch-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.setting-switch-row .setting-hint {
-  margin-bottom: 0;
-}
-
 /* A macOS-style switch: the track fills with the accent when on. */
 .switch {
   position: relative;
@@ -3304,7 +3362,7 @@ button.bubble-mention:hover {
   height: 22px;
   margin-top: 1px;
   border-radius: 11px;
-  background: var(--fill-active);
+  background: color-mix(in srgb, var(--label) 20%, transparent);
   transition: background-color 160ms ease-out;
 }
 
