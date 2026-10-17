@@ -100,6 +100,8 @@ export interface ToolUse {
   children?: ToolUse[];
   /** For a helper: which one Claude started (general-purpose, Explore, …). Its report arrives as `output`. */
   agent?: string;
+  /** For a helper: where it stands, as the SDK reports it, with its step count and a line of progress. */
+  helper?: { state: "running" | "done" | "failed" | "stopped"; steps?: number | null; summary?: string | null };
 }
 
 /** Every step of an answer, helpers' steps included. */

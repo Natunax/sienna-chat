@@ -18,7 +18,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, isReadOnly, isRisky, projectGuard, projectPrompt } from "./project.mjs";
+import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, helperGuard, isReadOnly, isRisky, projectGuard, projectPrompt } from "./project.mjs";
 import { TEMPLATES } from "./templates.mjs";
 import { ARTIFACT_PROMPT, ARTIFACT_TOOL, ARTIFACT_VIEW_TOOL, artifactServer } from "./artifacts.mjs";
 
@@ -195,6 +195,14 @@ const STEER_WAIT_MS = 2500;
 // What an approval card and a stored change show at most, per side.
 const MAX_CHANGE_CHARS = 200_000;
 const MAX_OUTPUT_CHARS = 8000;
+// The SDK's task messages about helpers, and the states the window shows.
+const HELPER_STATES = {
+  task_started: "running",
+  task_progress: "running",
+  task_notification: "done",
+  task_updated: "running",
+};
+const HELPER_PATCH = { running: "running", pending: "running", completed: "done", failed: "failed", killed: "stopped", stopped: "stopped" };
 // A helper's report, as it came back to Claude; the start is what matters.
 const MAX_REPORT_CHARS = 8000;
 // Sienna's plan mode is its own: Claude Code runs in manual mode, the guard
@@ -419,7 +427,7 @@ class ChatSession {
               }),
               Stop: [{ hooks: [(_input, _id, options) => this.afterAnswer(options?.signal)] }],
             }
-          : undefined,
+          : helperGuard(),
         // Backups of changed files, so an answer's changes can be undone.
         enableFileCheckpointing: config.projectDir ? true : undefined,
         outputFormat: config.format ? { type: "json_schema", schema: TEMPLATES[config.format] } : undefined,
@@ -770,6 +778,18 @@ class ChatSession {
           if (replaced && replaced !== message.session_id) {
             deleteSession(replaced, { dir: this.config.projectDir ?? workDir }).catch(() => {});
           }
+        } else if (HELPER_STATES[message.subtype] && message.tool_use_id) {
+          // A helper's own lifecycle: started, progress, done; by the call that started it.
+          const state = message.subtype === "task_updated" ? HELPER_PATCH[message.patch?.status] : HELPER_STATES[message.subtype];
+          if (!state && message.subtype !== "task_progress") return;
+          emit({
+            type: "helper",
+            chatId: this.chatId,
+            id: message.tool_use_id,
+            state: message.subtype === "task_notification" ? (HELPER_PATCH[message.status] ?? "done") : (state ?? "running"),
+            steps: message.usage?.tool_uses ?? null,
+            summary: typeof message.summary === "string" ? maskSecrets(message.summary).slice(0, 300) : null,
+          });
         } else if (message.subtype === "status" && message.status === "compacting") {
           emit({ type: "compacting", chatId: this.chatId });
         } else if (message.subtype === "status" && message.compact_result === "failed") {

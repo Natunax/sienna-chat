@@ -311,11 +311,14 @@ export function helpersOf(chat: Chat): HelperEntry[] {
     if (message.role !== "assistant") continue;
     for (const tool of allTools(message.tools)) {
       if (!isHelper(tool)) continue;
+      // The SDK's own word on the helper counts; without it, the call's result and the answer decide.
       const ended = tool.output !== undefined || tool.failed || tool.denied;
+      const fallback = tool.failed || tool.denied ? "failed" : ended ? "done" : message.streaming ? "running" : "stopped";
+      const reported = tool.helper?.state;
       entries.push({
         tool,
-        state: tool.failed || tool.denied ? "failed" : ended ? "done" : message.streaming ? "running" : "stopped",
-        steps: allTools(tool.children).length,
+        state: reported ?? fallback,
+        steps: Math.max(allTools(tool.children).length, tool.helper?.steps ?? 0),
         model: compared ? modelName(chat, message) : null,
         projectDir: message.lane ? (message.laneDir ?? null) : (chat.projectDir ?? null),
       });
@@ -347,7 +350,7 @@ function HelperRow({ entry, first }: { entry: HelperEntry; first: boolean }) {
               tool.agent,
               entry.steps ? t(entry.steps === 1 ? "tool.helperSteps.one" : "tool.helperSteps.other", { n: entry.steps }) : null,
               entry.model,
-              entry.state === "running" ? t("helper.running") : null,
+              entry.state === "running" ? (tool.helper?.summary ?? t("helper.running")) : null,
             ]
               .filter(Boolean)
               .join(" · ")}

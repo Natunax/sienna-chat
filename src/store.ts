@@ -739,6 +739,25 @@ export function placeIn(message: Message): { textAt: number; step: number } {
 }
 
 /** A message with one of its tools changed. */
+/** A helper's state, wherever its call sits in the chat. */
+function withHelper(chat: Chat, event: { id: string; state: NonNullable<ToolUse["helper"]>["state"]; steps: number | null; summary: string | null }): Chat {
+  let changed = false;
+  const messages = chat.messages.map((message) => {
+    if (changed || message.role !== "assistant") return message;
+    const next = withTool(message, event.id, (tool) => ({
+      ...tool,
+      helper: {
+        state: event.state,
+        steps: event.steps ?? tool.helper?.steps ?? null,
+        summary: event.summary ?? tool.helper?.summary ?? null,
+      },
+    }));
+    if (next !== message) changed = true;
+    return next;
+  });
+  return changed ? { ...chat, messages } : chat;
+}
+
 /** A step's output once it ended; a helper counts as done even with an empty report. */
 function resultOutput(tool: ToolUse, output: string): string | undefined {
   return output || tool.output || (isHelper(tool) ? "" : undefined);
@@ -976,6 +995,14 @@ type EngineEvent =
       structured?: unknown;
       error: string | null;
     }
+  | {
+      type: "helper";
+      chatId: string;
+      id: string;
+      state: "running" | "done" | "failed" | "stopped";
+      steps: number | null;
+      summary: string | null;
+    }
   | { type: "steered"; chatId: string; id: string }
   | { type: "steerTurn"; chatId: string; id: string }
   | { type: "steerReturned"; chatId: string; id: string }
@@ -1051,6 +1078,10 @@ function onLaneEvent(lane: { chatId: string; messageId: string }, laneId: string
   switch (event.type) {
     case "artifact":
       change((message) => ({ ...message, artifacts: [...(message.artifacts ?? []), { ...event.artifact, ...placeIn(message) }] }));
+      return;
+    case "helper":
+      updateChat(lane.chatId, (chat) => withHelper(chat, event));
+      persist(lane.chatId);
       return;
     case "session":
       change((message) => ({ ...message, laneSession: event.sessionId }));
@@ -1238,6 +1269,11 @@ function onEngineEvent(event: EngineEvent) {
         if (chat) requestTitle(chat);
       }
       drainQueue(event.chatId);
+      return;
+    case "helper":
+      // It may report after its answer ended, so it is looked for in every message.
+      updateChat(event.chatId, (chat) => withHelper(chat, event));
+      persist(event.chatId);
       return;
     case "steered":
       updateChat(event.chatId, (chat) =>

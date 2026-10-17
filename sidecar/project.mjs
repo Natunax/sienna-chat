@@ -329,6 +329,38 @@ function leavesFolder(pattern) {
 }
 
 /**
+ * Helpers (subagents) run in the foreground and in the project folder. The
+ * SDK starts them in the background unless told otherwise; one there would go
+ * on after the answer, unseen, and a worktree would change the repository
+ * unasked. So the call is rewritten to the foreground, and isolation refused.
+ */
+function helperDecision(params = {}) {
+  if (params.isolation) {
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: "Helpers work in the project folder itself: no isolation.",
+      },
+    };
+  }
+  return {
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "allow",
+      updatedInput: { ...params, run_in_background: false },
+    },
+  };
+}
+
+/** For chats without a project folder: only the helpers' rule. */
+export function helperGuard() {
+  const check = async (input) =>
+    input.tool_name === "Agent" || input.tool_name === "Task" ? helperDecision(input.tool_input) : {};
+  return { PreToolUse: [{ hooks: [check] }] };
+}
+
+/**
  * Hook options that allow the read tools (plus web search when it is on) on
  * paths inside `projectDir` and deny everything outside it. Changes and
  * commands are allowed, asked about or left to Claude Code's auto mode
@@ -351,16 +383,8 @@ export function projectGuard(projectDir, webTools, { mode = () => "default", onE
     const tool = input.tool_name;
     const current = mode();
     if (webTools.includes(tool) || tool.startsWith(ARTIFACT_TOOLS)) return decide("allow");
-    // Helpers (subagents) run in the foreground and in this folder: one in
-    // the background would go on after the answer, a worktree would change
-    // the repository unasked. Each of their calls comes through here again.
-    if (tool === "Agent" || tool === "Task") {
-      const params = input.tool_input ?? {};
-      if (params.isolation || params.run_in_background) {
-        return deny("Helpers run in the foreground and in the project folder: no background and no isolation.");
-      }
-      return decide("allow");
-    }
+    // Helpers (subagents): each of their calls comes through here again.
+    if (tool === "Agent" || tool === "Task") return helperDecision(input.tool_input);
     // Commands run in the project folder.
     if (RUN_TOOLS.includes(tool)) {
       // Looking around never needs an answer, also in Plan mode.
