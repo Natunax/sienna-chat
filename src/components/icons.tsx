@@ -240,3 +240,11 @@ export const CoinsIcon = (p: IconProps) => (
     <path d="M7.5 12.4v1.6c0 1.1 2 2 4.5 2s4.5-.9 4.5-2v-3c0-1-1.6-1.8-3.8-2" />
   </Icon>
 );
+
+export const ImageIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="3.5" width="14" height="13" rx="2" />
+    <circle cx="7.5" cy="8" r="1.25" />
+    <path d="m3.5 14.5 4-4 3 3 2-2 4 4" />
+  </Icon>
+);

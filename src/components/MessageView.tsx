@@ -22,6 +22,7 @@ import {
   CopyIcon,
   DocumentIcon,
   GlobeIcon,
+  ImageIcon,
   PencilIcon,
   RetryIcon,
   SearchIcon,
@@ -207,6 +208,25 @@ function Tools({
         ),
       )}
     </div>
+  );
+}
+
+/**
+ * A file sent with a question: an image or a document icon, and the name cut
+ * in its middle so the extension stays readable.
+ */
+function FileChip({ name, mediaType }: { name: string; mediaType: string }) {
+  const dot = name.lastIndexOf(".");
+  // The last few characters before the extension stay too: "…14.24.37.png".
+  const tail = dot > 0 ? Math.max(0, dot - 6) : name.length;
+  return (
+    <span className="file-chip" title={name}>
+      {mediaType.startsWith("image/") ? <ImageIcon size={14} /> : <DocumentIcon size={14} />}
+      <span className="file-chip-name">
+        <span className="file-chip-start">{name.slice(0, tail)}</span>
+        <span className="file-chip-end">{name.slice(tail)}</span>
+      </span>
+    </span>
   );
 }
 
@@ -450,10 +470,7 @@ function MessageViewImpl({
         {message.attachments?.length ? (
           <div className="msg-files">
             {message.attachments.map((file, index) => (
-              <span key={index} className="file-chip">
-                <DocumentIcon size={14} />
-                {file.name}
-              </span>
+              <FileChip key={index} name={file.name} mediaType={file.mediaType} />
             ))}
           </div>
         ) : null}

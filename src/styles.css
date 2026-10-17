@@ -834,16 +834,35 @@ input[type="checkbox"] {
 .file-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  max-width: 260px;
-  padding: 4px 9px;
+  gap: 6px;
+  max-width: min(320px, 100%);
+  min-width: 0;
+  padding: 5px 10px 5px 8px;
   border-radius: 8px;
   background: var(--fill);
   color: var(--label-2);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.file-chip > svg {
+  flex-shrink: 0;
+  color: var(--label-3);
+}
+
+/* The start of a long name gives way; the extension stays. */
+.file-chip-name {
+  display: flex;
+  min-width: 0;
+}
+
+.file-chip-start {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.file-chip-end {
+  flex-shrink: 0;
 }
 
 .msg-assistant {
