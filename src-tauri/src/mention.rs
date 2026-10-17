@@ -28,7 +28,7 @@ pub struct Entry {
 /// Folders of installed packages and build output: thousands of files nobody
 /// mentions, which would crowd out the project's own under the limit. Typing
 /// such a path by hand still works.
-const BULKY: [&str; 10] = [
+pub(crate) const BULKY: [&str; 10] = [
     "node_modules",
     "target",
     "dist",

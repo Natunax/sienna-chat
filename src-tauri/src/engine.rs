@@ -100,6 +100,10 @@ fn spawn(app: &AppHandle, store: Arc<Store>, generation: u64) -> Result<Running,
         .env("CHAT_DATA_DIR", store.root())
         .env("SIENNA_CLAUDE_BIN", binary.unwrap_or_default())
         .env("SIENNA_SNAPSHOT_BIN", snapshot_helper().unwrap_or_default())
+        .env(
+            "SIENNA_COPIES_DIR",
+            crate::workcopy::root().unwrap_or(Path::new("")),
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

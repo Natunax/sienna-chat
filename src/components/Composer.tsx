@@ -323,16 +323,18 @@ export function Composer(props: Props) {
   const mentionIndex = Math.min(mentionActive, Math.max(ranked.length - 1, 0));
   const hasMention = Boolean(project) && text.includes("@");
 
+  // The list loads when a mention starts, and again only after a minute:
+  // a large project's list is not walked again on every typed letter.
   useEffect(() => {
     if (!project || !hasMention) return;
-    const fresh = loaded.current?.project === project && Date.now() - loaded.current.at < 15_000;
+    const fresh = loaded.current?.project === project && Date.now() - loaded.current.at < 60_000;
     if (fresh) return;
     loaded.current = { project, at: Date.now() };
     api
       .projectFiles(project)
       .then((list) => loaded.current?.project === project && setEntries(list))
       .catch(() => setEntries([]));
-  }, [project, hasMention, mention?.query]);
+  }, [project, hasMention, mention === null]);
 
   useEffect(() => {
     setEntries(null);
@@ -652,6 +654,7 @@ export function Composer(props: Props) {
               blocked: template.blocked,
               run: () => runTemplate(template),
             }))}
+            onDone={() => area.current?.focus()}
           />
           <input
             ref={picker}

@@ -211,6 +211,13 @@ test("reading commands run without asking, but only inside the folder", async ()
   for (const mode of ["default", "plan", "readonly"]) {
     assert.equal(decision(await guard(mode)({ tool_name: "Bash", tool_input: { command: "git log | head" } })), "allow", mode);
   }
+  // A repository whose settings run programs on status or diff asks first.
+  for (const setting of ["[core]\n\tfsmonitor = ./x.sh", "[diff \"lfs\"]\n\ttextconv = ./x.sh", "[include]\n\tpath = ../other"]) {
+    writeFileSync(join(root, ".git", "config"), setting);
+    assert.equal(isReadOnly("git status", root), false, setting);
+  }
+  writeFileSync(join(root, ".git", "config"), "[core]\n\tbare = false");
+  assert.equal(isReadOnly("git status", root), true);
   rmSync(join(root, ".git"), { recursive: true });
   // A folder inside a larger repository: git would show the rest of it.
   assert.equal(isReadOnly("git log", join(root, "src")), false);
@@ -234,4 +241,11 @@ test("Ultracode's helpers: only Sienna's two, in the foreground, and they only l
       assert.equal(decision(await guard(mode)(input)), expected, `${mode}: ${JSON.stringify(input)}`);
     }
   }
+});
+
+test("destructive commands inside loops, conditions, eval and wrapper options still ask", () => {
+  for (const command of ["for f in a; do rm -rf $f; done", "if true; then rm -rf x; fi", "! rm -rf x", "eval rm -rf x", "nice -n 5 rm -rf x", "env -u X rm -rf x", "while true; do git push; done", "xargs -n 1 rm -rf"]) {
+    assert.equal(isRisky(command), true, command);
+  }
+  for (const command of ["for f in a; do echo $f; done", "nice -n 5 make"]) assert.equal(isRisky(command), false, command);
 });

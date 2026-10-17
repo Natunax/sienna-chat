@@ -15,10 +15,12 @@ interface Props {
   onCheck?: () => void;
   /** All templates; one that cannot run here says why and stays disabled. */
   templates: { id: string; name: string; blocked: string | null; run: () => void }[];
+  /** After a choice, typing goes on in the input field. */
+  onDone: () => void;
 }
 
 /** The composer's + button: files, project folder, web search, comparing, checks and templates. */
-export function PlusMenu({ web, onWeb, onAttach, onProject, comparing, onCompare, onCheck, templates }: Props) {
+export function PlusMenu({ web, onWeb, onAttach, onProject, comparing, onCompare, onCheck, templates, onDone }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -40,7 +42,9 @@ export function PlusMenu({ web, onWeb, onAttach, onProject, comparing, onCompare
     };
   }, [open]);
 
+  // Focus moves on before the menu closes, so it does not fall back to the + button.
   const run = (action: () => void) => () => {
+    onDone();
     setOpen(false);
     action();
   };
@@ -113,7 +117,7 @@ export function PlusMenu({ web, onWeb, onAttach, onProject, comparing, onCompare
             >
               <ListIcon size={15} />
               <span className="plus-text">
-                {template.name}
+                <span className="plus-name">{template.name}</span>
                 {template.blocked && <span className="plus-reason">{template.blocked}</span>}
               </span>
             </button>

@@ -179,6 +179,7 @@ export function App() {
           min={200}
           // The chat keeps room for its column.
           max={() => Math.min(440, window.innerWidth - 520)}
+          preview={(width) => document.querySelector<HTMLElement>(".app")?.style.setProperty("--sidebar-w", `${width}px`)}
           onWidth={setSidebarWidth}
           onReset={() => setSidebarWidth(null)}
         />

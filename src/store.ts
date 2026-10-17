@@ -162,7 +162,33 @@ export function setOpenChat(id: string | null) {
   if (!id) return;
   unread.delete(id);
   const chat = chats.get(id);
-  if (chat) refreshStatus(chat);
+  if (chat) {
+    refreshStatus(chat);
+    // Most recently opened last, for forgetting the oldest below.
+    chats.delete(id);
+    chats.set(id, chat);
+  }
+  forgetIdleChats();
+}
+
+// Opened chats stay in memory for quick switching, but not all of them: the
+// oldest idle ones are dropped and load again from disk when opened.
+const KEEP_CHATS = 12;
+
+function forgetIdleChats() {
+  if (chats.size <= KEEP_CHATS) return;
+  const busy = new Set([...lanes.values()].map((lane) => lane.chatId));
+  for (const [id, chat] of chats) {
+    if (chats.size <= KEEP_CHATS) break;
+    const idle =
+      id !== openChatId &&
+      !busy.has(id) &&
+      !saves.has(id) &&
+      !chatListeners.get(id)?.size &&
+      !chat.compacting &&
+      !chat.messages.some((message) => message.streaming || message.permissions?.length);
+    if (idle) chats.delete(id);
+  }
 }
 
 export function useChatStatuses(): Map<string, ChatStatus> {
@@ -252,18 +278,63 @@ export function updateChat(id: string, change: (chat: Chat) => Chat) {
   if (chat) putChat(change(chat));
 }
 
+// An answer changes its chat several times in a row (session, done, context,
+// title); they are saved together, one save per chat at a time, so a large
+// chat crosses to Rust once instead of each time.
+const SAVE_DELAY_MS = 300;
+const saves = new Map<string, { timer: number | null; running: boolean; again: boolean }>();
+
 function persist(id: string) {
+  const save = saves.get(id) ?? { timer: null, running: false, again: false };
+  saves.set(id, save);
+  if (save.timer !== null) clearTimeout(save.timer);
+  save.timer = window.setTimeout(() => {
+    save.timer = null;
+    void saveNow(id);
+  }, SAVE_DELAY_MS);
+}
+
+async function saveNow(id: string) {
+  const save = saves.get(id);
+  if (!save) return;
+  if (save.running) {
+    save.again = true;
+    return;
+  }
   const chat = chats.get(id);
-  if (!chat || !chat.messages.length || deleting.has(id)) return;
+  if (!chat || !chat.messages.length || deleting.has(id)) return void saves.delete(id);
   // Open approvals belong to the running engine, not to the saved chat.
   const messages = chat.messages.map((message) => (message.permissions ? { ...message, permissions: undefined } : message));
-  void api.chatSave({ ...chat, messages }).catch(() => {});
+  save.running = true;
+  await api.chatSave({ ...chat, messages }).catch(() => {});
+  save.running = false;
+  if (save.again) {
+    save.again = false;
+    await saveNow(id);
+  } else if (save.timer === null) saves.delete(id);
 }
+
+/** Writes every save still waiting; before Rust asks which chats use a session. */
+function flushSaves(): Promise<unknown> {
+  const pending: Promise<void>[] = [];
+  for (const [id, save] of saves) {
+    if (save.timer === null) continue;
+    clearTimeout(save.timer);
+    save.timer = null;
+    pending.push(saveNow(id));
+  }
+  return Promise.all(pending);
+}
+
+// Leaving the window writes what is still waiting.
+window.addEventListener("pagehide", () => void flushSaves());
 
 /** Chats being deleted; a save still on its way must not bring one back. */
 const deleting = new Set<string>();
 
 export async function deleteChat(id: string) {
+  // Its branches must be on disk, or their sessions would look unused.
+  await flushSaves();
   deleting.add(id);
   chats.delete(id);
   await api.chatDelete(id).finally(() => deleting.delete(id));
@@ -350,6 +421,8 @@ async function dispatch(
   format?: TemplateId,
 ) {
   const id = chat.id;
+  // A rewind lets Rust check which chats still use the session; they must be on disk.
+  if (rewindTo !== undefined) await flushSaves();
   const user: Message = {
     id: crypto.randomUUID(),
     role: "user",

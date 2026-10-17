@@ -81,6 +81,29 @@ interface ChangeGroup {
   done?: "applied" | "discarded";
 }
 
+// A stored change never changes, so its line counts are worked out once; the
+// panel recomputes its groups on every streamed delta.
+const statsOf = new WeakMap<object, { added: number; removed: number }>();
+function changeStats(change: { before: string; after: string }) {
+  let stats = statsOf.get(change);
+  if (!stats) {
+    stats = diffStats(diffLines(change.before, change.after));
+    statsOf.set(change, stats);
+  }
+  return stats;
+}
+
+/** How many files the chat changed, without diffing them; for the tab's count. */
+function changedFiles(chat: Chat): number {
+  const files = new Set<string>();
+  for (const message of chat.messages) {
+    for (const tool of message.tools ?? []) {
+      if (tool.change && !tool.denied && !tool.failed && tool.detail) files.add(`${message.lane ? message.id : "own"}:${tool.detail}`);
+    }
+  }
+  return files.size;
+}
+
 export function changeGroups(chat: Chat): ChangeGroup[] {
   const groups = new Map<string, ChangeGroup>();
   for (const message of chat.messages) {
@@ -106,7 +129,7 @@ export function changeGroups(chat: Chat): ChangeGroup[] {
       file.created ||= Boolean(tool.change.created);
       file.reverted &&= reverted;
       if (!reverted) {
-        const stats = diffStats(diffLines(tool.change.before, tool.change.after));
+        const stats = changeStats(tool.change);
         file.added += stats.added;
         file.removed += stats.removed;
       }
@@ -315,7 +338,7 @@ interface Props {
 export function SidePanel({ chat, tab, onTab, onClose, artifact, onOpenArtifact, onImplement, covered }: Props) {
   const counts: Partial<Record<SideTab, number>> = {
     artifacts: useMemo(() => artifactEntries(chat).length, [chat.messages]),
-    changes: useMemo(() => changeGroups(chat).reduce((sum, group) => sum + group.files.length, 0), [chat.messages]),
+    changes: useMemo(() => changedFiles(chat), [chat.messages]),
   };
   const browsing = useBrowserOpen();
   const wide = (tab === "artifacts" && Boolean(artifact)) || (tab === "browser" && browsing);
@@ -339,56 +362,62 @@ export function SidePanel({ chat, tab, onTab, onClose, artifact, onOpenArtifact,
   };
 
   return (
-    <aside
-      ref={panel}
-      className={`side-panel${wide ? " is-wide" : ""}`}
-      style={width ? { flexBasis: width } : undefined}
-      aria-label={t("side.label")}
-    >
-      <ResizeHandle
-        edge="left"
-        label={t("resize.side")}
-        measure={() => panel.current?.getBoundingClientRect().width ?? 380}
-        min={wide ? 340 : 260}
-        // The chat keeps room for its column.
-        max={() => (panel.current?.parentElement?.clientWidth ?? 1200) - 380}
-        onWidth={setWidth}
-        onReset={() => setWidth(null)}
-      />
-      <header className="side-head" data-tauri-drag-region>
-        <div className="side-tabs" role="tablist" aria-label={t("side.label")} ref={tabs} onKeyDown={onTabKey}>
-          {TABS.map((entry) => {
-            const active = tab === entry.id;
-            const count = counts[entry.id];
-            return (
-              <button
-                key={entry.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                tabIndex={active ? 0 : -1}
-                className={`side-tab${active ? " is-active" : ""}${entry.project && !chat.projectDir ? " is-idle" : ""}`}
-                onClick={() => onTab(entry.id)}
-                aria-label={t(entry.label)}
-                title={t(entry.label)}
-              >
-                {entry.icon}
-                {active && <span className="side-tab-label">{t(entry.label)}</span>}
-                {count ? <span className="side-tab-count">{count}</span> : null}
-              </button>
-            );
-          })}
+    <>
+      {/* On a narrow window the panel covers the chat; the dimmed rest closes it. */}
+      <div className="side-scrim" onClick={onClose} aria-hidden="true" />
+      <aside
+        ref={panel}
+        className={`side-panel${wide ? " is-wide" : ""}`}
+        // Always set, so a width previewed while dragging never outlives a switch.
+        style={{ flexBasis: width ?? "" }}
+        aria-label={t("side.label")}
+      >
+        <ResizeHandle
+          edge="left"
+          label={t("resize.side")}
+          measure={() => panel.current?.getBoundingClientRect().width ?? 380}
+          min={wide ? 340 : 260}
+          // The chat keeps room for its column.
+          max={() => (panel.current?.parentElement?.clientWidth ?? 1200) - 380}
+          preview={(next) => panel.current?.style.setProperty("flex-basis", `${next}px`)}
+          onWidth={setWidth}
+          onReset={() => setWidth(null)}
+        />
+        <header className="side-head" data-tauri-drag-region>
+          <div className="side-tabs" role="tablist" aria-label={t("side.label")} ref={tabs} onKeyDown={onTabKey}>
+            {TABS.map((entry) => {
+              const active = tab === entry.id;
+              const count = counts[entry.id];
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  tabIndex={active ? 0 : -1}
+                  className={`side-tab${active ? " is-active" : ""}${entry.project && !chat.projectDir ? " is-idle" : ""}`}
+                  onClick={() => onTab(entry.id)}
+                  aria-label={t(entry.label)}
+                  title={t(entry.label)}
+                >
+                  {entry.icon}
+                  {active && <span className="side-tab-label">{t(entry.label)}</span>}
+                  {count ? <span className="side-tab-count">{count}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+          <button type="button" className="icon-button side-close" onClick={onClose} aria-label={t("side.close")} title={t("side.close")}>
+            <CloseIcon size={16} />
+          </button>
+        </header>
+        <div className="side-body" role="tabpanel">
+          {tab === "artifacts" && (artifact ?? <Artifacts chat={chat} onOpen={onOpenArtifact} />)}
+          {tab === "changes" && <Changes chat={chat} />}
+          {tab === "plan" && <Plan chat={chat} onImplement={onImplement} />}
+          {tab === "browser" && <BrowserView covered={covered} />}
         </div>
-        <button type="button" className="icon-button side-close" onClick={onClose} aria-label={t("side.close")} title={t("side.close")}>
-          <CloseIcon size={16} />
-        </button>
-      </header>
-      <div className="side-body" role="tabpanel">
-        {tab === "artifacts" && (artifact ?? <Artifacts chat={chat} onOpen={onOpenArtifact} />)}
-        {tab === "changes" && <Changes chat={chat} />}
-        {tab === "plan" && <Plan chat={chat} onImplement={onImplement} />}
-        {tab === "browser" && <BrowserView covered={covered} />}
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }

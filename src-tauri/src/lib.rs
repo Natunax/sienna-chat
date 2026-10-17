@@ -164,7 +164,13 @@ fn chat_delete(id: String, state: State<AppState>) -> Result<(), String> {
     state
         .engine
         .notify(&json!({ "type": "close", "chatId": id }).to_string());
-    state.store.delete(&id)
+    // Answers of a second model worked in copies of the project; they go too.
+    for dir in state.store.delete(&id)? {
+        if workcopy::is_work(std::path::Path::new(&dir)) {
+            let _ = workcopy::discard(&dir);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]

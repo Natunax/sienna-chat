@@ -7,6 +7,9 @@
 use ignore::WalkBuilder;
 use serde::Serialize;
 use std::collections::BTreeMap;
+use std::fs::{File, Metadata, OpenOptions};
+use std::io::Read;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -41,6 +44,11 @@ pub fn init(caches: PathBuf) {
     let _ = ROOT.set(root);
 }
 
+/// The folder all copies live in, once `init` ran.
+pub fn root() -> Option<&'static Path> {
+    ROOT.get().map(PathBuf::as_path)
+}
+
 /// Whether `path` (canonical) is the `work` folder of a copy.
 pub fn is_work(path: &Path) -> bool {
     let Some(root) = ROOT.get() else { return false };
@@ -54,12 +62,21 @@ pub fn is_work(path: &Path) -> bool {
 }
 
 /// A clone of `from` at `to`; APFS shares the data until a file changes.
-fn clone(from: &Path, to: &Path) -> Result<(), String> {
+/// Top-level entries named in `skip` are left out.
+fn clone(from: &Path, to: &Path, skip: &[String]) -> Result<(), String> {
     let failed = || "error.copyFailed".to_string();
-    let source = format!("{}/.", from.display());
+    let entries: Vec<PathBuf> = std::fs::read_dir(from)
+        .map_err(|_| failed())?
+        .filter_map(Result::ok)
+        .filter(|entry| !skip.contains(&entry.file_name().to_string_lossy().into_owned()))
+        .map(|entry| entry.path())
+        .collect();
+    if entries.is_empty() {
+        return Ok(());
+    }
     let cloned = Command::new("/bin/cp")
         .args(["-c", "-R", "-p"])
-        .arg(&source)
+        .args(&entries)
         .arg(to)
         .status()
         .map_err(|_| failed())?;
@@ -71,11 +88,31 @@ fn clone(from: &Path, to: &Path) -> Result<(), String> {
     std::fs::create_dir_all(to).map_err(|_| failed())?;
     let copied = Command::new("/bin/cp")
         .args(["-R", "-p"])
-        .arg(&source)
+        .args(&entries)
         .arg(to)
         .status()
         .map_err(|_| failed())?;
     copied.success().then_some(()).ok_or_else(failed)
+}
+
+/// Dependency and build folders the walker ignores (Git ignores them), so the
+/// `base` clone need not carry them: `changes` never looks inside.
+fn ignored_bulk(project: &Path) -> Vec<String> {
+    let seen: Vec<String> = WalkBuilder::new(project)
+        .hidden(true)
+        .follow_links(false)
+        .require_git(false)
+        .max_depth(Some(1))
+        .build()
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    crate::mention::BULKY
+        .iter()
+        .filter(|name| !seen.iter().any(|seen| seen == **name))
+        .filter(|name| project.join(name).is_dir())
+        .map(|name| name.to_string())
+        .collect()
 }
 
 /// Makes a copy of the (validated) project; returns its `work` folder.
@@ -92,8 +129,8 @@ pub fn create(project: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(&work).map_err(|_| "error.copyFailed")?;
     // Both clones at once: a large project takes seconds each.
     let made = std::thread::scope(|scope| {
-        let first = scope.spawn(|| clone(project, &base));
-        let second = clone(project, &work);
+        let first = scope.spawn(|| clone(project, &base, &ignored_bulk(project)));
+        let second = clone(project, &work, &[]);
         first
             .join()
             .unwrap_or(Err("error.copyFailed".into()))
@@ -136,12 +173,65 @@ fn files(root: &Path) -> BTreeMap<String, PathBuf> {
         .collect()
 }
 
-fn same(a: &Path, b: &Path) -> bool {
-    match (std::fs::metadata(a), std::fs::metadata(b)) {
-        (Ok(x), Ok(y)) if x.len() != y.len() => false,
-        (Ok(_), Ok(_)) => std::fs::read(a).ok() == std::fs::read(b).ok(),
-        _ => false,
+/// Opens a regular file without following a link at the last component.
+fn open_plain(path: &Path) -> std::io::Result<(File, Metadata)> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    let meta = file.metadata()?;
+    if !meta.is_file() {
+        return Err(std::io::ErrorKind::InvalidInput.into());
     }
+    Ok((file, meta))
+}
+
+/// Whether two files have the same content. Clones made with `cp -p` keep
+/// their modification time, so equal size and time means unchanged without
+/// reading anything.
+fn same(a: &Path, b: &Path) -> bool {
+    let (Ok((mut x, xm)), Ok((mut y, ym))) = (open_plain(a), open_plain(b)) else {
+        return false;
+    };
+    if xm.len() != ym.len() {
+        return false;
+    }
+    if xm
+        .modified()
+        .ok()
+        .is_some_and(|time| Some(time) == ym.modified().ok())
+    {
+        return true;
+    }
+    let (mut left, mut right) = (vec![0u8; 64 * 1024], vec![0u8; 64 * 1024]);
+    loop {
+        let Ok(n) = read_full(&mut x, &mut left) else {
+            return false;
+        };
+        let Ok(m) = read_full(&mut y, &mut right) else {
+            return false;
+        };
+        if n != m || left[..n] != right[..m] {
+            return false;
+        }
+        if n == 0 {
+            return true;
+        }
+    }
+}
+
+/// Fills `buf` unless the file ends first; returns the bytes read.
+fn read_full(file: &mut File, buf: &mut [u8]) -> std::io::Result<usize> {
+    let mut filled = 0;
+    while filled < buf.len() {
+        match file.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(filled)
 }
 
 /// The copy's folders from its `work` path, after checking it is one.
@@ -218,6 +308,35 @@ fn target(project: &Path, rel: &str) -> Option<PathBuf> {
     (real.starts_with(project) && !link).then_some(full)
 }
 
+/// Copies `from` over `to` inside `project`. Neither end may be a link, which
+/// is checked again here: a link swapped in after `target` looked must not
+/// lead the write out of the project.
+fn copy_file(from: &Path, to: &Path, project: &Path) -> std::io::Result<()> {
+    let denied = || std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+    let (mut source, meta) = open_plain(from)?;
+    let folder = to.parent().ok_or_else(denied)?;
+    std::fs::create_dir_all(folder)?;
+    let mut walk = Some(folder);
+    while let Some(dir) = walk.filter(|dir| *dir != project) {
+        if !dir.starts_with(project) || std::fs::symlink_metadata(dir)?.file_type().is_symlink() {
+            return Err(denied());
+        }
+        walk = dir.parent();
+    }
+    if std::fs::symlink_metadata(to).is_ok_and(|meta| !meta.is_file()) {
+        return Err(denied());
+    }
+    let mut dest = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(meta.permissions().mode() & 0o7777)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(to)?;
+    std::io::copy(&mut source, &mut dest)?;
+    dest.set_permissions(meta.permissions())
+}
+
 /// Takes the copy's changes over into the project, file by file. A file the
 /// project changed too since the copy was made is left as it is, unless
 /// `force` names it: the user chose to replace it after seeing the conflict.
@@ -251,9 +370,7 @@ pub fn apply(work: &str, project: &Path, force: &[String]) -> Result<Applied, St
         let done = match change.kind {
             Kind::Deleted => std::fs::remove_file(&dest).is_ok(),
             Kind::Added | Kind::Modified => {
-                dest.parent()
-                    .is_some_and(|folder| std::fs::create_dir_all(folder).is_ok())
-                    && std::fs::copy(work.join(&change.path), &dest).is_ok()
+                copy_file(&work.join(&change.path), &dest, project).is_ok()
             }
         };
         if done {
@@ -325,5 +442,68 @@ mod tests {
 
         discard(work).unwrap();
         fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn same_compares_content_when_times_differ_and_refuses_links() {
+        let dir = std::env::temp_dir().join(format!("sienna-same-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let big = vec![7u8; 200_000];
+        let mut other = big.clone();
+        other[150_000] = 8;
+        fs::write(dir.join("a"), &big).unwrap();
+        fs::write(dir.join("b"), &big).unwrap();
+        fs::write(dir.join("c"), &other).unwrap();
+        assert!(same(&dir.join("a"), &dir.join("b")));
+        assert!(!same(&dir.join("a"), &dir.join("c")));
+        std::os::unix::fs::symlink(dir.join("a"), dir.join("link")).unwrap();
+        assert!(!same(&dir.join("link"), &dir.join("a")));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn copy_file_keeps_mode_and_stays_inside_the_project() {
+        let dir = std::env::temp_dir().join(format!("sienna-cf-{}", std::process::id()));
+        let project = dir.join("project");
+        let outside = dir.join("outside");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let project = project.canonicalize().unwrap();
+        fs::write(dir.join("src.sh"), "run").unwrap();
+        fs::set_permissions(dir.join("src.sh"), fs::Permissions::from_mode(0o755)).unwrap();
+        copy_file(&dir.join("src.sh"), &project.join("new/x.sh"), &project).unwrap();
+        let mode = fs::metadata(project.join("new/x.sh"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o755);
+        // A folder swapped for a link, and a file swapped for one.
+        std::os::unix::fs::symlink(&outside, project.join("swapped")).unwrap();
+        assert!(copy_file(&dir.join("src.sh"), &project.join("swapped/y"), &project).is_err());
+        assert!(!outside.join("y").exists());
+        std::os::unix::fs::symlink(outside.join("z"), project.join("z")).unwrap();
+        assert!(copy_file(&dir.join("src.sh"), &project.join("z"), &project).is_err());
+        assert!(!outside.join("z").exists());
+        // A link as the source is refused.
+        std::os::unix::fs::symlink(dir.join("src.sh"), dir.join("srclink")).unwrap();
+        assert!(copy_file(&dir.join("srclink"), &project.join("w"), &project).is_err());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn base_skips_only_ignored_bulky_folders() {
+        let dir = std::env::temp_dir().join(format!("sienna-bulk-{}", std::process::id()));
+        let project = dir.join("p");
+        fs::create_dir_all(project.join("node_modules/x")).unwrap();
+        fs::create_dir_all(project.join("vendor")).unwrap();
+        fs::write(project.join(".gitignore"), "node_modules\n").unwrap();
+        fs::write(project.join("vendor/v.txt"), "v").unwrap();
+        let skip = ignored_bulk(&project);
+        assert_eq!(skip, ["node_modules"]);
+        let to = dir.join("to");
+        fs::create_dir_all(&to).unwrap();
+        clone(&project, &to, &skip).unwrap();
+        assert!(to.join("vendor/v.txt").exists() && !to.join("node_modules").exists());
+        fs::remove_dir_all(dir).unwrap();
     }
 }

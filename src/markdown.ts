@@ -38,14 +38,42 @@ export interface Block {
   html: string;
 }
 
+// While an answer streams, its text only grows: the finished blocks of the
+// last lexing stay, and only the text from the last block on is lexed again.
+// A few recent texts are kept, for compared answers streaming side by side.
+type Lexed = { text: string; tokens: Token[]; links: TokensList["links"] };
+const recent: Lexed[] = [];
+
+function lexGrowing(text: string): Lexed {
+  const before = recent.find((entry) => text.startsWith(entry.text));
+  let lexed: Lexed;
+  if (before) {
+    const last = before.tokens.findLastIndex((token) => token.type !== "space");
+    const kept = last > 0 ? before.tokens.slice(0, last) : [];
+    const offset = kept.reduce((sum, token) => sum + token.raw.length, 0);
+    const rest = marked.lexer(text.slice(offset));
+    lexed = { text, tokens: [...kept, ...rest], links: { ...before.links, ...rest.links } };
+    recent.splice(recent.indexOf(before), 1);
+  } else {
+    const tokens = marked.lexer(text);
+    lexed = { text, tokens, links: tokens.links };
+  }
+  recent.unshift(lexed);
+  if (recent.length > 4) recent.pop();
+  return lexed;
+}
+
 /** `final` is false while the answer streams: its last block is still growing. */
 export function renderBlocks(text: string, final = true): Block[] {
-  const tokens = marked.lexer(text);
+  // A finished answer is lexed as a whole, so nothing depends on how it streamed.
+  const lexed = final ? { tokens: marked.lexer(text) as Token[], links: null } : lexGrowing(text);
+  const tokens = lexed.tokens;
+  const links = lexed.links ?? (tokens as TokensList).links;
   const blocks: Block[] = [];
   const last = tokens.findLastIndex((token) => token.type !== "space");
   tokens.forEach((token, index) => {
     if (token.type === "space") return;
-    blocks.push({ key: `${index}`, html: renderBlock(token, tokens.links, final || index !== last) });
+    blocks.push({ key: `${index}`, html: renderBlock(token, links, final || index !== last) });
   });
   return blocks;
 }

@@ -27,6 +27,10 @@ pub struct ChatSummary {
     /// The chat this one branched off; the sidebar lists it below that one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch_of: Option<String>,
+    /// Sessions the chat names (its own, the one it forked from, those of
+    /// second-model answers), so a delete can tell whether one is still in use.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sessions: Vec<String>,
 }
 
 /// A folder the user added as a project; its chats may read it.
@@ -98,8 +102,24 @@ fn dir_of(chat: &Value) -> Option<String> {
         .map(|dir| dir.chars().take(1024).collect())
 }
 
+/// Every session id the chat refers to, sorted and without duplicates.
+fn sessions_of(chat: &Value) -> Vec<String> {
+    let text = |value: Option<&Value>| value.and_then(Value::as_str).map(str::to_string);
+    let mut sessions: Vec<String> = Vec::new();
+    sessions.extend(text(chat.get("sessionId")));
+    sessions.extend(text(
+        chat.get("forkFrom").and_then(|fork| fork.get("sessionId")),
+    ));
+    if let Some(messages) = chat.get("messages").and_then(Value::as_array) {
+        sessions.extend(messages.iter().filter_map(|m| text(m.get("laneSession"))));
+    }
+    sessions.sort();
+    sessions.dedup();
+    sessions
+}
+
 /// Bumped when the index gains a field; an older index is rebuilt once.
-const INDEX_VERSION: &str = "3";
+const INDEX_VERSION: &str = "4";
 
 /// Chats are private: files only the user can read (0600).
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -193,6 +213,7 @@ impl Store {
                     project_id: project_of(&chat),
                     project_dir: dir_of(&chat),
                     branch_of: branch_of(&chat),
+                    sessions: sessions_of(&chat),
                     updated_at: chat.get("updatedAt").and_then(Value::as_i64).unwrap_or(0),
                 })
             })
@@ -241,6 +262,7 @@ impl Store {
             project_id: project_of(chat),
             project_dir: dir_of(chat),
             branch_of: branch_of(chat),
+            sessions: sessions_of(chat),
         };
         let mut list = self.read_index();
         // Most saves change only the chat itself; the index stays as it is.
@@ -252,7 +274,9 @@ impl Store {
         self.write_index(&list)
     }
 
-    pub fn delete(&self, id: &str) -> Result<(), String> {
+    /// Deletes a chat; returns the working copy folders its answers used, for
+    /// the caller to discard once the lock is released.
+    pub fn delete(&self, id: &str) -> Result<Vec<String>, String> {
         if !valid_id(id) {
             return Err("error.unknownChat".into());
         }
@@ -262,6 +286,7 @@ impl Store {
             .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
         // The chat's own session and those of second-model answers in it.
         let mut sessions: Vec<String> = Vec::new();
+        let mut lane_dirs: Vec<String> = Vec::new();
         if let Some(chat) = &chat {
             sessions.extend(
                 chat.get("sessionId")
@@ -275,8 +300,16 @@ impl Store {
                         .filter_map(|message| message.get("laneSession").and_then(Value::as_str))
                         .map(str::to_string),
                 );
+                lane_dirs.extend(
+                    messages
+                        .iter()
+                        .filter_map(|message| message.get("laneDir").and_then(Value::as_str))
+                        .map(str::to_string),
+                );
             }
         }
+        lane_dirs.sort();
+        lane_dirs.dedup();
         // A branch that has not sent yet still continues one of these sessions.
         for session in sessions.iter().filter(|session| valid_id(session)) {
             if !self.referenced_unlocked(session, id) {
@@ -286,7 +319,8 @@ impl Store {
         let _ = fs::remove_file(self.chat_path(id));
         let mut list = self.read_index();
         list.retain(|entry| entry.id != id);
-        self.write_index(&list)
+        self.write_index(&list)?;
+        Ok(lane_dirs)
     }
 
     /// Whether another chat than `except` names this session, as a branch
@@ -297,14 +331,9 @@ impl Store {
     }
 
     fn referenced_unlocked(&self, session: &str, except: &str) -> bool {
-        let Ok(entries) = fs::read_dir(self.root.join("chats")) else {
-            return false;
-        };
-        entries.filter_map(Result::ok).any(|entry| {
-            let path = entry.path();
-            path.file_stem().and_then(|stem| stem.to_str()) != Some(except)
-                && fs::read_to_string(&path).is_ok_and(|text| text.contains(session))
-        })
+        self.read_index()
+            .iter()
+            .any(|entry| entry.id != except && entry.sessions.iter().any(|id| id == session))
     }
 
     /// The Agent SDK keeps its own copy of every conversation, attachments
@@ -457,5 +486,42 @@ impl Store {
         usage.budget = budget;
         self.write_usage(&usage)?;
         Ok(usage)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    const A: &str = "11111111-1111-1111-1111-111111111111";
+    const B: &str = "22222222-2222-2222-2222-222222222222";
+    const S1: &str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    const S2: &str = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    const S3: &str = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+
+    #[test]
+    fn sessions_are_answered_from_the_index_and_lane_dirs_come_back() {
+        let root = std::env::temp_dir().join(format!("sienna-store-{}", std::process::id()));
+        let store = Store::new(root.clone());
+        store
+            .save(&json!({"id": A, "sessionId": S1, "updatedAt": 1,
+                "messages": [{"laneSession": S2, "laneDir": "/x/copies/1/work"}]}))
+            .unwrap();
+        store
+            .save(&json!({"id": B, "forkFrom": {"sessionId": S3}, "updatedAt": 2}))
+            .unwrap();
+        assert!(store.session_referenced(S2, B));
+        assert!(!store.session_referenced(S2, A));
+        assert!(store.session_referenced(S3, A));
+        assert!(!store.session_referenced(S1, A));
+        // An index without the field is refilled by a rebuild.
+        let list = store.rebuild_index();
+        assert!(list
+            .iter()
+            .any(|entry| entry.sessions.contains(&S1.to_string())));
+        assert_eq!(store.delete(A).unwrap(), ["/x/copies/1/work"]);
+        assert!(!store.session_referenced(S1, B));
+        fs::remove_dir_all(root).unwrap();
     }
 }

@@ -23,6 +23,17 @@ export const MODES = ["auto", "default", "acceptEdits", "plan", "bypassPermissio
 // shell can delete or publish something (see README).
 const SHELLS = ["sh", "bash", "zsh", "dash", "fish"];
 const WRAPPERS = ["command", "builtin", "exec", "nohup", "time", "env", "nice", "xargs", "caffeinate"];
+// Wrapper options that take the next word as their value (`nice -n 5 rm …`).
+const WRAPPER_VALUES = {
+  env: ["-u", "-C", "-P"],
+  nice: ["-n"],
+  xargs: ["-n", "-I", "-L", "-P", "-s", "-E", "-d", "-J", "-R", "-S"],
+  time: ["-o"],
+  caffeinate: ["-t", "-w"],
+};
+// Shell words that start a simple command without being it: loops,
+// conditions and negation (`for f in *; do rm -rf "$f"; done`).
+const RESERVED = ["if", "then", "else", "elif", "fi", "do", "done", "while", "until", "for", "case", "esac", "!", "{", "}"];
 
 /** The words of each simple command; quotes and backslashes do not hide a word (`g""it`, `\rm`). */
 function commandWords(command) {
@@ -40,10 +51,11 @@ function unwrap(words) {
   let index = 0;
   while (index < words.length) {
     const word = words[index];
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) index++;
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word) || RESERVED.includes(word)) index++;
     else if (WRAPPERS.includes(basename(word))) {
+      const takes = WRAPPER_VALUES[basename(word)] ?? [];
       index++;
-      while (index < words.length && words[index].startsWith("-")) index++;
+      while (index < words.length && words[index].startsWith("-")) index += takes.includes(words[index]) ? 2 : 1;
     } else break;
   }
   return words.slice(index).map((word, position) => (position === 0 ? basename(word) : word));
@@ -74,6 +86,12 @@ function riskyWords(words, previous) {
   if (name === "find") return args.includes("-delete") || args.some((word, i) => /^-exec/.test(word) && args[i + 1] === "rm");
   if (name === "git") return riskyGit(args);
   if (["chmod", "chown"].includes(name)) return hasShortFlag(args, "R") || args.includes("--recursive");
+  // `eval` and `env -S` run their words as a command line of their own.
+  if (name === "eval") return isRisky(args.join(" "));
+  if (words.some((word, i) => basename(word) === "env" && words.slice(i + 1).includes("-S"))) {
+    const at = words.indexOf("-S");
+    if (isRisky(words.slice(at + 1).join(" "))) return true;
+  }
   if (SHELLS.includes(name)) {
     // `bash -c '…'` runs its own command line; a shell reading from a pipe runs a download.
     const at = args.indexOf("-c");
@@ -252,13 +270,27 @@ function isDirectory(path) {
   }
 }
 
-/** The project folder is the top of its git repository, not a folder inside a larger one. */
+// Repository settings under which a reading git command runs a program of
+// the repository's choosing (`core.fsmonitor` on status, diff drivers and
+// textconv on diff and log, pagers, included files that could hold either).
+const GIT_RUNS_PROGRAMS = /fsmonitor|textconv|external|pager|command\s*=|^\s*\[\s*include/im;
+
+/**
+ * The project folder is the top of its git repository, not a folder inside a
+ * larger one, and the repository's own settings run no programs; otherwise
+ * git commands ask like any other.
+ */
 function isGitTop(root) {
   try {
-    statSync(join(root, ".git"));
-    return true;
+    if (!statSync(join(root, ".git")).isDirectory()) return false;
   } catch {
     return false;
+  }
+  try {
+    return !GIT_RUNS_PROGRAMS.test(readFileSync(join(root, ".git", "config"), "utf8"));
+  } catch (error) {
+    // No settings of its own: nothing to run.
+    return error?.code === "ENOENT";
   }
 }
 

@@ -30,6 +30,8 @@
   --on-accent: #ffffff;
   --danger: #b8321f;
   --warning: #9a5b00;
+  /* Behind a dialog: dimmer in dark mode, where a light veil would not show. */
+  --backdrop: rgba(0, 0, 0, 0.22);
   /* Ultracode, as Claude Code marks it. */
   --ultra: #6a4fd6;
   --ultra-soft: rgba(106, 79, 214, 0.1);
@@ -80,6 +82,7 @@
     --on-accent: #1d1c1b;
     --danger: #ff6b5e;
     --warning: #e3a33a;
+    --backdrop: rgba(0, 0, 0, 0.5);
     --ultra: #a897ff;
     --ultra-soft: rgba(168, 151, 255, 0.14);
     --danger-soft: rgba(255, 107, 94, 0.1);
@@ -871,6 +874,10 @@ input[type="checkbox"] {
 .msg {
   margin: 0 0 26px;
   animation: rise 220ms ease-out both;
+}
+
+.thread.is-opening .msg {
+  animation: none;
 }
 
 @keyframes rise {
@@ -2477,13 +2484,15 @@ button.bubble-mention:hover {
   stroke-width: 2;
 }
 
+/* A gauge, not a spinner: the whole ring shows, the fill has square ends. */
 .context-track {
-  stroke: var(--fill-active);
+  stroke: var(--label-3);
+  opacity: 0.4;
 }
 
 .context-fill {
   stroke: var(--label-2);
-  stroke-linecap: round;
+  stroke-linecap: butt;
   transition: stroke-dashoffset 300ms ease-out;
 }
 
@@ -2857,7 +2866,7 @@ button.bubble-mention:hover {
 }
 
 .menu.plus-menu {
-  width: 300px;
+  width: 320px;
   padding: 5px;
 }
 
@@ -2895,7 +2904,16 @@ button.bubble-mention:hover {
   min-width: 0;
 }
 
+/* A long name shortens; its reason keeps the line. */
+.plus-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .plus-reason {
+  flex-shrink: 0;
   font-size: 12px;
   color: var(--label-3);
   white-space: nowrap;
@@ -3390,7 +3408,7 @@ button.bubble-mention:hover {
 }
 
 .dialog::backdrop {
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--backdrop);
 }
 
 /* ───────── Settings ─────────
@@ -3823,6 +3841,16 @@ button.bubble-mention:hover {
    lists, wide for an open artifact or page; on a narrow window it covers the
    chat. */
 
+.side-scrim {
+  display: none;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
 .side-panel {
   position: relative;
   display: flex;
@@ -3859,6 +3887,15 @@ button.bubble-mention:hover {
   /* Covering the chat, the panel takes its width from the window. */
   .side-panel > .resize-handle {
     display: none;
+  }
+
+  .side-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 29;
+    background: var(--backdrop);
+    animation: fade-in 160ms ease-out both;
   }
 
   /* Covering the chat without the sidebar, it keeps clear of the window buttons. */
@@ -4677,9 +4714,14 @@ button.bubble-mention:hover {
   overflow: auto;
 }
 
+/* The same pill as "faster", in a neutral color. */
 .msg-tie {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--fill-active);
   color: var(--label-2);
   font-size: 11.5px;
+  font-weight: 600;
 }
 
 /* Fit or Fill while the zoom follows it. */

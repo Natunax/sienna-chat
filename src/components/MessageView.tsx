@@ -360,9 +360,17 @@ function Elapsed({ message, className }: { message: Message; className: string }
   const running = Boolean(message.streaming && message.startedAt);
   useEffect(() => {
     if (!running) return;
-    const timer = setInterval(() => setNow(Date.now()), 100);
-    return () => clearInterval(timer);
-  }, [running]);
+    // Tenths for the first ten seconds, then whole seconds: tick only when the text changes.
+    let timer = 0;
+    const tick = () => {
+      const current = Date.now();
+      setNow(current);
+      const elapsed = current - message.startedAt!;
+      timer = window.setTimeout(tick, elapsed < 10_000 ? 100 : 1000 - (elapsed % 1000));
+    };
+    tick();
+    return () => clearTimeout(timer);
+  }, [running, message.startedAt]);
   const ms = running ? now - message.startedAt! : message.durationMs;
   if (ms === undefined) return null;
   return (
@@ -463,7 +471,8 @@ interface Props {
   message: Message;
   /** Set on the last question and answer when they can be replaced. */
   onRedo?: (text?: string) => void;
-  onPermission?: (request: PermissionRequest, decision: PermissionDecision) => void;
+  /** Also names the answer, so one stable callback serves every compared answer. */
+  onPermission?: (request: PermissionRequest, decision: PermissionDecision, messageId: string) => void;
   /** The chat's project folder; file paths in the steps open from it. */
   projectDir?: string | null;
   /** Set on the last answer: carries out a plan it ends with. */
@@ -483,7 +492,7 @@ interface Props {
   /** Both compared answers took about as long. */
   tie?: boolean;
   /** Both compared answers made an artifact: open them side by side. */
-  onCompareArtifacts?: () => void;
+  onCompareArtifacts?: (messageId: string) => void;
   /** Compared side by side and folded: artifacts and approvals show, the text only begins. */
   collapsed?: boolean;
 }
@@ -620,7 +629,7 @@ function MessageViewImpl({
       ))}
       {/* Right under the artifact, so a long answer does not hide it. */}
       {onCompareArtifacts && message.artifacts?.length ? (
-        <button type="button" className="artifact-compare-link" onClick={onCompareArtifacts}>
+        <button type="button" className="artifact-compare-link" onClick={() => onCompareArtifacts(message.id)}>
           <CompareIcon size={14} />
           {t("compareArtifacts.open")}
         </button>
@@ -641,7 +650,7 @@ function MessageViewImpl({
       )}
       {onPermission &&
         message.permissions?.map((request) => (
-          <PermissionCard key={request.id} request={request} onAnswer={onPermission} />
+          <PermissionCard key={request.id} request={request} onAnswer={(answer, decision) => onPermission(answer, decision, message.id)} />
         ))}
       {message.plan && !streaming && !message.error && message.text && onImplement && (
         <div className="plan-actions">

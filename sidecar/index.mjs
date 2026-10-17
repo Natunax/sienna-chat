@@ -18,7 +18,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { EDIT_TOOLS, HELPER_TYPES, MODES, READ_TOOLS, RUN_TOOLS, isRisky, projectGuard, projectPrompt } from "./project.mjs";
+import { EDIT_TOOLS, HELPER_TYPES, MODES, READ_TOOLS, RUN_TOOLS, isReadOnly, isRisky, projectGuard, projectPrompt } from "./project.mjs";
 import { TEMPLATES } from "./templates.mjs";
 import { ARTIFACT_PROMPT, ARTIFACT_TOOL, ARTIFACT_VIEW_TOOL, artifactServer } from "./artifacts.mjs";
 
@@ -96,7 +96,24 @@ const PRIVATE_PATHS = [
   ".claude",
   "Library/Keychains",
   "Library/Cookies",
+  // Other apps' data and tokens, synced documents, shell start-up files with exported secrets.
+  "Library/Application Support",
+  "Library/Containers",
+  "Library/Group Containers",
+  "Library/Mobile Documents",
+  "Library/Mail",
+  "Library/Messages",
+  "Library/Safari",
+  ".zshrc",
+  ".zprofile",
+  ".zshenv",
+  ".bashrc",
+  ".bash_profile",
+  ".profile",
 ].map((path) => join(home, path));
+// Working copies of every project a second model answered in (`workcopy.rs`);
+// a session working in one of them may still read its own.
+const COPIES_DIR = process.env.SIENNA_COPIES_DIR || null;
 
 /** API keys in text that leaves the engine (command output, check output), masked. */
 function maskSecrets(text) {
@@ -188,6 +205,20 @@ const PLAN_NOTE = [
 // Auto mode's model checks and bypassing run commands in macOS's sandbox,
 // which keeps their writes in the project folder.
 const SANDBOXED_MODES = ["auto", "bypassPermissions"];
+
+function needsSandbox(config) {
+  return Boolean(config.projectDir && SANDBOXED_MODES.includes(config.mode));
+}
+
+/** What sandboxed commands may never read; a session in a working copy keeps its own. */
+function privateFor(projectDir) {
+  const paths = [...PRIVATE_PATHS, dataDir];
+  if (COPIES_DIR) {
+    const own = projectDir && projectDir.startsWith(COPIES_DIR + "/");
+    if (!own) paths.push(COPIES_DIR);
+  }
+  return paths;
+}
 /**
  * The setting "approve automatically": on top of every mode, Sienna answers
  * each approval as if the user clicked Allow. Destructive commands still ask.
@@ -334,6 +365,9 @@ class ChatSession {
     /** Files changed in the running answer, those changed without asking, and check rounds run for it. */
     this.edited = false;
     this.unasked = new Set();
+    /** Commands that ran in the sandbox without asking; they can change what the check runs. */
+    this.unaskedCommands = [];
+    this.sandboxed = needsSandbox(config);
     this.checkRounds = 0;
     /** Stops a running check when the answer is stopped. */
     this.checkStop = null;
@@ -352,22 +386,22 @@ class ChatSession {
         permissionMode: config.projectDir ? sdkMode(config.mode) : "dontAsk",
         // Lets the user switch to bypassing later; the guard still holds.
         allowDangerouslySkipPermissions: config.projectDir ? true : undefined,
-        sandbox:
-          config.projectDir && SANDBOXED_MODES.includes(config.mode)
+        sandbox: this.sandboxed
             ? {
                 enabled: true,
-                failIfUnavailable: false,
+                // Without the sandbox these modes would run commands unchecked; better to fail.
+                failIfUnavailable: true,
                 autoAllowBashIfSandboxed: false,
                 allowUnsandboxedCommands: false,
                 network: { allowLocalBinding: true },
-                filesystem: { denyRead: [...PRIVATE_PATHS, dataDir] },
+                filesystem: { denyRead: privateFor(config.projectDir) },
               }
             : undefined,
         canUseTool: config.projectDir ? (tool, input, options) => this.askUser(tool, input, options) : undefined,
         hooks: config.projectDir
           ? {
               ...projectGuard(config.projectDir, config.web ? WEB_TOOLS : [], {
-                mode: () => this.config.mode,
+                mode: () => this.effectiveMode(),
                 onEdit: (tool, input, toolUseId) => {
                   this.edited = true;
                   this.unasked.add(this.relative(String(input.file_path ?? "")));
@@ -421,11 +455,14 @@ class ChatSession {
     const id = `check-${randomUUID()}`;
     emit({ type: "tool", chatId: this.chatId, id, name: "Check", detail: command.slice(0, 500) });
     // The check runs outside the sandbox. After changes nobody looked at (a
-    // test script, a Makefile), the user decides whether it may run.
-    if (this.unasked.size) {
-      const files = [...this.unasked];
+    // test script, a Makefile, or what a sandboxed command rewrote), the user
+    // decides whether it may run.
+    if (this.unasked.size || this.unaskedCommands.length) {
+      const commands = this.unaskedCommands.length > 0;
+      const files = [...this.unasked, ...this.unaskedCommands.map((line) => `$ ${line}`)];
       this.unasked.clear();
-      const answer = await this.askUser("Check", { command, files }, { signal, toolUseID: id });
+      this.unaskedCommands = [];
+      const answer = await this.askUser("Check", { command, files, commands }, { signal, toolUseID: id });
       if (answer.behavior !== "allow") return {};
     }
     const controller = new AbortController();
@@ -463,11 +500,21 @@ class ChatSession {
     emit({ type: "mode", chatId: this.chatId, mode: "default", reason: "autoUnavailable" });
   }
 
+  /**
+   * The mode the session can honor: Auto and Bypass need the sandbox, which is
+   * set when a session starts. Switched to them in a session started without
+   * it, commands ask until the next message starts a sandboxed session.
+   */
+  effectiveMode(mode = this.config.mode) {
+    return SANDBOXED_MODES.includes(mode) && !this.sandboxed ? "default" : mode;
+  }
+
   /** Switches the mode, live if the answer is running. */
   setMode(mode) {
-    const before = this.config.mode;
+    const before = this.effectiveMode();
     this.config.mode = mode;
-    if (sdkMode(before) !== sdkMode(mode)) this.query.setPermissionMode(sdkMode(mode)).catch(() => {});
+    const after = this.effectiveMode();
+    if (sdkMode(before) !== sdkMode(after)) this.query.setPermissionMode(sdkMode(after)).catch(() => {});
   }
 
   /** How full the context window is; a local estimate, no extra API call. */
@@ -501,7 +548,8 @@ class ChatSession {
     // A second model's answer that only reads has nobody to approve anything;
     // one working in its own copy of the project asks like the chat's own.
     if (this.config.lane && this.config.mode === "readonly") return Promise.resolve(denied("This answer cannot change anything."));
-    if (autoApproves(tool, input)) {
+    // After commands nobody approved, the check is the user's call, also with approve automatically.
+    if (autoApproves(tool, input) && !input?.commands) {
       if (EDIT_TOOLS.includes(tool)) this.edited = true;
       return Promise.resolve({ behavior: "allow", updatedInput: input });
     }
@@ -597,8 +645,8 @@ class ChatSession {
       this.config.web === config.web &&
       this.config.projectDir === config.projectDir &&
       (this.config.format ?? null) === (config.format ?? null) &&
-      // The sandbox is set when the session starts.
-      SANDBOXED_MODES.includes(this.config.mode) === SANDBOXED_MODES.includes(config.mode)
+      // The sandbox is set when the session starts; the mode menu may have changed since.
+      this.sandboxed === needsSandbox(config)
     );
   }
 
@@ -615,6 +663,7 @@ class ChatSession {
     this.interrupted = false;
     this.edited = false;
     this.unasked.clear();
+    this.unaskedCommands = [];
     this.checkRounds = 0;
     this.inbox.push({
       type: "user",
@@ -708,7 +757,13 @@ class ChatSession {
           if (block.type !== "tool_use" || block.name === "StructuredOutput" || block.name === ARTIFACT_TOOL) continue;
           this.flush();
           const input = block.input ?? {};
-          if (RUN_TOOLS.includes(block.name)) this.commandIds.add(block.id);
+          if (RUN_TOOLS.includes(block.name)) {
+            this.commandIds.add(block.id);
+            const line = String(input.command ?? "");
+            if (SANDBOXED_MODES.includes(this.effectiveMode()) && !isReadOnly(line, this.config.projectDir)) {
+              this.unaskedCommands.push(line.slice(0, 200));
+            }
+          }
           emit({
             type: "tool",
             chatId: this.chatId,
@@ -864,7 +919,9 @@ function safeName(name) {
 function toBlock(file) {
   if (file.mediaType === "text/plain") {
     // Text files go in as text, so Claude reads them directly and knows the file name.
-    return { type: "text", text: `<file name="${safeName(file.name)}">\n${file.data}\n</file>` };
+    // `</` cannot close the block early and pose as the user's own words (as in mention.rs).
+    const text = String(file.data).replaceAll("</", "<\\/");
+    return { type: "text", text: `<file name="${safeName(file.name)}">\n${text}\n</file>` };
   }
   const source = { type: "base64", media_type: file.mediaType, data: file.data };
   return file.mediaType === "application/pdf" ? { type: "document", source } : { type: "image", source };

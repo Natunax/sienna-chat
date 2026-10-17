@@ -91,6 +91,12 @@ function useStickToBottom(dependency: unknown) {
 
 export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange, onOpenChat }: Props) {
   const [dragging, setDragging] = useState(false);
+  // Opening a chat shows its messages at once; only new ones rise in.
+  const [opening, setOpening] = useState(true);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setOpening(false));
+    return () => cancelAnimationFrame(frame);
+  }, []);
   const [dropped, setDropped] = useState<File[]>([]);
   const { scroller, content, stuck } = useStickToBottom(chat.id);
   // The last answer and a second model's next to it; while the conversation
@@ -218,6 +224,19 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
     };
   };
   const compareSides = comparing ? [sideOf(comparing.own), sideOf(comparing.lane)] : null;
+  // Stable callbacks, so compared answers stay memoized while another streams.
+  const compareArtifacts = useCallback((ownId: string) => {
+    const messages = chatRef.current.messages;
+    const lane = messages[messages.findIndex((message) => message.id === ownId) + 1];
+    if (!lane?.lane) return;
+    setShown(null);
+    setComparing({ own: ownId, lane: lane.id });
+  }, []);
+  const answerLane = useCallback(
+    (request: PermissionRequest, decision: PermissionDecision, messageId: string) =>
+      answerLanePermission(chat.id, messageId, request, decision),
+    [chat.id],
+  );
   const closeCompare = useCallback(() => setComparing(null), []);
   // The last plan can be carried out while nothing runs.
   const lastPlan = chat.messages[ownLast];
@@ -351,7 +370,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
 
       {/* The scroller exists from the start, so following the first answer works too. */}
       <div className="scroller" ref={scroller} onClick={onClick}>
-        <div className="thread" ref={content}>
+        <div className={`thread${opening ? " is-opening" : ""}`} ref={content}>
           {empty ? (
             <div className="hero">
               <h2 className="hero-title">{t(greeting(new Date().getHours()))}</h2>
@@ -389,31 +408,24 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
               const clear = Math.abs(gap) > Math.max(500, 0.05 * Math.max(message.durationMs ?? 0, rival.durationMs ?? 0));
               const ownFaster = clear && gap > 0;
               const rivalFaster = clear && gap < 0;
-              // Both made an artifact: each card offers them side by side.
+              // Both made an artifact: the chat's own card offers them side by side.
               const comparable = Boolean(message.artifacts?.length && rival.artifacts?.length && !message.streaming && !rival.streaming);
-              const compareArtifacts = comparable
-                ? () => {
-                    setShown(null);
-                    setComparing({ own: message.id, lane: rival.id });
-                  }
-                : undefined;
               // Folded until the reader opens the pair: the artifacts lead, the text waits.
               const open = openPairs.has(message.id);
               return (
                 <div key={`pair:${message.id}:${language}`} className={`compare-row${open ? " is-open" : ""}`}>
-                  {cloneElement(view, { fastest: ownFaster, onCompareArtifacts: compareArtifacts, collapsed: !open })}
+                  {cloneElement(view, { fastest: ownFaster, onCompareArtifacts: comparable ? compareArtifacts : undefined, collapsed: !open })}
                   <div className="compare-lane">
                     <MessageView
                       key={`${rival.id}:${language}`}
                       message={rival}
                       // Its files are in its own working copy of the project.
                       projectDir={rival.laneDir ?? chat.projectDir}
-                      onPermission={(request, decision) => answerLanePermission(chat.id, rival.id, request, decision)}
+                      onPermission={answerLane}
                       onBranch={branch}
                       onArtifact={openArtifact}
                       fastest={rivalFaster}
                       tie={both && !clear}
-                      onCompareArtifacts={compareArtifacts}
                       collapsed={!open}
                       showModel
                     />

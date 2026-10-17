@@ -33,6 +33,9 @@ interface Props {
   min: number;
   /** The most it may take, also measured when a drag starts. */
   max: () => number;
+  /** The width while dragging, applied straight to the page; no React render per move. */
+  preview: (width: number) => void;
+  /** The width once the drag ends, or a key step; remembered. */
   onWidth: (width: number) => void;
   /** Double click: back to the layout's own width. */
   onReset: () => void;
@@ -44,8 +47,8 @@ interface Props {
  * resets, and the arrow keys work too. While it drags, frames and the
  * browser's native view keep out of the way, so the pointer never gets lost.
  */
-export function ResizeHandle({ edge, measure, min, max, onWidth, onReset, label }: Props) {
-  const drag = useRef<{ x: number; width: number; max: number; uncover: () => void } | null>(null);
+export function ResizeHandle({ edge, measure, min, max, preview, onWidth, onReset, label }: Props) {
+  const drag = useRef<{ x: number; width: number; max: number; uncover: () => void; last: number | null } | null>(null);
   const [active, setActive] = useState(false);
   const clamp = (width: number, most: number) => Math.round(Math.min(Math.max(width, min), Math.max(min, most)));
   // Dragging toward the panel shrinks it.
@@ -55,18 +58,22 @@ export function ResizeHandle({ edge, measure, min, max, onWidth, onReset, label 
     if (event.button !== 0) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { x: event.clientX, width: measure(), max: max(), uncover: coverWindow() };
+    drag.current = { x: event.clientX, width: measure(), max: max(), uncover: coverWindow(), last: null };
     document.documentElement.classList.add("is-resizing");
     setActive(true);
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const run = drag.current;
     if (!run) return;
-    onWidth(clamp(run.width + direction * (event.clientX - run.x), run.max));
+    run.last = clamp(run.width + direction * (event.clientX - run.x), run.max);
+    preview(run.last);
   };
   const end = () => {
-    drag.current?.uncover();
+    const run = drag.current;
+    if (!run) return;
+    run.uncover();
     drag.current = null;
+    if (run.last !== null) onWidth(run.last);
     document.documentElement.classList.remove("is-resizing");
     setActive(false);
   };
