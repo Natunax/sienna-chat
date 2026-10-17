@@ -3677,10 +3677,6 @@ button.bubble-mention:hover {
   color: var(--label);
 }
 
-.artifact-zoom {
-  min-height: 100%;
-}
-
 .artifact-frame-box {
   position: absolute;
   inset: 0;

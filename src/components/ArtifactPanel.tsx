@@ -100,8 +100,10 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
   const showing = previewable ? view : "source";
   const zoomBy = (step: number) => setZoomAt((at) => Math.min(ZOOMS.length - 1, Math.max(0, at + step)));
 
-  // ⌘+ / ⌘− / ⌘0 zoom while the panel is open, as in a browser.
+  // ⌘+ / ⌘− / ⌘0 zoom the preview, as in a browser.
+  const zoomable = showing === "preview";
   useEffect(() => {
+    if (!zoomable) return;
     const onKey = (event: KeyboardEvent) => {
       if (!event.metaKey || event.altKey || event.ctrlKey) return;
       if (event.key === "+" || event.key === "=") zoomBy(1);
@@ -112,7 +114,7 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [zoomable]);
 
   useEffect(() => {
     if (!saved) return;
@@ -127,14 +129,8 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
       .catch((reason) => setSaved(errorText(reason)));
 
   const body = useMemo(() => {
-    // Code and documents scale like text in a browser.
-    if (showing === "source") {
-      return (
-        <div className="artifact-zoom" style={{ zoom }}>
-          <CodeView artifact={artifact} />
-        </div>
-      );
-    }
+    // Zoom is for the preview only; code stays at its normal size.
+    if (showing === "source") return <CodeView artifact={artifact} />;
     if (artifact.kind === "markdown") {
       return (
         <div className="artifact-document markdown" style={{ zoom }}>
@@ -181,6 +177,7 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
           </div>
         )}
         <div className="artifact-actions">
+          {zoomable && (
           <div className="artifact-zoom-control" role="group" aria-label={t("artifact.zoom")}>
             <button type="button" className="icon-button" disabled={zoomAt === 0} onClick={() => zoomBy(-1)} aria-label={t("artifact.zoomOut")} title={`${t("artifact.zoomOut")} (⌘−)`}>
               <MinusIcon size={14} />
@@ -192,6 +189,7 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
               <PlusIcon size={14} />
             </button>
           </div>
+          )}
           {saved && (
             <span className="artifact-status" role="status">
               {saved}
