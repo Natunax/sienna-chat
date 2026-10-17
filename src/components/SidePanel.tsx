@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { api, MODELS, type Artifact, type Chat, type Message, type PermissionMode, type ToolUse } from "../api";
+import { allTools, api, MODELS, type Artifact, type Chat, type Message, type PermissionMode, type ToolUse } from "../api";
 import { diffLines, diffStats } from "../diff";
 import { t, type TextKey } from "../i18n";
 import { BrowserView, useBrowserOpen } from "./BrowserView";
@@ -97,7 +97,7 @@ function changeStats(change: { before: string; after: string }) {
 function changedFiles(chat: Chat): number {
   const files = new Set<string>();
   for (const message of chat.messages) {
-    for (const tool of message.tools ?? []) {
+    for (const tool of allTools(message.tools)) {
       if (tool.change && !tool.denied && !tool.failed && tool.detail) files.add(`${message.lane ? message.id : "own"}:${tool.detail}`);
     }
   }
@@ -111,7 +111,7 @@ export function changeGroups(chat: Chat): ChangeGroup[] {
     const lane = Boolean(message.lane);
     // Each compared answer has its own working copy, taken over or discarded on its own.
     const groupKey = lane ? `lane:${message.id}` : "own";
-    for (const tool of message.tools ?? []) {
+    for (const tool of allTools(message.tools)) {
       if (!tool.change || tool.denied || tool.failed || !tool.detail) continue;
       let group = groups.get(groupKey);
       if (!group) {

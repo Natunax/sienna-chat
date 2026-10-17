@@ -18,7 +18,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { EDIT_TOOLS, HELPER_TYPES, MODES, READ_TOOLS, RUN_TOOLS, isReadOnly, isRisky, projectGuard, projectPrompt } from "./project.mjs";
+import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, isReadOnly, isRisky, projectGuard, projectPrompt } from "./project.mjs";
 import { TEMPLATES } from "./templates.mjs";
 import { ARTIFACT_PROMPT, ARTIFACT_TOOL, ARTIFACT_VIEW_TOOL, artifactServer } from "./artifacts.mjs";
 
@@ -127,10 +127,11 @@ const SYSTEM_PROMPT = [
   "When you search the web, cite the most important sources as links.",
 ].join("\n");
 
-// Ultracode: the highest effort, and Claude may hand independent parts of the
-// task to helpers that run in parallel. They only look (read, search) and
-// report back; changes, commands and the answer stay with Claude itself, so
-// every approval still comes from this session.
+// Subagents, as in Claude Code: Claude may hand parts of a task to helpers
+// (the SDK's own, such as general-purpose and Explore). Each of their calls
+// passes the same guard and asks for the same approvals as Claude's own.
+// Ultracode adds two read-only helpers of Sienna's and tells Claude to use
+// them in parallel.
 const AGENT_TOOLS = ["Agent", "Task"];
 const ULTRA_PROMPT = [
   "",
@@ -177,8 +178,6 @@ function ultraAgents(config) {
       background: false,
     },
   };
-  // The guard lets exactly these through (`project.mjs`).
-  if (Object.keys(agents).join() !== HELPER_TYPES.join()) throw new Error("helper types differ");
   return agents;
 }
 
@@ -735,7 +734,12 @@ class ChatSession {
   }
 
   handle(message) {
-    if (message.parent_tool_use_id) return;
+    // A helper's own text stays with it; its steps show under the call that started it.
+    if (message.parent_tool_use_id) {
+      if (message.type === "assistant") this.emitTools(message, message.parent_tool_use_id);
+      else if (message.type === "user") this.emitResults(message);
+      return;
+    }
     // An answer ended with messages still waiting: a new turn now answers the first of them.
     if (this.steerWait && (message.type === "stream_event" || message.type === "assistant")) {
       clearTimeout(this.steerWait);
@@ -791,46 +795,10 @@ class ChatSession {
       }
       case "assistant":
         this.lastAssistantUuid = message.uuid;
-        for (const block of message.message.content) {
-          // The answer format's own tool is how a template answer arrives, not a step.
-          // An artifact shows as its own card, not as a step.
-          if (block.type !== "tool_use" || block.name === "StructuredOutput" || block.name === ARTIFACT_TOOL) continue;
-          this.flush();
-          const input = block.input ?? {};
-          if (RUN_TOOLS.includes(block.name)) {
-            this.commandIds.add(block.id);
-            const line = String(input.command ?? "");
-            if (SANDBOXED_MODES.includes(this.effectiveMode()) && !isReadOnly(line, this.config.projectDir)) {
-              this.unaskedCommands.push(line.slice(0, 200));
-            }
-          }
-          emit({
-            type: "tool",
-            chatId: this.chatId,
-            id: block.id,
-            name: block.name,
-            detail: this.relative(
-              String(
-                input.command ?? input.query ?? input.url ?? input.pattern ?? input.file_path ?? input.id ?? input.description ?? "",
-              ),
-            ).slice(0, 4000),
-          });
-        }
+        this.emitTools(message, null);
         return;
       case "user":
-        // Tool results: a command's output, and whether a tool failed or was declined.
-        for (const block of Array.isArray(message.message?.content) ? message.message.content : []) {
-          if (block.type !== "tool_result") continue;
-          const command = this.commandIds.delete(block.tool_use_id);
-          if (!command && !block.is_error) continue;
-          emit({
-            type: "toolResult",
-            chatId: this.chatId,
-            id: block.tool_use_id,
-            failed: Boolean(block.is_error),
-            output: command ? maskSecrets(resultText(block.content).slice(-MAX_OUTPUT_CHARS)) : "",
-          });
-        }
+        this.emitResults(message);
         return;
       case "result": {
         this.flush();
@@ -896,6 +864,50 @@ class ChatSession {
       }
       default:
         return;
+    }
+  }
+
+  /** The steps in an assistant message, Claude's own or a helper's (`parent`, the call that started it). */
+  emitTools(message, parent) {
+    for (const block of message.message?.content ?? []) {
+      // The answer format's own tool is how a template answer arrives, not a step.
+      // An artifact shows as its own card, not as a step.
+      if (block.type !== "tool_use" || block.name === "StructuredOutput" || block.name === ARTIFACT_TOOL) continue;
+      this.flush();
+      const input = block.input ?? {};
+      if (RUN_TOOLS.includes(block.name)) {
+        this.commandIds.add(block.id);
+        const line = String(input.command ?? "");
+        if (SANDBOXED_MODES.includes(this.effectiveMode()) && !isReadOnly(line, this.config.projectDir)) {
+          this.unaskedCommands.push(line.slice(0, 200));
+        }
+      }
+      emit({
+        type: "tool",
+        chatId: this.chatId,
+        id: block.id,
+        ...(parent ? { parent } : {}),
+        name: block.name,
+        detail: this.relative(
+          String(input.command ?? input.query ?? input.url ?? input.pattern ?? input.file_path ?? input.id ?? input.description ?? ""),
+        ).slice(0, 4000),
+      });
+    }
+  }
+
+  /** Tool results: a command's output, and whether a tool failed or was declined. */
+  emitResults(message) {
+    for (const block of Array.isArray(message.message?.content) ? message.message.content : []) {
+      if (block.type !== "tool_result") continue;
+      const command = this.commandIds.delete(block.tool_use_id);
+      if (!command && !block.is_error) continue;
+      emit({
+        type: "toolResult",
+        chatId: this.chatId,
+        id: block.tool_use_id,
+        failed: Boolean(block.is_error),
+        output: command ? maskSecrets(resultText(block.content).slice(-MAX_OUTPUT_CHARS)) : "",
+      });
     }
   }
 
@@ -989,7 +1001,8 @@ function toContent(text, attachments) {
 
 function toolsFor(config) {
   const project = config.projectDir ? [...READ_TOOLS, ...EDIT_TOOLS, ...RUN_TOOLS] : [];
-  return [...project, ...(config.web ? WEB_TOOLS : []), ...(isUltra(config) ? AGENT_TOOLS : [])];
+  // A template's answer is data; it needs no helpers.
+  return [...project, ...(config.web ? WEB_TOOLS : []), ...(config.format ? [] : AGENT_TOOLS)];
 }
 
 /** The tools that run without asking; changes and commands are not among them. */
@@ -998,7 +1011,8 @@ function allowedFor(config) {
     ...(config.projectDir ? READ_TOOLS : []),
     ...(config.web ? WEB_TOOLS : []),
     ...(artifactsFor(config) ? [ARTIFACT_TOOL, ARTIFACT_VIEW_TOOL] : []),
-    ...(isUltra(config) ? AGENT_TOOLS : []),
+    // Starting a helper; what it then does is checked call by call.
+    ...(config.format ? [] : AGENT_TOOLS),
   ];
 }
 

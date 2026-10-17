@@ -191,6 +191,12 @@ async function streamCodeAnswer(chatId: string) {
     if (name === "Bash") void emit("engine", { type: "toolResult", chatId, id, failed: false, output: "total 48\ndrwxr-xr-x  12 dev  staff   384 Oct 16 09:12 .\n3f2a1c9 fix: round totals\n" });
     await pause(300);
   }
+  // A helper looks for the tests meanwhile; its steps go under its call.
+  void emit("engine", { type: "tool", chatId, id: "ag1", name: "Agent", detail: english ? "Find the cart tests" : "Warenkorb-Tests finden" });
+  for (const [id, name, detail] of [["ag1a", "Glob", "**/*.test.ts"], ["ag1b", "Read", "src/cart.test.ts"], ["ag1c", "Grep", "describe\\(\"cart"]]) {
+    void emit("engine", { type: "tool", chatId, id, parent: "ag1", name, detail });
+    await pause(150);
+  }
   void emit("engine", { type: "tool", chatId, id: "t1", name: "Read", detail: "src/cart.ts" });
   await pause(400);
   void emit("engine", {

@@ -19,6 +19,6 @@ In scope, for example:
 - the microphone staying on after dictation ends, audio leaving the Mac, or dictated text being sent without the user pressing send
 - a file change or command running without approval in a mode that should ask, a risky command (see README) running without asking, or a change landing outside the project folder
 - a web page in the side panel's browser reaching any of Sienna's commands, plugins, artifacts, files, the microphone or the camera
-- an Ultracode helper changing files or running a non-reading command
+- a helper (subagent) making a change or running a command that would have asked, or been refused, had Claude made it
 
 Out of scope: what the Claude models answer, and bugs in the Claude Agent SDK or Tauri themselves (report those upstream).

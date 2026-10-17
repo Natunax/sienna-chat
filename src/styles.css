@@ -1078,6 +1078,17 @@ input[type="checkbox"] {
   margin: 0 0 12px -8px;
 }
 
+/* A helper's steps, under the call that started it, on a quiet rule. */
+.tool-children {
+  margin: 2px 0 6px 15px;
+  padding-left: 10px;
+  border-left: 1px solid var(--separator-strong);
+}
+
+.tool-children > .tools {
+  margin: 0;
+}
+
 /* Text between steps: a step after a paragraph sits close to it. */
 .markdown + .tools {
   margin-top: 2px;

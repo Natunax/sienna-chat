@@ -223,22 +223,21 @@ test("reading commands run without asking, but only inside the folder", async ()
   assert.equal(isReadOnly("git log", join(root, "src")), false);
 });
 
-test("Ultracode's helpers: only Sienna's two, in the foreground, and they only look", async () => {
+test("helpers run in the foreground and in the folder; their calls pass the guard like Claude's own", async () => {
   const cases = [
-    [{ tool_name: "Agent", tool_input: { subagent_type: "researcher", prompt: "x" } }, "allow"],
-    [{ tool_name: "Agent", tool_input: { subagent_type: "verifier", prompt: "x" } }, "allow"],
-    [{ tool_name: "Agent", tool_input: { subagent_type: "general-purpose", prompt: "x" } }, "deny"],
-    [{ tool_name: "Agent", tool_input: { prompt: "x" } }, "deny"],
-    [{ tool_name: "Agent", tool_input: { subagent_type: "researcher", isolation: "worktree" } }, "deny"],
-    [{ tool_name: "Task", tool_input: { subagent_type: "verifier", run_in_background: true } }, "deny"],
-    [{ tool_name: "Edit", agent_id: "a1", tool_input: { file_path: join(root, "src", "main.rs") } }, "deny"],
-    [{ tool_name: "Bash", agent_id: "a1", tool_input: { command: "npm test" } }, "deny"],
-    [{ tool_name: "Bash", agent_id: "a1", tool_input: { command: "ls" } }, "allow"],
-    [{ tool_name: "Read", agent_id: "a1", tool_input: { file_path: join(root, "src", "main.rs") } }, "allow"],
+    [{ tool_name: "Agent", tool_input: { subagent_type: "general-purpose", prompt: "x" } }, { default: "allow", plan: "allow", readonly: "allow" }],
+    [{ tool_name: "Agent", tool_input: { subagent_type: "researcher", prompt: "x" } }, { default: "allow", plan: "allow", readonly: "allow" }],
+    [{ tool_name: "Agent", tool_input: { subagent_type: "general-purpose", isolation: "worktree" } }, { default: "deny", plan: "deny", readonly: "deny" }],
+    [{ tool_name: "Task", tool_input: { subagent_type: "Explore", run_in_background: true } }, { default: "deny", plan: "deny", readonly: "deny" }],
+    // A helper's change asks like any other, and plan mode and a compared answer refuse it.
+    [{ tool_name: "Edit", agent_id: "a1", tool_input: { file_path: join(root, "src", "main.rs") } }, { default: "ask", plan: "deny", readonly: "deny" }],
+    [{ tool_name: "Bash", agent_id: "a1", tool_input: { command: "rm -rf src" } }, { default: "ask", plan: "deny", readonly: "deny" }],
+    [{ tool_name: "Bash", agent_id: "a1", tool_input: { command: "ls" } }, { default: "allow", plan: "allow", readonly: "allow" }],
+    [{ tool_name: "Read", agent_id: "a1", tool_input: { file_path: join(base, "outside", "key.txt") } }, { default: "deny", plan: "deny", readonly: "deny" }],
   ];
   for (const [input, expected] of cases) {
-    for (const mode of ["default", "plan", "readonly", "bypassPermissions"]) {
-      assert.equal(decision(await guard(mode)(input)), expected, `${mode}: ${JSON.stringify(input)}`);
+    for (const [mode, want] of Object.entries(expected)) {
+      assert.equal(decision(await guard(mode)(input)), want, `${mode}: ${JSON.stringify(input)}`);
     }
   }
 });

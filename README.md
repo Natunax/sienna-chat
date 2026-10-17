@@ -38,6 +38,7 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 - Web search as a toggle, with sources as links that open in your browser
 - Images, PDFs and text files (code, Markdown, CSV, JSON, logs) by button, drag and drop or paste
 - Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.1 per chat, with five effort levels from low to max, and **Ultracode**: the highest effort, with two read-only helpers (a researcher and an adversarial verifier) Claude briefs in parallel in a project chat or with web search
+- **Subagents** as in Claude Code: Claude can hand parts of a task to helpers in any chat; their steps show indented under the call that started them
 - Regenerate or edit the last question, copy any answer, and chat titles written by Haiku
 - Answers show text and steps in the order they happened, as in Claude Code
 - Keep writing while Claude works: messages wait in a queue and go out when the answer is done, or **Send now** puts one into the running answer, where Claude takes it in at its next step
@@ -209,7 +210,7 @@ Sienna lets a language model change files and run commands on your Mac, so the b
   - The helper runs without the API key, and Rust passes on only known events with checked text.
 - **Artifacts run sealed.** HTML and SVG artifacts load in a sandboxed frame from Sienna's own `artifact:` scheme, with an opaque origin and their own Content Security Policy: inline code and cdnjs.cloudflare.com only, no network requests, storage, frames, forms or navigation out. They cannot reach Sienna's commands, your key or your chats. Saving goes through the macOS save dialog.
 - **The side panel's browser is a stranger to the app.** It is a separate native web view: in no capability, so web pages cannot call Sienna's commands or plugins, and Sienna's own pages and sealed artifacts never load in it. It opens only `http` and `https`, keeps nothing between runs, opens no windows, downloads nothing, and is refused microphone, camera and location. Hidden, its media pause.
-- **Ultracode's helpers only look.** Only Sienna's two helper types may start, in the foreground and without worktrees; their own calls pass the same guard, which refuses them any change or non-reading command. Changes and approvals stay with Claude in your chat.
+- **Helpers (subagents) get no more than Claude.** Every call a helper makes passes the same guard and asks for the same approvals as Claude's own, in the same mode. Helpers run in the foreground only, never in the background or in a separate worktree. Ultracode's own two helpers can only read.
 - **The window is locked down.**
   - Answers are sanitized (marked + DOMPurify) and shown under a strict Content Security Policy. Remote images are not loaded.
   - Links show their target and open only `http` and `https`, in your browser.

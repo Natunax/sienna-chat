@@ -13,8 +13,6 @@ const ARTIFACT_TOOLS = "mcp__sienna__artifact";
 export const READ_TOOLS = ["Read", "Grep", "Glob"];
 export const EDIT_TOOLS = ["Edit", "Write"];
 export const RUN_TOOLS = ["Bash"];
-/** Ultracode's helpers (`sidecar/index.mjs`); the SDK's own agent types stay out. */
-export const HELPER_TYPES = ["researcher", "verifier"];
 export const MODES = ["auto", "default", "acceptEdits", "plan", "bypassPermissions", "readonly"];
 
 // Commands that ask first in every mode, also when permissions are bypassed.
@@ -353,18 +351,15 @@ export function projectGuard(projectDir, webTools, { mode = () => "default", onE
     const tool = input.tool_name;
     const current = mode();
     if (webTools.includes(tool) || tool.startsWith(ARTIFACT_TOOLS)) return decide("allow");
-    // Ultracode's helpers: only Sienna's two, in the foreground and in this
-    // folder (a worktree would change the repository unasked).
+    // Helpers (subagents) run in the foreground and in this folder: one in
+    // the background would go on after the answer, a worktree would change
+    // the repository unasked. Each of their calls comes through here again.
     if (tool === "Agent" || tool === "Task") {
       const params = input.tool_input ?? {};
-      if (!HELPER_TYPES.includes(params.subagent_type) || params.isolation || params.run_in_background) {
-        return deny(`Only the helpers ${HELPER_TYPES.join(" and ")} may run, in the foreground and without isolation.`);
+      if (params.isolation || params.run_in_background) {
+        return deny("Helpers run in the foreground and in the project folder: no background and no isolation.");
       }
       return decide("allow");
-    }
-    // A helper only looks; changes and commands stay with Claude itself.
-    if (input.agent_id && (EDIT_TOOLS.includes(tool) || (RUN_TOOLS.includes(tool) && !isReadOnly(input.tool_input?.command, root)))) {
-      return deny("Helpers only read and report; Claude makes the changes.");
     }
     // Commands run in the project folder.
     if (RUN_TOOLS.includes(tool)) {

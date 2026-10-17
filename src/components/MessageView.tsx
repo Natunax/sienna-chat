@@ -1,5 +1,6 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
+  allTools,
   api,
   formatUsd,
   MODELS,
@@ -116,7 +117,8 @@ function ToolRow({ tool, projectDir, reverted }: ToolRowProps) {
   const [open, setOpen] = useState(false);
   const [missing, setMissing] = useState(false);
   const state = tool.denied ? " is-denied" : tool.failed ? " is-failed" : "";
-  const expandable = Boolean(tool.change || tool.output !== undefined);
+  const helperSteps = tool.children?.length ?? 0;
+  const expandable = Boolean(tool.change || tool.output !== undefined || helperSteps);
   const name = (
     <>
       <ToolIcon name={tool.name} />
@@ -157,11 +159,18 @@ function ToolRow({ tool, projectDir, reverted }: ToolRowProps) {
             </span>
           )
         )}
+        {helperSteps > 0 && <span className="tool-state">{t(helperSteps === 1 ? "tool.helperSteps.one" : "tool.helperSteps.other", { n: helperSteps })}</span>}
         {tool.denied && <span className="tool-state">{t("tool.denied")}</span>}
         {reverted && tool.change && !tool.denied && <span className="tool-state">{t("revert.label")}</span>}
         {!tool.denied && tool.failed && <span className="tool-state">{t("tool.failed")}</span>}
         {missing && <span className="tool-state is-error">{t("error.fileMissing")}</span>}
       </div>
+      {/* A helper's own steps, indented under the call that started it. */}
+      {open && helperSteps > 0 && (
+        <div className="tool-children">
+          <Tools tools={tool.children!} active={false} projectDir={projectDir} reverted={reverted} />
+        </div>
+      )}
       {open && tool.change && (
         <div className="tool-panel">
           <DiffView before={tool.change.before} after={tool.change.after} numbered={tool.name === "Write"} />
@@ -668,7 +677,7 @@ function MessageViewImpl({
   const waiting = streaming && (!message.text || Boolean(message.format)) && !message.permissions?.length;
   const branchable = !streaming && onBranch && (message.lane ? message.laneSession && message.laneTurnEnd : message.turnEnd);
   const revertable =
-    !streaming && onRevert && !message.lane && !message.reverted && message.checkpoint && message.tools?.some((tool) => tool.change);
+    !streaming && onRevert && !message.lane && !message.reverted && message.checkpoint && allTools(message.tools).some((tool) => tool.change);
   const modelName = MODELS.find((entry) => entry.id === message.model)?.name;
   const flow = flowOf(message);
   const lastArtifact = message.artifacts?.at(-1);

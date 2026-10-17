@@ -6,6 +6,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import {
   type Artifact,
   type Steer,
+  allTools,
   api,
   DEFAULT_MODE,
   TEMPLATES,
@@ -738,18 +739,41 @@ export function placeIn(message: Message): { textAt: number; step: number } {
 }
 
 /** A message with one of its tools changed. */
+/** A list of steps with one of them changed, wherever it sits among the helpers' steps. */
+function changeTools(tools: ToolUse[], toolId: string, change: (tool: ToolUse) => ToolUse): ToolUse[] | null {
+  let found = false;
+  const next = tools.map((tool) => {
+    if (found) return tool;
+    if (tool.id === toolId) {
+      found = true;
+      return change(tool);
+    }
+    const children = tool.children && changeTools(tool.children, toolId, change);
+    if (!children) return tool;
+    found = true;
+    return { ...tool, children };
+  });
+  return found ? next : null;
+}
+
 function withTool(message: Message, toolId: string | null | undefined, change: (tool: ToolUse) => ToolUse): Message {
-  if (!toolId || !message.tools?.some((tool) => tool.id === toolId)) return message;
-  return { ...message, tools: message.tools.map((tool) => (tool.id === toolId ? change(tool) : tool)) };
+  const tools = toolId && message.tools ? changeTools(message.tools, toolId, change) : null;
+  return tools ? { ...message, tools } : message;
 }
 
 function updateTool(chat: Chat, toolId: string | null | undefined, change: (tool: ToolUse) => ToolUse): Chat {
   if (!toolId) return chat;
-  return updateLastAssistant(chat, (message) =>
-    message.tools?.some((tool) => tool.id === toolId)
-      ? { ...message, tools: message.tools.map((tool) => (tool.id === toolId ? change(tool) : tool)) }
-      : message,
-  );
+  return updateLastAssistant(chat, (message) => withTool(message, toolId, change));
+}
+
+/** A new step: Claude's own in order with the text, a helper's under the call that started it. */
+function addTool(message: Message, event: { id?: string; parent?: string; name: string; detail: string }): Message {
+  const tool: ToolUse = { id: event.id, name: event.name, detail: event.detail };
+  if (event.parent) {
+    const tools = message.tools && changeTools(message.tools, event.parent, (call) => ({ ...call, children: [...(call.children ?? []), tool] }));
+    if (tools) return { ...message, tools };
+  }
+  return { ...message, tools: [...(message.tools ?? []), { ...tool, ...placeIn(message) }] };
 }
 
 /** The answer to an approval of a second model's answer, which runs as its own engine chat. */
@@ -925,7 +949,7 @@ export async function implementPlan(chatId: string, mode: PermissionMode) {
 type EngineEvent =
   | { type: "session"; chatId: string; sessionId: string }
   | { type: "delta"; chatId: string; text: string; thinking: string }
-  | { type: "tool"; chatId: string; id?: string; name: string; detail: string }
+  | { type: "tool"; chatId: string; id?: string; parent?: string; name: string; detail: string }
   | { type: "artifact"; chatId: string; artifact: Artifact }
   | { type: "toolResult"; chatId: string; id: string; failed: boolean; output: string }
   | ({ type: "permission"; chatId: string } & PermissionRequest)
@@ -1031,10 +1055,7 @@ function onLaneEvent(lane: { chatId: string; messageId: string }, laneId: string
       }));
       return;
     case "tool":
-      change((message) => ({
-        ...message,
-        tools: [...(message.tools ?? []), { id: event.id, name: event.name, detail: event.detail, ...placeIn(message) }],
-      }));
+      change((message) => addTool(message, event));
       return;
     case "toolResult":
       change((message) =>
@@ -1108,11 +1129,8 @@ function onEngineEvent(event: EngineEvent) {
       return;
     case "tool":
       updateChat(event.chatId, (chat) =>
-        updateLastAssistant(chat, (message) => ({
-          ...message,
-          // Where in the text it happened, so the answer shows text and steps in order.
-          tools: [...(message.tools ?? []), { id: event.id, name: event.name, detail: event.detail, ...placeIn(message) }],
-        })),
+        // Where in the text it happened, so the answer shows text and steps in order.
+        updateLastAssistant(chat, (message) => addTool(message, event)),
       );
       return;
     case "toolResult":
@@ -1159,7 +1177,7 @@ function onEngineEvent(event: EngineEvent) {
         // The question's answer and every one after it lose their changes.
         const from = chat.messages.findIndex((message) => message.id === event.messageId);
         const messages = chat.messages.map((message, index) =>
-          index > from && message.role === "assistant" && message.tools?.some((tool) => tool.change)
+          index > from && message.role === "assistant" && allTools(message.tools).some((tool) => tool.change)
             ? { ...message, reverted: true }
             : message,
         );

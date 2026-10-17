@@ -96,6 +96,13 @@ export interface ToolUse {
   textAt?: number;
   /** Its place among the answer's steps, artifacts and messages sent in between. */
   step?: number;
+  /** A helper's (subagent's) steps, under the call that started it. */
+  children?: ToolUse[];
+}
+
+/** Every step of an answer, helpers' steps included. */
+export function allTools(tools: ToolUse[] | undefined): ToolUse[] {
+  return (tools ?? []).flatMap((tool) => [tool, ...allTools(tool.children)]);
 }
 
 /** A message the user sent into a running answer ("Send now"), shown where it went in. */
