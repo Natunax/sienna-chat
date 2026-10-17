@@ -3680,3 +3680,9 @@ button.bubble-mention:hover {
 .artifact-zoom {
   min-height: 100%;
 }
+
+.artifact-frame-box {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}

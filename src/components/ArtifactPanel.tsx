@@ -39,6 +39,9 @@ function SealedFrame({ artifact, zoom }: { artifact: Artifact; zoom: number }) {
   // The browser preview fakes the scheme and passes the page itself.
   const preview = src.startsWith("mock:");
   return (
+    // A scaled frame keeps its unscaled layout size; the box clips it, so
+    // zooming out leaves no empty area to scroll into.
+    <div className="artifact-frame-box">
     <iframe
       className="artifact-frame"
       title={artifact.title}
@@ -54,6 +57,7 @@ function SealedFrame({ artifact, zoom }: { artifact: Artifact; zoom: number }) {
           : { width: `${100 / zoom}%`, height: `${100 / zoom}%`, transform: `scale(${zoom})`, transformOrigin: "0 0" }
       }
     />
+    </div>
   );
 }
 
