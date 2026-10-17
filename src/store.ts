@@ -359,8 +359,16 @@ async function dispatch(
   if (laneReply && rival) {
     const laneId = crypto.randomUUID();
     lanes.set(laneId, { chatId: id, messageId: laneReply.id });
-    void api
-      .chatSend({
+    // In a project the second model works in its own copy, with the chat's
+    // mode, approvals and check, so both answers can change files.
+    const projectDir = next.projectDir ?? null;
+    void (projectDir ? api.workcopyCreate(projectDir) : Promise.resolve(null))
+      .then((laneDir) => {
+        if (laneDir) {
+          updateChat(id, (current) => updateMessage(current, laneReply.id, (message) => ({ ...message, laneDir })));
+          persist(id);
+        }
+        return api.chatSend({
         chatId: laneId,
         sessionId: fork?.sessionId ?? next.sessionId,
         model: rival,
@@ -372,9 +380,10 @@ async function dispatch(
         fork: true,
         lane: true,
         rewindTo: fork?.at ?? lastTurnEnd(kept),
-        projectDir: next.projectDir ?? null,
-        // A second model never touches the project folder.
-        mode: next.projectDir ? "readonly" : mode,
+        projectDir: laneDir,
+        mode,
+        check: laneDir ? check : null,
+        });
       })
       .then((engine) => updateChat(id, (current) => updateMessage(current, laneReply.id, (message) => ({ ...message, engine }))))
       .catch((error) => {
@@ -599,6 +608,12 @@ function storedChange(request: PermissionRequest): FileChange {
 }
 
 /** Changes the tool entry with this id in the chat's last answer. */
+/** A message with one of its tools changed. */
+function withTool(message: Message, toolId: string | null | undefined, change: (tool: ToolUse) => ToolUse): Message {
+  if (!toolId || !message.tools?.some((tool) => tool.id === toolId)) return message;
+  return { ...message, tools: message.tools.map((tool) => (tool.id === toolId ? change(tool) : tool)) };
+}
+
 function updateTool(chat: Chat, toolId: string | null | undefined, change: (tool: ToolUse) => ToolUse): Chat {
   if (!toolId) return chat;
   return updateLastAssistant(chat, (message) =>
@@ -606,6 +621,39 @@ function updateTool(chat: Chat, toolId: string | null | undefined, change: (tool
       ? { ...message, tools: message.tools.map((tool) => (tool.id === toolId ? change(tool) : tool)) }
       : message,
   );
+}
+
+/** The answer to an approval of a second model's answer, which runs as its own engine chat. */
+export function answerLanePermission(chatId: string, messageId: string, request: PermissionRequest, decision: PermissionDecision) {
+  const laneId = [...lanes].find(([, lane]) => lane.chatId === chatId && lane.messageId === messageId)?.[0];
+  updateChat(chatId, (chat) =>
+    updateMessage(chat, messageId, (message) =>
+      withTool(
+        { ...message, permissions: message.permissions?.filter((entry) => entry.id !== request.id) },
+        request.toolUseId,
+        (tool) =>
+          decision === "deny"
+            ? { ...tool, denied: true }
+            : request.tool === "Edit" || request.tool === "Write"
+              ? { ...tool, change: storedChange(request) }
+              : tool,
+      ),
+    ),
+  );
+  if (laneId) void api.chatPermission(laneId, request.id, decision).catch(() => {});
+}
+
+/** Takes a second model's changes over into the project, or drops them. */
+export async function finishWorkcopy(chatId: string, messageId: string, take: boolean) {
+  const chat = chats.get(chatId);
+  const message = chat?.messages.find((entry) => entry.id === messageId);
+  if (!chat?.projectDir || !message?.laneDir) return null;
+  const result = take ? await api.workcopyApply(message.laneDir, chat.projectDir) : (await api.workcopyDiscard(message.laneDir), null);
+  updateChat(chatId, (current) =>
+    updateMessage(current, messageId, (entry) => ({ ...entry, laneDone: take ? "applied" : "discarded" })),
+  );
+  persist(chatId);
+  return result;
 }
 
 /** The user's answer to a change or command Claude wants to run. */
@@ -749,6 +797,28 @@ function onLaneEvent(lane: { chatId: string; messageId: string }, laneId: string
       return;
     case "tool":
       change((message) => ({ ...message, tools: [...(message.tools ?? []), { id: event.id, name: event.name, detail: event.detail }] }));
+      return;
+    case "toolResult":
+      change((message) =>
+        withTool(message, event.id, (tool) => ({ ...tool, failed: event.failed && !tool.denied, output: event.output || tool.output })),
+      );
+      return;
+    case "change": {
+      const { type: _type, chatId: _chatId, ...request } = event;
+      change((message) => withTool(message, request.toolUseId, (tool) => ({ ...tool, change: storedChange(request) })));
+      return;
+    }
+    case "permission": {
+      const { type: _type, chatId: _chatId, ...request } = event;
+      change((message) =>
+        message.streaming
+          ? { ...message, permissions: [...(message.permissions ?? []).filter((entry) => entry.id !== request.id), request] }
+          : message,
+      );
+      return;
+    }
+    case "permissionGone":
+      change((message) => ({ ...message, permissions: message.permissions?.filter((entry) => entry.id !== event.id) }));
       return;
     case "done":
       lanes.delete(laneId);

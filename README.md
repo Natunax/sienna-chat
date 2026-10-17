@@ -52,7 +52,7 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 
 **Beyond Claude Code**
 - **Branches:** continue from any answer in a new chat; the original stays untouched
-- **Compare models:** each question also goes to a second model, and the answers show side by side with their costs
+- **Compare models:** each question also goes to a second model, and the answers show side by side with their costs. In a project the second model works in its own working copy (an APFS clone) with the same mode, approvals, commands and check; one click takes its changes over into the project, leaving out files the project changed meanwhile
 - **Undo an answer:** one click restores the files Claude changed from that answer on (file checkpoints)
 - **Check after changes:** a project command such as `npm test` runs when an answer changed files; if it fails, Claude fixes it
 - **Templates with structured output:** a changelog from Git, a review of uncommitted changes and a task list arrive as data. Every finding or task starts a follow-up in one click

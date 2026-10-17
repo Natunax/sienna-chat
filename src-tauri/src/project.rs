@@ -12,6 +12,10 @@ pub fn validate(path: &str) -> Result<PathBuf, String> {
     if !canonical.is_dir() {
         return Err(invalid());
     }
+    // A second model's working copy in Sienna's caches (`workcopy.rs`).
+    if crate::workcopy::is_work(&canonical) {
+        return Ok(canonical);
+    }
     let home = std::env::var("HOME")
         .ok()
         .and_then(|home| Path::new(&home).canonicalize().ok())

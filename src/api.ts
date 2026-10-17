@@ -110,6 +110,12 @@ export interface PermissionRequest {
 
 export type PermissionDecision = "allow" | "always" | "deny";
 
+/** A file a second model's working copy added, changed or deleted. */
+export interface WorkcopyChange {
+  path: string;
+  kind: "added" | "modified" | "deleted";
+}
+
 /** An artifact version as Claude made it; versions share an id (`sidecar/artifacts.mjs`). */
 export interface Artifact {
   id: string;
@@ -149,6 +155,10 @@ export interface Message {
   laneSession?: string | null;
   laneTurnEnd?: string | null;
   laneTotal?: number | null;
+  /** In a project, that answer's working copy of it (`workcopy.rs`). */
+  laneDir?: string | null;
+  /** The working copy's changes were taken over or discarded. */
+  laneDone?: "applied" | "discarded";
   /** The session's running cost after this answer; a fork or redo from here starts there. */
   sessionTotal?: number | null;
   /** Written in this chat's own project session, so its file changes can be undone. */
@@ -309,6 +319,11 @@ export const api = {
       language: artifact.language ?? null,
       content: artifact.content,
     }),
+  workcopyCreate: (projectDir: string) => invoke<string>("workcopy_create", { projectDir }),
+  workcopyChanges: (work: string) => invoke<WorkcopyChange[]>("workcopy_changes", { work }),
+  workcopyApply: (work: string, projectDir: string) =>
+    invoke<{ applied: string[]; conflicts: string[] }>("workcopy_apply", { work, projectDir }),
+  workcopyDiscard: (work: string) => invoke<void>("workcopy_discard", { work }),
   voiceStart: (language: "de" | "en") => invoke<number>("voice_start", { language }),
   voiceStop: () => invoke<void>("voice_stop"),
   voiceCancel: () => invoke<void>("voice_cancel"),

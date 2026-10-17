@@ -5,6 +5,7 @@ mod mention;
 mod project;
 mod store;
 mod voice;
+mod workcopy;
 
 use engine::Engine;
 use serde::Deserialize;
@@ -600,6 +601,39 @@ fn artifact_save(
     Ok(true)
 }
 
+/// A working copy of a project for a second model's answer; returns its folder.
+#[tauri::command(async)]
+fn workcopy_create(project_dir: String) -> Result<String, String> {
+    let project = project::validate(&project_dir)?;
+    if workcopy::is_work(&project) {
+        return Err("error.projectInvalid".into());
+    }
+    workcopy::create(&project).map(|work| work.display().to_string())
+}
+
+/// The files a working copy changed, added or deleted.
+#[tauri::command(async)]
+fn workcopy_changes(work: String) -> Result<Vec<workcopy::Change>, String> {
+    workcopy::changes(&work)
+}
+
+/// Takes a working copy's changes over into the project and removes the copy.
+#[tauri::command(async)]
+fn workcopy_apply(work: String, project_dir: String) -> Result<workcopy::Applied, String> {
+    let project = project::validate(&project_dir)?;
+    if workcopy::is_work(&project) {
+        return Err("error.projectInvalid".into());
+    }
+    let result = workcopy::apply(&work, &project)?;
+    let _ = workcopy::discard(&work);
+    Ok(result)
+}
+
+#[tauri::command(async)]
+fn workcopy_discard(work: String) -> Result<(), String> {
+    workcopy::discard(&work)
+}
+
 /// The window may only show the app itself. A link in an answer that slips
 /// past the click handler must not turn the window into a browser.
 fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
@@ -674,6 +708,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let root = app.path().app_data_dir()?;
+            workcopy::init(app.path().app_cache_dir()?);
             app.manage(AppState {
                 store: Arc::new(Store::new(root)),
                 engine: Engine::default(),
@@ -719,6 +754,10 @@ pub fn run() {
             project_files,
             auto_approve,
             artifact_stage,
+            workcopy_create,
+            workcopy_changes,
+            workcopy_apply,
+            workcopy_discard,
             artifact_save,
             voice_start,
             voice_stop,

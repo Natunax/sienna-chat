@@ -16,7 +16,7 @@ import { deleteSession, query } from "@anthropic-ai/claude-agent-sdk";
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, isRisky, projectGuard, projectPrompt } from "./project.mjs";
 import { TEMPLATES } from "./templates.mjs";
@@ -230,8 +230,30 @@ function createInbox() {
   };
 }
 
+/**
+ * Claude Code keeps a session's transcript under a folder named after its
+ * working directory. A second model's answer works in a copy of the project,
+ * and a branch of it goes back to the project: the transcript moves along.
+ */
+function ensureSession(sessionId, cwd) {
+  if (!sessionId) return;
+  const projects = join(configDir, "projects");
+  const target = join(projects, cwd.replace(/[^a-zA-Z0-9]/g, "-"));
+  const file = `${sessionId}.jsonl`;
+  if (existsSync(join(target, file))) return;
+  try {
+    const from = readdirSync(projects).find((dir) => existsSync(join(projects, dir, file)));
+    if (!from) return;
+    mkdirSync(target, { recursive: true });
+    copyFileSync(join(projects, from, file), join(target, file));
+  } catch {
+    // Resuming then starts a fresh session, as for a lost transcript.
+  }
+}
+
 class ChatSession {
   constructor(chatId, config) {
+    ensureSession(config.sessionId, config.projectDir ?? workDir);
     this.chatId = chatId;
     this.config = config;
     this.inbox = createInbox();
@@ -419,8 +441,9 @@ class ChatSession {
   askUser(tool, input, { signal, toolUseID }) {
     const denied = (message) => ({ behavior: "deny", message });
     if (signal?.aborted) return Promise.resolve(denied("The answer was stopped."));
-    // A second model's answer only reads; nobody is there to approve anything.
-    if (this.config.lane) return Promise.resolve(denied("This answer cannot change anything."));
+    // A second model's answer that only reads has nobody to approve anything;
+    // one working in its own copy of the project asks like the chat's own.
+    if (this.config.lane && this.config.mode === "readonly") return Promise.resolve(denied("This answer cannot change anything."));
     if (autoApproves(tool, input)) {
       if (EDIT_TOOLS.includes(tool)) this.edited = true;
       return Promise.resolve({ behavior: "allow", updatedInput: input });

@@ -12,7 +12,9 @@ import {
 } from "../api";
 import { t, useLanguage, type TextKey } from "../i18n";
 import { ArtifactPanel } from "./ArtifactPanel";
+import { WorkcopyBar } from "./WorkcopyBar";
 import {
+  answerLanePermission,
   answerPermission,
   branchChat,
   compactChat,
@@ -328,14 +330,19 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
               return (
                 <div key={`pair:${message.id}:${language}`} className="compare-row">
                   {view}
-                  <MessageView
-                    key={`${rival.id}:${language}`}
-                    message={rival}
-                    projectDir={chat.projectDir}
-                    onBranch={branch}
-                    onArtifact={openArtifact}
-                    showModel
-                  />
+                  <div className="compare-lane">
+                    <MessageView
+                      key={`${rival.id}:${language}`}
+                      message={rival}
+                      // Its files are in its own working copy of the project.
+                      projectDir={rival.laneDir ?? chat.projectDir}
+                      onPermission={(request, decision) => answerLanePermission(chat.id, rival.id, request, decision)}
+                      onBranch={branch}
+                      onArtifact={openArtifact}
+                      showModel
+                    />
+                    {chat.projectDir && <WorkcopyBar chatId={chat.id} message={rival} />}
+                  </div>
                 </div>
               );
             })

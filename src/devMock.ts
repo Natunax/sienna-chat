@@ -156,15 +156,16 @@ function streamAnswer(chatId: string) {
 }
 
 // A project chat: Claude reads, asks to change a file, then to run the tests.
-let waitingOn: ((decision: string) => void) | null = null;
+// Approvals waiting for an answer, by request id (two answers can wait at once).
+const waitingOn = new Map<string, (decision: string) => void>();
 
 function ask(chatId: string, request: Record<string, unknown>): Promise<string> {
   void emit("engine", { type: "permission", chatId, ...request });
   return new Promise((resolve) => {
-    waitingOn = (decision) => {
+    waitingOn.set(String(request.id), (decision) => {
       void emit("engine", { type: "permissionGone", chatId, id: request.id });
       resolve(decision);
-    };
+    });
   });
 }
 
@@ -320,7 +321,7 @@ export function installDevMock() {
             return null;
           }
           if (request.format) streamTemplate(request.chatId, request.format);
-          else if (request.projectDir && !request.lane) void streamCodeAnswer(request.chatId);
+          else if (request.projectDir) void streamCodeAnswer(request.chatId);
           else streamAnswer(request.chatId);
           return null;
         }
@@ -353,8 +354,22 @@ export function installDevMock() {
           dictation = null;
           return null;
         case "chat_permission":
-          waitingOn?.((payload as { decision: string }).decision);
-          waitingOn = null;
+          {
+            const answer = payload as { id: string; decision: string };
+            waitingOn.get(answer.id)?.(answer.decision);
+            waitingOn.delete(answer.id);
+          }
+          return null;
+        case "workcopy_create":
+          return "/mock/copies/1/work";
+        case "workcopy_changes":
+          return [
+            { path: "src/cart.ts", kind: "modified" },
+            { path: "src/cart.test.ts", kind: "added" },
+          ];
+        case "workcopy_apply":
+          return { applied: ["src/cart.ts"], conflicts: ["src/cart.test.ts"] };
+        case "workcopy_discard":
           return null;
         default:
           return null;

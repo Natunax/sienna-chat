@@ -958,8 +958,11 @@ input[type="checkbox"] {
 }
 
 .tool-fold-summary {
-  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
   font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tool-fold-toggle:hover .tool-fold-summary,
@@ -1404,12 +1407,115 @@ button.tool-toggle:hover .tool-name,
   align-items: start;
 }
 
-.compare-row > .msg-assistant {
+.compare-row > .msg-assistant,
+.compare-lane > .msg-assistant {
   min-width: 0;
   padding: 12px 14px 6px;
   border-radius: 12px;
   background: var(--fill);
   font-size: 14px;
+}
+
+.compare-lane {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Under a second model's answer in a project: its working copy's changes. */
+.workcopy {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 0.5px var(--separator-strong);
+  font-size: 13px;
+}
+
+.workcopy.is-done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  color: var(--label-2);
+}
+
+.workcopy svg {
+  flex-shrink: 0;
+  color: var(--label-3);
+}
+
+.workcopy-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.workcopy-title {
+  flex: 1;
+  font-weight: 500;
+}
+
+.workcopy-count {
+  color: var(--label-2);
+  font-size: 12px;
+}
+
+.workcopy-files {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workcopy-files li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.workcopy-kind {
+  flex-shrink: 0;
+  width: 62px;
+  color: var(--label-2);
+  font-size: 11.5px;
+}
+
+.workcopy-kind.is-added {
+  color: var(--diff-add-text);
+}
+
+.workcopy-kind.is-deleted {
+  color: var(--danger);
+}
+
+.workcopy-path {
+  min-width: 0;
+  overflow: hidden;
+  font: 12px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workcopy-more {
+  color: var(--label-3);
+  font-size: 12px;
+}
+
+.workcopy-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.workcopy-conflicts,
+.workcopy-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
 }
 
 /* Side by side only while each answer keeps a readable width. */
