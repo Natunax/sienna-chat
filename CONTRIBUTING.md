@@ -29,8 +29,9 @@ Keep pull requests focused on one change, and match the style of the code around
 ```bash
 npx tsc --noEmit
 npm test
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 UI changes need a screenshot in light and dark mode in the pull request.

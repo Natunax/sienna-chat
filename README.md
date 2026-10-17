@@ -16,7 +16,7 @@
 </div>
 
 <p align="center">
-  <img src="docs/screenshot-dark.png" width="49%" alt="A chat with a code answer in dark mode" />
+  <img src="docs/screenshot-dark.png" width="49%" alt="Sonnet 5.5 and Opus 5.5 answering the same question in dark mode, each with an artifact, one of them open in the side panel" />
   <img src="docs/screenshot-light.png" width="49%" alt="A project chat in light mode, waiting for approval of a file change shown as a diff" />
 </p>
 
@@ -38,12 +38,15 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 - Web search as a toggle, with sources as links that open in your browser
 - Images, PDFs and text files (code, Markdown, CSV, JSON, logs) by button, drag and drop or paste
 - Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.1 per chat, with five effort levels from low to max, and **Ultracode**: the highest effort, with two read-only helpers (a researcher and an adversarial verifier) Claude briefs in parallel in a project chat or with web search
-- ⌥↩ or ⇧↩ for a new line in the input field
 - Regenerate or edit the last question, copy any answer, and chat titles written by Haiku
-- A side panel as in Claude Code, on the right of every chat: all its **artifacts**, its **file changes** per file as git shows them (also a compared model's working copy), its latest **plan**, and a **browser** for any web page or your local dev server
-- Artifacts as in Claude: a small web app, an SVG, a document or a code file opens in the side panel, with preview and code, versions, zoom with Fit and Fill, copy and save as file. Claude sees a screenshot of each HTML or SVG artifact it makes (rendered offscreen with the same sealed policy) and can check other sizes, so it corrects its own layout
-- A stopwatch on every answer: live while it runs, then how long it took; compared answers show their times side by side and mark the faster one
+- A stopwatch on every answer: live while it runs, then how long it took
 - Dictation as in Claude Code: hold ⌥Space or click the microphone. Speech is recognized on your Mac, and the text lands in the input field for you to check before you send
+
+**Artifacts and the side panel**
+- A side panel as in Claude Code, on the right of every chat: all its **artifacts**, its **file changes** per file as git shows them (also a compared model's working copy), its latest **plan**, and a **browser** for any web page or your local dev server
+- Artifacts as in Claude: a small web app, an SVG, a document or a code file, with preview and code, versions, zoom with Fit and Fill, copy and save as file
+- Claude sees a screenshot of each HTML or SVG artifact it makes (rendered offscreen with the same sealed policy) and can check other sizes, so it corrects its own layout
+- Both sidebars resize by dragging their border and remember their width
 
 **Coding in a project folder**
 - Add a folder as a project; its chats read and search it, and its `CLAUDE.md` is included
@@ -65,19 +68,24 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 - Costs per answer, per chat, per month and per model, plus a monthly budget cap
 - A context meter with a breakdown and "compact now"; automatic compaction is noted in the chat
 - Chat history with search (⌘K), pinning, renaming and branches nested under their chat
-- Both sidebars resize by dragging their border (double-click resets), and remember their width
 - Native Mac look: the system sidebar material, light and dark mode, and respect for reduced motion and transparency
 - English and German, following your Mac or the language you pick in Settings
 
 <table>
   <tr>
-    <td width="33%"><img src="docs/modes.png" alt="The permission mode menu: Auto, Manual, Accept edits, Plan and Bypass permissions" /></td>
-    <td width="33%"><img src="docs/compare.png" alt="Sonnet 5.5 and Opus 5.5 answering the same question side by side" /></td>
-    <td width="33%"><img src="docs/review.png" alt="A review template answer with findings ranked by severity" /></td>
+    <td width="50%"><img src="docs/changes.png" alt="The side panel listing a chat's file changes with a diff" /></td>
+    <td width="50%"><img src="docs/compare.png" alt="Two models' artifacts side by side at the same scale" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The side panel: a chat's file changes, as git shows them</sub></td>
+    <td align="center"><sub>Two models' artifacts side by side</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/modes.png" alt="The permission mode menu: Auto, Manual, Accept edits, Plan and Bypass permissions" /></td>
+    <td width="50%"><img src="docs/review.png" alt="A review template answer with findings ranked by severity" /></td>
   </tr>
   <tr>
     <td align="center"><sub>Permission modes, as in Claude Code</sub></td>
-    <td align="center"><sub>Two models, one question</sub></td>
     <td align="center"><sub>A review as structured output</sub></td>
   </tr>
 </table>
@@ -135,13 +143,14 @@ Destructive commands (`sudo`, recursive `rm`, `git push`, `git reset --hard` and
 | ⌘K or ⌘F | Search chats |
 | ⌘\ | Show or hide the sidebar |
 | ⌘, | Settings |
-| ↩ / ⇧↩ | Send / new line |
+| ↩ / ⇧↩ or ⌥↩ | Send / new line |
 | ⌘. | Stop the answer |
 | ⌥Space | Dictate: hold to talk, or tap to start and stop (Esc discards) |
 | ⌘↩ / Esc | Allow / decline an approval |
 | / | Commands |
 | @ | Mention a file or folder (⇥ opens a folder) |
 | F2 | Rename a chat or project |
+| ← / → | On a sidebar's border: narrower / wider (⇧ for bigger steps) |
 
 ## How it works
 
@@ -164,12 +173,13 @@ flowchart LR
 | Path | What it is |
 | --- | --- |
 | `src/` | React UI: `store.ts` holds chats and routes engine events, `components/` the views, `i18n.ts` the texts, `diff.ts` the line diff |
-| `src-tauri/src/` | Rust shell: `lib.rs` commands, `engine.rs` engine process, `artifact.rs` sealed artifact pages, `mention.rs` `@` mentions, `voice.rs` dictation, `store.rs` storage, `project.rs` folder checks, `keychain.rs` |
-| `src-tauri/voice/` | The dictation helper in Swift, built by `build.rs` and bundled next to the app |
+| `src/components/` | Among them `ChatView` and `MessageView` (the thread), `SidePanel` and `BrowserView` (the side panel), `ArtifactPanel` and `ArtifactCompare`, `Composer`, `Sidebar`, `SettingsDialog` |
+| `src-tauri/src/` | Rust shell: `lib.rs` commands, `engine.rs` engine process, `artifact.rs` sealed artifact pages, `browser.rs` the side panel's browser, `workcopy.rs` a compared model's working copy, `mention.rs` `@` mentions, `voice.rs` dictation, `store.rs` storage, `project.rs` folder checks, `keychain.rs` |
+| `src-tauri/voice/`, `src-tauri/snapshot/` | Swift helpers for dictation and for the screenshots Claude takes of its artifacts, built by `build.rs` and bundled next to the app |
 | `sidecar/index.mjs` | Chat engine on the Claude Agent SDK, bundled into `sidecar/dist/engine.mjs` for the app |
 | `sidecar/project.mjs` | The guard for project folders, modes and destructive commands, tested in `project.test.mjs` |
 | `sidecar/templates.mjs` | JSON schemas of the templates |
-| `sidecar/artifacts.mjs` | The artifact tool Claude creates and updates artifacts with |
+| `sidecar/artifacts.mjs` | The artifact tools Claude creates, updates and looks at artifacts with |
 | `src/devMock.ts` | Browser preview with sample data, only in `npm run dev` |
 
 ## Privacy and security
@@ -226,9 +236,10 @@ In the browser preview, `http://localhost:1430/?demo=chat` opens a sample chat, 
 
 ```bash
 npx tsc --noEmit
-npm test                                    # guard tests: folders, modes, risky commands
-cargo test --manifest-path src-tauri/Cargo.toml
+npm test                                    # guard tests: folders, modes, risky commands, helpers
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Contributing
@@ -245,6 +256,8 @@ Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING
 - The app is about 245 MB. The engine itself is a 1 MB file; the rest is the Claude Code binary the Agent SDK runs.
 - Not signed or notarized for distribution yet; macOS may ask you to confirm the first launch.
 - Costs are the SDK's estimates, not Anthropic's invoice.
+- Sienna signs in with an API key only. A Claude subscription login is deliberately not offered: Anthropic does not allow third-party apps built on the Agent SDK to use claude.ai logins without approval.
+- The browser preview (`npm run dev`) shows the side panel's browser without pages: those need the app's native web view.
 
 ## Acknowledgements
 
