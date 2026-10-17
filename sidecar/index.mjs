@@ -809,9 +809,9 @@ function allowedFor(config) {
   ];
 }
 
-/** Artifacts in every chat, but not for a template's data or a second model's answer. */
+/** Artifacts in every chat and for a second model's answer too, but not for a template's data. */
 function artifactsFor(config) {
-  return !config.format && !config.lane;
+  return !config.format;
 }
 
 /** A tool result's text, whether it came as a string or as content blocks. */

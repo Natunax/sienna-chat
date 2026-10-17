@@ -733,6 +733,9 @@ function onLaneEvent(lane: { chatId: string; messageId: string }, laneId: string
   const change = (update: (message: Message) => Message) =>
     updateChat(lane.chatId, (chat) => updateMessage(chat, lane.messageId, update));
   switch (event.type) {
+    case "artifact":
+      change((message) => ({ ...message, artifacts: [...(message.artifacts ?? []), event.artifact] }));
+      return;
     case "session":
       change((message) => ({ ...message, laneSession: event.sessionId }));
       persist(lane.chatId);

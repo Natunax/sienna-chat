@@ -152,25 +152,29 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
   const chatRef = useRef(chat);
   chatRef.current = chat;
   // The artifact open next to the chat: its id and version (null follows the newest).
-  const [shown, setShown] = useState<{ id: string; version: number | null } | null>(null);
-  const versionsOf = (id: string) =>
-    chat.messages.flatMap((message) => (message.lane ? [] : (message.artifacts ?? []).filter((entry) => entry.id === id)));
-  const openArtifact = useCallback(
-    (id: string, artifact: Artifact) => {
-      const all = chatRef.current.messages.flatMap((message) =>
-        message.lane ? [] : (message.artifacts ?? []).filter((entry) => entry.id === id),
-      );
-      const at = all.indexOf(artifact);
-      setShown({ id, version: at < 0 || at === all.length - 1 ? null : at });
-    },
-    [],
-  );
-  // A new artifact in the running answer opens by itself, as in Claude.
-  const newest = chat.messages.at(-1)?.artifacts?.at(-1);
+  // The chat's own answers and a second model's keep separate versions of an id.
+  const [shown, setShown] = useState<{ id: string; lane: boolean; version: number | null } | null>(null);
+  const versionsIn = (messages: Chat["messages"], id: string, lane: boolean) =>
+    messages.flatMap((message) =>
+      Boolean(message.lane) === lane ? (message.artifacts ?? []).filter((entry) => entry.id === id) : [],
+    );
+  const openArtifact = useCallback((id: string, artifact: Artifact) => {
+    const messages = chatRef.current.messages;
+    const lane = Boolean(messages.find((message) => message.artifacts?.includes(artifact))?.lane);
+    const all = versionsIn(messages, id, lane);
+    const at = all.indexOf(artifact);
+    setShown({ id, lane, version: at < 0 || at === all.length - 1 ? null : at });
+  }, []);
+  // A new artifact in the running answer opens by itself, as in Claude; the
+  // chat's own answer wins over a second model's.
+  const recent = chat.messages.slice(lastQuestionAt + 1);
+  const newestOwn = recent.find((message) => !message.lane)?.artifacts?.at(-1);
+  const newestLane = recent.find((message) => message.lane)?.artifacts?.at(-1);
+  const newest = newestOwn ?? newestLane;
   useEffect(() => {
-    if (newest && streaming) setShown({ id: newest.id, version: null });
+    if (newest && streaming) setShown({ id: newest.id, lane: !newestOwn, version: null });
   }, [newest, streaming]);
-  const shownVersions = shown ? versionsOf(shown.id) : [];
+  const shownVersions = shown ? versionsIn(chat.messages, shown.id, shown.lane) : [];
 
   const send = (text: string, attachments: OutgoingAttachment[]) => {
     stuck.current = true;
@@ -329,6 +333,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
                     message={rival}
                     projectDir={chat.projectDir}
                     onBranch={branch}
+                    onArtifact={openArtifact}
                     showModel
                   />
                 </div>
@@ -352,10 +357,10 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
     </main>
     {shown && shownVersions.length > 0 && (
       <ArtifactPanel
-        key={shown.id}
+        key={`${shown.lane ? "lane:" : ""}${shown.id}`}
         versions={shownVersions}
         version={shown.version}
-        onVersion={(version) => setShown({ id: shown.id, version: version === shownVersions.length - 1 ? null : version })}
+        onVersion={(version) => setShown({ ...shown, version: version === shownVersions.length - 1 ? null : version })}
         onClose={() => setShown(null)}
       />
     )}
