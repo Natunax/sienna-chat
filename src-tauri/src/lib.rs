@@ -1,3 +1,4 @@
+mod artifact;
 mod engine;
 mod keychain;
 mod mention;
@@ -17,6 +18,7 @@ struct AppState {
     store: Arc<Store>,
     engine: Engine,
     voice: Voice,
+    artifacts: artifact::Artifacts,
 }
 
 pub(crate) const MODELS: [&str; 4] = [
@@ -562,12 +564,49 @@ fn voice_cancel(state: State<AppState>) {
     state.voice.cancel();
 }
 
+/// Keeps an HTML or SVG artifact for its sealed frame; returns its address token.
+#[tauri::command(async)]
+fn artifact_stage(kind: String, content: String, state: State<AppState>) -> Result<String, String> {
+    state.artifacts.stage(&kind, &content)
+}
+
+/// Saves an artifact where the user picks in the save dialog. The path comes
+/// from the dialog, never from the window.
+#[tauri::command(async)]
+fn artifact_save(
+    id: String,
+    kind: String,
+    language: Option<String>,
+    content: String,
+    app: AppHandle,
+) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    if !["html", "svg", "markdown", "code"].contains(&kind.as_str()) {
+        return Err("error.invalidRequest".into());
+    }
+    let name = artifact::file_name(&id, &kind, language.as_deref().unwrap_or(""));
+    let Some(path) = app
+        .dialog()
+        .file()
+        .set_file_name(&name)
+        .blocking_save_file()
+    else {
+        return Ok(false);
+    };
+    let path = path
+        .into_path()
+        .map_err(|_| "error.saveFailed".to_string())?;
+    std::fs::write(path, content).map_err(|_| "error.saveFailed".to_string())?;
+    Ok(true)
+}
+
 /// The window may only show the app itself. A link in an answer that slips
 /// past the click handler must not turn the window into a browser.
 fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new("navigation-guard")
         .on_navigation(|_, url| {
-            matches!(url.scheme(), "tauri" | "asset")
+            // `artifact:` is the sealed frame next to the chat.
+            matches!(url.scheme(), "tauri" | "asset" | "artifact")
                 || (url.host_str() == Some("localhost") && cfg!(debug_assertions))
                 || url.host_str() == Some("tauri.localhost")
         })
@@ -577,6 +616,12 @@ fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(navigation_guard())
+        .register_uri_scheme_protocol("artifact", |context, request| {
+            match context.app_handle().try_state::<AppState>() {
+                Some(state) => state.artifacts.serve(request.uri().path()),
+                None => tauri::http::Response::new(Vec::new()),
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -585,6 +630,7 @@ pub fn run() {
                 store: Arc::new(Store::new(root)),
                 engine: Engine::default(),
                 voice: Voice::default(),
+                artifacts: artifact::Artifacts::default(),
             });
             Ok(())
         })
@@ -624,6 +670,8 @@ pub fn run() {
             project_guess_check,
             project_files,
             auto_approve,
+            artifact_stage,
+            artifact_save,
             voice_start,
             voice_stop,
             voice_cancel,

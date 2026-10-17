@@ -4,6 +4,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useSyncExternalStore } from "react";
 import {
+  type Artifact,
   api,
   DEFAULT_MODE,
   TEMPLATES,
@@ -646,6 +647,7 @@ type EngineEvent =
   | { type: "session"; chatId: string; sessionId: string }
   | { type: "delta"; chatId: string; text: string; thinking: string }
   | { type: "tool"; chatId: string; id?: string; name: string; detail: string }
+  | { type: "artifact"; chatId: string; artifact: Artifact }
   | { type: "toolResult"; chatId: string; id: string; failed: boolean; output: string }
   | ({ type: "permission"; chatId: string } & PermissionRequest)
   | { type: "permissionGone"; chatId: string; id: string }
@@ -784,6 +786,11 @@ function onEngineEvent(event: EngineEvent) {
           text: message.text + event.text,
           thinking: event.thinking ? (message.thinking ?? "") + event.thinking : message.thinking,
         })),
+      );
+      return;
+    case "artifact":
+      updateChat(event.chatId, (chat) =>
+        updateLastAssistant(chat, (message) => ({ ...message, artifacts: [...(message.artifacts ?? []), event.artifact] })),
       );
       return;
     case "tool":

@@ -20,6 +20,7 @@ import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, isRisky, projectGuard, projectPrompt } from "./project.mjs";
 import { TEMPLATES } from "./templates.mjs";
+import { ARTIFACT_PROMPT, ARTIFACT_TOOL, artifactServer } from "./artifacts.mjs";
 
 const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
 // The packaged app ships the engine as one bundled file plus the Claude Code
@@ -302,7 +303,18 @@ class ChatSession {
         // Backups of changed files, so an answer's changes can be undone.
         enableFileCheckpointing: config.projectDir ? true : undefined,
         outputFormat: config.format ? { type: "json_schema", schema: TEMPLATES[config.format] } : undefined,
-        systemPrompt: config.projectDir ? SYSTEM_PROMPT + projectPrompt(config.projectDir) : SYSTEM_PROMPT,
+        systemPrompt:
+          (config.projectDir ? SYSTEM_PROMPT + projectPrompt(config.projectDir) : SYSTEM_PROMPT) +
+          (artifactsFor(config) ? ARTIFACT_PROMPT : ""),
+        // The artifact tool runs in this process and only reports to the window.
+        mcpServers: artifactsFor(config)
+          ? {
+              sienna: artifactServer((artifact) => {
+                this.flush();
+                emit({ type: "artifact", chatId: this.chatId, artifact });
+              }),
+            }
+          : undefined,
         cwd: config.projectDir ?? workDir,
         env: childEnv,
         pathToClaudeCodeExecutable: claudeBinary,
@@ -612,7 +624,8 @@ class ChatSession {
         this.lastAssistantUuid = message.uuid;
         for (const block of message.message.content) {
           // The answer format's own tool is how a template answer arrives, not a step.
-          if (block.type !== "tool_use" || block.name === "StructuredOutput") continue;
+          // An artifact shows as its own card, not as a step.
+          if (block.type !== "tool_use" || block.name === "StructuredOutput" || block.name === ARTIFACT_TOOL) continue;
           this.flush();
           const input = block.input ?? {};
           if (RUN_TOOLS.includes(block.name)) this.commandIds.add(block.id);
@@ -789,7 +802,16 @@ function toolsFor(config) {
 
 /** The tools that run without asking; changes and commands are not among them. */
 function allowedFor(config) {
-  return [...(config.projectDir ? READ_TOOLS : []), ...(config.web ? WEB_TOOLS : [])];
+  return [
+    ...(config.projectDir ? READ_TOOLS : []),
+    ...(config.web ? WEB_TOOLS : []),
+    ...(artifactsFor(config) ? [ARTIFACT_TOOL] : []),
+  ];
+}
+
+/** Artifacts in every chat, but not for a template's data or a second model's answer. */
+function artifactsFor(config) {
+  return !config.format && !config.lane;
 }
 
 /** A tool result's text, whether it came as a string or as content blocks. */

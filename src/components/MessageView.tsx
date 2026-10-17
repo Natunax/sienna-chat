@@ -8,6 +8,7 @@ import {
   type PermissionMode,
   type PermissionRequest,
   type ToolUse,
+  type Artifact,
 } from "../api";
 import { storedErrorText, t, type TextKey } from "../i18n";
 import { loadHighlighter, renderBlocks } from "../markdown";
@@ -16,6 +17,7 @@ import { shortTokens } from "./ContextMeter";
 import { DiffView } from "./DiffView";
 import {
   AlertIcon,
+  ArtifactIcon,
   BranchIcon,
   CheckIcon,
   ChevronRightIcon,
@@ -211,6 +213,30 @@ function Tools({
   );
 }
 
+const ARTIFACT_KINDS: Record<Artifact["kind"], TextKey> = {
+  html: "artifact.html",
+  svg: "artifact.svg",
+  markdown: "artifact.markdown",
+  code: "artifact.code",
+};
+
+/** An artifact in the answer: a card that opens it next to the chat. */
+function ArtifactCard({ artifact, onOpen }: { artifact: Artifact; onOpen?: () => void }) {
+  const kind = artifact.kind === "code" && artifact.language ? artifact.language : t(ARTIFACT_KINDS[artifact.kind]);
+  return (
+    <button type="button" className="artifact-card" onClick={onOpen} disabled={!onOpen}>
+      <span className="artifact-card-icon">
+        <ArtifactIcon size={18} />
+      </span>
+      <span className="artifact-card-text">
+        <span className="artifact-card-title">{artifact.title}</span>
+        <span className="artifact-card-kind">{kind}</span>
+      </span>
+      {onOpen && <span className="artifact-card-open">{t("artifact.open")}</span>}
+    </button>
+  );
+}
+
 /**
  * A file sent with a question: an image or a document icon, and the name cut
  * in its middle so the extension stays readable.
@@ -262,7 +288,7 @@ function MentionText({ text, projectDir }: { text: string; projectDir: string })
   );
 }
 
-function Markdown({ text, final }: { text: string; final: boolean }) {
+export function Markdown({ text, final }: { text: string; final: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const blocks = useMemo(() => renderBlocks(text, final), [text, final]);
 
@@ -323,7 +349,7 @@ function Thinking({ text, active }: { text: string; active: boolean }) {
   );
 }
 
-function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -412,6 +438,8 @@ interface Props {
   showModel?: boolean;
   /** Sends a task or finding of a template answer as the next message. */
   onFollowUp?: (text: string) => void;
+  /** Opens an artifact of this answer next to the chat. */
+  onArtifact?: (id: string, version: Artifact) => void;
 }
 
 function MessageViewImpl({
@@ -424,6 +452,7 @@ function MessageViewImpl({
   onRevert,
   showModel,
   onFollowUp,
+  onArtifact,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [confirmRevert, setConfirmRevert] = useState(false);
@@ -506,6 +535,9 @@ function MessageViewImpl({
       {showModel && modelName && <div className="msg-model">{modelName}</div>}
       {(message.thinking || waiting) && <Thinking text={message.thinking ?? ""} active={waiting} />}
       {message.tools?.length ? <Tools tools={message.tools} active={streaming} projectDir={projectDir} reverted={message.reverted} /> : null}
+      {message.artifacts?.map((artifact, index) => (
+        <ArtifactCard key={index} artifact={artifact} onOpen={onArtifact ? () => onArtifact(artifact.id, artifact) : undefined} />
+      ))}
       {structured && message.format ? (
         <StructuredView format={message.format} data={structured} onFollowUp={onFollowUp} />
       ) : (

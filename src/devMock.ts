@@ -314,6 +314,11 @@ export function installDevMock() {
           return null;
         case "chat_send": {
           const request = payload?.request as { chatId: string; projectDir?: string | null; lane?: boolean; format?: string | null };
+          const text = String((request as { text?: string }).text ?? "");
+          if (/artefakt|artifact|rechner|calculator/i.test(text)) {
+            streamArtifact(request.chatId, /blau|blue/i.test(text));
+            return null;
+          }
           if (request.format) streamTemplate(request.chatId, request.format);
           else if (request.projectDir && !request.lane) void streamCodeAnswer(request.chatId);
           else streamAnswer(request.chatId);
@@ -326,6 +331,11 @@ export function installDevMock() {
         }
         case "project_guess_check":
           return "npm test";
+        case "artifact_stage":
+          // The browser preview has no artifact scheme: the page itself comes back.
+          return `mock:${(payload as { content: string }).content}`;
+        case "artifact_save":
+          return true;
         case "project_files":
           return [
             "README.md", "package.json", "tsconfig.json", "docs", "docs/architecture.md", "docs/read me.md",
@@ -352,6 +362,37 @@ export function installDevMock() {
     },
     { shouldMockEvents: true },
   );
+}
+
+// An answer that makes an artifact: a small calculator, blue on request.
+function streamArtifact(chatId: string, blue: boolean) {
+  const color = blue ? "#2563eb" : "#b5552f";
+  const content = `<!doctype html><html><head><meta charset="utf-8"><style>
+body{font:15px -apple-system,system-ui,sans-serif;margin:0;padding:32px;color:#1c1917}
+h1{font-size:20px;margin:0 0 16px}label{display:block;margin:12px 0 4px;color:#57534e}
+input{font:inherit;padding:8px 10px;border:1px solid #d6d3d1;border-radius:8px;width:200px}
+button{margin-top:16px;font:inherit;padding:8px 14px;border:0;border-radius:8px;background:${color};color:#fff}
+output{display:block;margin-top:16px;font-size:24px;font-weight:600}</style></head><body>
+<h1>${english ? "Monthly budget" : "Monatsbudget"}</h1>
+<label>${english ? "Income" : "Einnahmen"}</label><input id="i" type="number" value="3200">
+<label>${english ? "Spending" : "Ausgaben"}</label><input id="o" type="number" value="2450">
+<button onclick="r.textContent=(i.value-o.value).toFixed(2)+' €'">${english ? "Calculate" : "Berechnen"}</button>
+<output id="r"></output></body></html>`;
+  void emit("engine", { type: "session", chatId, sessionId: "55555555-5555-4555-8555-555555555555" });
+  setTimeout(() => {
+    void emit("engine", {
+      type: "artifact",
+      chatId,
+      artifact: { id: "budget-calculator", title: english ? "Budget calculator" : "Budget-Rechner", kind: "html", content },
+    });
+  }, 500);
+  setTimeout(() => {
+    const text = english
+      ? "I built a small budget calculator; it is open on the right."
+      : "Ich habe einen kleinen Budget-Rechner gebaut, er ist rechts offen.";
+    void emit("engine", { type: "delta", chatId, text, thinking: "" });
+    void emit("engine", { type: "done", chatId, costUsd: 0.014, turnEnd: crypto.randomUUID(), error: null });
+  }, 900);
 }
 
 // Dictation: a sentence that arrives word by word, with a level that moves.

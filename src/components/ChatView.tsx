@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEve
 import {
   DEFAULT_MODE,
   formatUsd,
+  type Artifact,
   type Chat,
   type OutgoingAttachment,
   type PermissionDecision,
@@ -10,6 +11,7 @@ import {
   type PermissionRequest,
 } from "../api";
 import { t, useLanguage, type TextKey } from "../i18n";
+import { ArtifactPanel } from "./ArtifactPanel";
 import {
   answerPermission,
   branchChat,
@@ -147,6 +149,29 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
     [chat.id, stuck],
   );
 
+  const chatRef = useRef(chat);
+  chatRef.current = chat;
+  // The artifact open next to the chat: its id and version (null follows the newest).
+  const [shown, setShown] = useState<{ id: string; version: number | null } | null>(null);
+  const versionsOf = (id: string) =>
+    chat.messages.flatMap((message) => (message.lane ? [] : (message.artifacts ?? []).filter((entry) => entry.id === id)));
+  const openArtifact = useCallback(
+    (id: string, artifact: Artifact) => {
+      const all = chatRef.current.messages.flatMap((message) =>
+        message.lane ? [] : (message.artifacts ?? []).filter((entry) => entry.id === id),
+      );
+      const at = all.indexOf(artifact);
+      setShown({ id, version: at < 0 || at === all.length - 1 ? null : at });
+    },
+    [],
+  );
+  // A new artifact in the running answer opens by itself, as in Claude.
+  const newest = chat.messages.at(-1)?.artifacts?.at(-1);
+  useEffect(() => {
+    if (newest && streaming) setShown({ id: newest.id, version: null });
+  }, [newest, streaming]);
+  const shownVersions = shown ? versionsOf(shown.id) : [];
+
   const send = (text: string, attachments: OutgoingAttachment[]) => {
     stuck.current = true;
     void sendMessage(chat.id, text, attachments);
@@ -234,6 +259,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
   );
 
   return (
+    <div className={`chat-area${shownVersions.length ? " has-artifact" : ""}`}>
     <main
       className="chat"
       onDragOver={onDragOver}
@@ -288,6 +314,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
                   onRevert={chat.projectDir ? revert : undefined}
                   showModel={Boolean(message.lane || chat.messages[index + 1]?.lane)}
                   onFollowUp={streaming ? undefined : followUp}
+                  onArtifact={openArtifact}
                 />
               );
               // A second model's answer stands next to the chat's own.
@@ -323,5 +350,15 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
         </div>
       )}
     </main>
+    {shown && shownVersions.length > 0 && (
+      <ArtifactPanel
+        key={shown.id}
+        versions={shownVersions}
+        version={shown.version}
+        onVersion={(version) => setShown({ id: shown.id, version: version === shownVersions.length - 1 ? null : version })}
+        onClose={() => setShown(null)}
+      />
+    )}
+    </div>
   );
 }

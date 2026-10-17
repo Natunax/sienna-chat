@@ -248,3 +248,24 @@ export const ImageIcon = (p: IconProps) => (
     <path d="m3.5 14.5 4-4 3 3 2-2 4 4" />
   </Icon>
 );
+
+export const ArtifactIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="3.5" width="14" height="13" rx="2" />
+    <path d="M3 7.5h14" />
+    <path d="m8.25 10.25-1.75 1.75 1.75 1.75M11.75 10.25l1.75 1.75-1.75 1.75" />
+  </Icon>
+);
+
+export const DownloadIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M10 3.5v9M6.5 9 10 12.5 13.5 9" />
+    <path d="M4 15.5h12" />
+  </Icon>
+);
+
+export const ChevronLeftIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m12 5-5 5 5 5" />
+  </Icon>
+);

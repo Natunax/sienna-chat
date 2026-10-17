@@ -7,6 +7,9 @@
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
+// Shows content next to the chat; it touches no file (`artifacts.mjs`).
+const ARTIFACT_TOOL = "mcp__sienna__artifact";
+
 export const READ_TOOLS = ["Read", "Grep", "Glob"];
 export const EDIT_TOOLS = ["Edit", "Write"];
 export const RUN_TOOLS = ["Bash"];
@@ -315,7 +318,7 @@ export function projectGuard(projectDir, webTools, { mode = () => "default", onE
   const check = async (input) => {
     const tool = input.tool_name;
     const current = mode();
-    if (webTools.includes(tool)) return decide("allow");
+    if (webTools.includes(tool) || tool === ARTIFACT_TOOL) return decide("allow");
     // Commands run in the project folder.
     if (RUN_TOOLS.includes(tool)) {
       // Looking around never needs an answer, also in Plan mode.

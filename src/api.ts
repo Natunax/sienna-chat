@@ -110,6 +110,15 @@ export interface PermissionRequest {
 
 export type PermissionDecision = "allow" | "always" | "deny";
 
+/** An artifact version as Claude made it; versions share an id (`sidecar/artifacts.mjs`). */
+export interface Artifact {
+  id: string;
+  title: string;
+  kind: "html" | "svg" | "markdown" | "code";
+  language?: string;
+  content: string;
+}
+
 export interface AttachmentMeta {
   name: string;
   mediaType: string;
@@ -123,6 +132,8 @@ export interface Message {
   thinking?: string;
   tools?: ToolUse[];
   attachments?: AttachmentMeta[];
+  /** Artifacts this answer made, each a version of its id. */
+  artifacts?: Artifact[];
   costUsd?: number;
   error?: string | null;
   streaming?: boolean;
@@ -290,6 +301,14 @@ export const api = {
     invoke<void>("chat_permission", { chatId, id, decision }),
   projectOpenFile: (projectDir: string, path: string) => invoke<void>("project_open_file", { projectDir, path }),
   chatMode: (chatId: string, mode: PermissionMode) => invoke<void>("chat_mode", { chatId, mode }),
+  artifactStage: (kind: "html" | "svg", content: string) => invoke<string>("artifact_stage", { kind, content }),
+  artifactSave: (artifact: Artifact) =>
+    invoke<boolean>("artifact_save", {
+      id: artifact.id,
+      kind: artifact.kind,
+      language: artifact.language ?? null,
+      content: artifact.content,
+    }),
   voiceStart: (language: "de" | "en") => invoke<number>("voice_start", { language }),
   voiceStop: () => invoke<void>("voice_stop"),
   voiceCancel: () => invoke<void>("voice_cancel"),

@@ -39,6 +39,7 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 - Images, PDFs and text files (code, Markdown, CSV, JSON, logs) by button, drag and drop or paste
 - Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.1 per chat, with five effort levels from low to max
 - Regenerate or edit the last question, copy any answer, and chat titles written by Haiku
+- Artifacts as in Claude: a small web app, an SVG, a document or a code file opens next to the chat, with preview and code, versions, copy and save as file
 - Dictation as in Claude Code: hold ⌥Space or click the microphone. Speech is recognized on your Mac, and the text lands in the input field for you to check before you send
 
 **Coding in a project folder**
@@ -159,11 +160,12 @@ flowchart LR
 | Path | What it is |
 | --- | --- |
 | `src/` | React UI: `store.ts` holds chats and routes engine events, `components/` the views, `i18n.ts` the texts, `diff.ts` the line diff |
-| `src-tauri/src/` | Rust shell: `lib.rs` commands, `engine.rs` engine process, `mention.rs` `@` mentions, `voice.rs` dictation, `store.rs` storage, `project.rs` folder checks, `keychain.rs` |
+| `src-tauri/src/` | Rust shell: `lib.rs` commands, `engine.rs` engine process, `artifact.rs` sealed artifact pages, `mention.rs` `@` mentions, `voice.rs` dictation, `store.rs` storage, `project.rs` folder checks, `keychain.rs` |
 | `src-tauri/voice/` | The dictation helper in Swift, built by `build.rs` and bundled next to the app |
 | `sidecar/index.mjs` | Chat engine on the Claude Agent SDK, bundled into `sidecar/dist/engine.mjs` for the app |
 | `sidecar/project.mjs` | The guard for project folders, modes and destructive commands, tested in `project.test.mjs` |
 | `sidecar/templates.mjs` | JSON schemas of the templates |
+| `sidecar/artifacts.mjs` | The artifact tool Claude creates and updates artifacts with |
 | `src/devMock.ts` | Browser preview with sample data, only in `npm run dev` |
 
 ## Privacy and security
@@ -189,6 +191,7 @@ Sienna lets a language model change files and run commands on your Mac, so the b
   - Audio is never stored. The microphone is on only while the button glows, and goes off when you send, switch chats, leave the window, or after five minutes.
   - Dictated text is never sent on its own, so a misheard word or a voice from a video cannot start work in your project.
   - The helper runs without the API key, and Rust passes on only known events with checked text.
+- **Artifacts run sealed.** HTML and SVG artifacts load in a sandboxed frame from Sienna's own `artifact:` scheme, with an opaque origin and their own Content Security Policy: inline code and cdnjs.cloudflare.com only, no network requests, storage, frames, forms or navigation out. They cannot reach Sienna's commands, your key or your chats. Saving goes through the macOS save dialog.
 - **The window is locked down.**
   - Answers are sanitized (marked + DOMPurify) and shown under a strict Content Security Policy. Remote images are not loaded.
   - Links show their target and open only `http` and `https`, in your browser.
