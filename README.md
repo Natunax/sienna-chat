@@ -112,7 +112,7 @@ Move `src-tauri/target/release/bundle/macos/Sienna.app` to `/Applications` and o
 
 | Mode | Runs without asking | Asks first |
 | --- | --- | --- |
-| Auto | Everything: Sienna allows every change, command and check itself, as if you clicked Allow. Commands run in the macOS sandbox. Where Claude Code's own auto mode is available for the model, its checks come first | Destructive commands only |
+| Auto | What Claude Code's auto mode judges safe, in the macOS sandbox | Anything it is unsure about |
 | Manual | Reading and searching | Every file change and every command |
 | Accept edits | File changes | Commands |
 | Plan | Reading only; the answer is a plan | Nothing, because nothing is changed |

@@ -18,7 +18,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, isRisky, projectGuard, projectPrompt } from "./project.mjs";
+import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, projectGuard, projectPrompt } from "./project.mjs";
 import { TEMPLATES } from "./templates.mjs";
 
 const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
@@ -135,12 +135,7 @@ const SANDBOXED_MODES = ["auto", "bypassPermissions"];
 /** Models known to lack auto mode, learned from the SDK. */
 const noAutoMode = new Set();
 
-/**
- * The SDK's permission mode for Sienna's. Without Claude Code's auto mode for
- * the model, Sienna's Auto runs as "default" and allows what then asks itself.
- */
-function sdkMode(mode, model) {
-  if (mode === "auto" && noAutoMode.has(model)) return "default";
+function sdkMode(mode) {
   return mode === "plan" || mode === "readonly" ? "default" : mode;
 }
 
@@ -269,7 +264,7 @@ class ChatSession {
         tools: toolsFor(config),
         // Changes and commands are not pre-approved: they go to canUseTool.
         allowedTools: allowedFor(config),
-        permissionMode: config.projectDir ? sdkMode(config.mode, config.model) : "dontAsk",
+        permissionMode: config.projectDir ? sdkMode(config.mode) : "dontAsk",
         // Lets the user switch to bypassing later; the guard still holds.
         allowDangerouslySkipPermissions: config.projectDir ? true : undefined,
         sandbox:
@@ -349,30 +344,32 @@ class ChatSession {
     };
   }
 
-  /**
-   * Learns whether the model has Claude Code's auto mode. Without it, Sienna's
-   * Auto stays on: the SDK asks, and `askUser` allows on the user's behalf.
-   */
+  /** Falls back to manual approvals when the model has no auto mode. */
   checkAutoMode() {
-    if (noAutoMode.has(this.config.model)) return;
+    if (noAutoMode.has(this.config.model)) return this.fallBack();
     this.query
       .supportedModels()
       .then((models) => {
         const info = models.find((entry) => entry.value === this.config.model || entry.resolvedModel === this.config.model);
         if (info && info.supportsAutoMode === false) {
           noAutoMode.add(this.config.model);
-          if (this.config.mode === "auto") this.query.setPermissionMode("default").catch(() => {});
+          this.fallBack();
         }
       })
       .catch(() => {});
   }
 
+  fallBack() {
+    if (this.config.mode !== "auto") return;
+    this.setMode("default");
+    emit({ type: "mode", chatId: this.chatId, mode: "default", reason: "autoUnavailable" });
+  }
+
   /** Switches the mode, live if the answer is running. */
   setMode(mode) {
-    const before = sdkMode(this.config.mode, this.config.model);
+    const before = this.config.mode;
     this.config.mode = mode;
-    const after = sdkMode(mode, this.config.model);
-    if (before !== after) this.query.setPermissionMode(after).catch(() => {});
+    if (sdkMode(before) !== sdkMode(mode)) this.query.setPermissionMode(sdkMode(mode)).catch(() => {});
   }
 
   /** How full the context window is; a local estimate, no extra API call. */
@@ -405,12 +402,6 @@ class ChatSession {
     if (signal?.aborted) return Promise.resolve(denied("The answer was stopped."));
     // A second model's answer only reads; nobody is there to approve anything.
     if (this.config.lane) return Promise.resolve(denied("This answer cannot change anything."));
-    // Sienna's Auto: whatever asks is allowed, as if the user clicked Allow;
-    // destructive commands still ask (`isRisky`), as in every mode.
-    if (this.config.mode === "auto" && !(RUN_TOOLS.includes(tool) && isRisky(input?.command))) {
-      if (EDIT_TOOLS.includes(tool)) this.edited = true;
-      return Promise.resolve({ behavior: "allow", updatedInput: input });
-    }
     // Anything else that asks (the sandbox wanting network access, say) shows as it is.
     const id = randomUUID();
     this.flush();

@@ -650,7 +650,7 @@ type EngineEvent =
   | ({ type: "permission"; chatId: string } & PermissionRequest)
   | { type: "permissionGone"; chatId: string; id: string }
   | ({ type: "change"; chatId: string } & PermissionRequest)
-  | { type: "mode"; chatId: string; mode: PermissionMode }
+  | { type: "mode"; chatId: string; mode: PermissionMode; reason?: "autoUnavailable" }
   | { type: "filesReverted"; chatId: string; messageId: string; files: string[]; error: string | null }
   | {
       type: "done";
@@ -824,7 +824,12 @@ function onEngineEvent(event: EngineEvent) {
       );
       return;
     case "mode":
-      updateChat(event.chatId, (chat) => ({ ...chat, mode: event.mode }));
+      updateChat(event.chatId, (chat) => {
+        const next = { ...chat, mode: event.mode };
+        return event.reason === "autoUnavailable"
+          ? withNote(next, { id: crypto.randomUUID(), role: "note", text: "note.autoUnavailable" })
+          : next;
+      });
       persist(event.chatId);
       return;
     case "filesReverted":
