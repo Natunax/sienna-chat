@@ -708,6 +708,33 @@ class ChatSession {
     }, IDLE_CLOSE_MS);
   }
 
+  /**
+   * Task notifications Claude Code adds to the conversation when a background
+   * helper stops: which call it was, how it ended, and its report.
+   */
+  onNotifications(message) {
+    const content = message.message?.content;
+    const text = typeof content === "string" ? content : resultText(content);
+    if (!text.includes("<task-notification>")) return;
+    for (const block of text.split("<task-notification>").slice(1)) {
+      const tag = (name) => block.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`))?.[1]?.trim() ?? null;
+      const id = tag("tool-use-id");
+      if (!id) continue;
+      this.runningHelpers.delete(id);
+      const status = tag("status");
+      emit({
+        type: "helper",
+        chatId: this.chatId,
+        id,
+        state: HELPER_PATCH[status] ?? "done",
+        steps: null,
+        summary: tag("summary") ? maskSecrets(tag("summary")).slice(0, 300) : null,
+      });
+      const report = tag("result");
+      if (report) emit({ type: "toolResult", chatId: this.chatId, id, failed: status === "failed", output: maskSecrets(report).slice(0, MAX_REPORT_CHARS) });
+    }
+  }
+
   /** Nothing runs here: no answer, no compaction, no helper. */
   get idle() {
     return !this.busy && !this.compacting && this.runningHelpers.size === 0;
@@ -788,6 +815,8 @@ class ChatSession {
       clearTimeout(this.idleTimer);
       emit({ type: "autoTurn", chatId: this.chatId });
     }
+    // A helper in the background reported back (or ended with the last process).
+    if (message.type === "user" && !message.parent_tool_use_id) this.onNotifications(message);
     // Claude Code echoes a message it took into the running answer, and names it on the answer's frames.
     if (message.type === "user" && message.isReplay && message.uuid) this.steered(message.uuid);
     for (const uuid of message.user_message_uuids ?? []) this.steered(uuid);
@@ -801,6 +830,9 @@ class ChatSession {
             return;
           }
           emit({ type: "session", chatId: this.chatId, sessionId: message.session_id });
+          // A new process: helpers of an earlier one ended with it.
+          if (!this.started) emit({ type: "helpersEnded", chatId: this.chatId });
+          this.started = true;
           // After a rewind the old transcript still holds the dropped turn.
           const replaced = this.config.replacesSession;
           if (replaced && replaced !== message.session_id) {
@@ -963,6 +995,13 @@ class ChatSession {
       const helper = this.helperIds.delete(block.tool_use_id);
       if (!command && !helper && !block.is_error) continue;
       const text = command || helper ? maskSecrets(resultText(block.content)) : "";
+      // Started in the background: it works on, and reports in a task notification.
+      if (helper && !block.is_error && /async agent launched/i.test(text)) {
+        this.runningHelpers.add(block.tool_use_id);
+        emit({ type: "helper", chatId: this.chatId, id: block.tool_use_id, state: "running", steps: null, summary: null });
+        continue;
+      }
+      if (helper) this.runningHelpers.delete(block.tool_use_id);
       emit({
         type: "toolResult",
         chatId: this.chatId,

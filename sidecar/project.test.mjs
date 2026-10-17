@@ -228,7 +228,7 @@ test("helpers run in the foreground and in the folder; their calls pass the guar
     [{ tool_name: "Agent", tool_input: { subagent_type: "general-purpose", prompt: "x" } }, { default: "allow", plan: "allow", readonly: "allow" }],
     [{ tool_name: "Agent", tool_input: { subagent_type: "researcher", prompt: "x" } }, { default: "allow", plan: "allow", readonly: "allow" }],
     [{ tool_name: "Agent", tool_input: { subagent_type: "general-purpose", isolation: "worktree" } }, { default: "deny", plan: "deny", readonly: "deny" }],
-    // Asked for the background, a helper still runs in the foreground (see below).
+    // In the background, as in Claude Code: the engine keeps the session open for it.
     [{ tool_name: "Task", tool_input: { subagent_type: "Explore", run_in_background: true } }, { default: "allow", plan: "allow", readonly: "allow" }],
     // A helper's change asks like any other, and plan mode and a compared answer refuse it.
     [{ tool_name: "Edit", agent_id: "a1", tool_input: { file_path: join(root, "src", "main.rs") } }, { default: "ask", plan: "deny", readonly: "deny" }],
@@ -241,13 +241,11 @@ test("helpers run in the foreground and in the folder; their calls pass the guar
       assert.equal(decision(await guard(mode)(input)), want, `${mode}: ${JSON.stringify(input)}`);
     }
   }
-  // The SDK would start a helper in the background unless told otherwise.
-  for (const params of [{ subagent_type: "general-purpose" }, { subagent_type: "Explore", run_in_background: true }]) {
-    const result = await check({ tool_name: "Agent", tool_input: params });
-    assert.equal(result.hookSpecificOutput.updatedInput.run_in_background, false);
-    const outside = await helperGuard().PreToolUse[0].hooks[0]({ tool_name: "Agent", tool_input: params });
-    assert.equal(outside.hookSpecificOutput.updatedInput.run_in_background, false);
-  }
+  // Outside a project folder only the helpers' rule applies.
+  const outside = helperGuard().PreToolUse[0].hooks[0];
+  assert.equal(decision(await outside({ tool_name: "Agent", tool_input: { subagent_type: "Explore", run_in_background: true } })), "allow");
+  assert.equal(decision(await outside({ tool_name: "Agent", tool_input: { isolation: "worktree" } })), "deny");
+  assert.equal(decision(await outside({ tool_name: "WebSearch", tool_input: {} })), "mode");
 });
 
 test("destructive commands inside loops, conditions, eval and wrapper options still ask", () => {

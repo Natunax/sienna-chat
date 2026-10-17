@@ -329,10 +329,10 @@ function leavesFolder(pattern) {
 }
 
 /**
- * Helpers (subagents) run in the foreground and in the project folder. The
- * SDK starts them in the background unless told otherwise; one there would go
- * on after the answer, unseen, and a worktree would change the repository
- * unasked. So the call is rewritten to the foreground, and isolation refused.
+ * Helpers (subagents) work in the project folder itself: a worktree would
+ * change the repository unasked. As in Claude Code they may run in the
+ * background, so Claude stays free to answer; the engine keeps their session
+ * open until they report back.
  */
 function helperDecision(params = {}) {
   if (params.isolation) {
@@ -344,13 +344,7 @@ function helperDecision(params = {}) {
       },
     };
   }
-  return {
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "allow",
-      updatedInput: { ...params, run_in_background: false },
-    },
-  };
+  return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" } };
 }
 
 /** For chats without a project folder: only the helpers' rule. */

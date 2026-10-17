@@ -745,6 +745,19 @@ export function placeIn(message: Message): { textAt: number; step: number } {
 }
 
 /** A message with one of its tools changed. */
+/** Helpers still marked as running, marked stopped; untouched lists stay the same objects. */
+function stopHelpers(tools: ToolUse[]): ToolUse[] {
+  let changed = false;
+  const next = tools.map((tool) => {
+    const children = tool.children && stopHelpers(tool.children);
+    const running = tool.helper?.state === "running";
+    if (!running && children === tool.children) return tool;
+    changed = true;
+    return { ...tool, children, ...(running ? { helper: { ...tool.helper!, state: "stopped" as const } } : {}) };
+  });
+  return changed ? next : tools;
+}
+
 /** A helper's state, wherever its call sits in the chat. */
 function withHelper(chat: Chat, event: { id: string; state: NonNullable<ToolUse["helper"]>["state"]; steps: number | null; summary: string | null }): Chat {
   let changed = false;
@@ -1022,6 +1035,7 @@ type EngineEvent =
       summary: string | null;
     }
   | { type: "autoTurn"; chatId: string }
+  | { type: "helpersEnded"; chatId: string }
   | { type: "steered"; chatId: string; id: string }
   | { type: "steerTurn"; chatId: string; id: string }
   | { type: "steerReturned"; chatId: string; id: string }
@@ -1293,6 +1307,15 @@ function onEngineEvent(event: EngineEvent) {
       // It may report after its answer ended, so it is looked for in every message.
       updateChat(event.chatId, (chat) => withHelper(chat, event));
       persist(event.chatId);
+      return;
+    case "helpersEnded":
+      // Their process is gone: helpers still shown at work were stopped.
+      updateChat(event.chatId, (chat) => ({
+        ...chat,
+        messages: chat.messages.map((message) =>
+          message.role === "assistant" && message.tools ? { ...message, tools: stopHelpers(message.tools) } : message,
+        ),
+      }));
       return;
     case "autoTurn": {
       // Claude goes on by itself; its answer must not end in the user's next one.
