@@ -345,6 +345,16 @@ export function installDevMock() {
         case "chat_send": {
           const request = payload?.request as { chatId: string; projectDir?: string | null; lane?: boolean; format?: string | null };
           const text = String((request as { text?: string }).text ?? "");
+          // Claude going on by itself after its answer, as when a helper reports back.
+          if (/auto-test/i.test(text)) {
+            streamAnswer(request.chatId);
+            setTimeout(() => {
+              void emit("engine", { type: "autoTurn", chatId: request.chatId });
+              void emit("engine", { type: "delta", chatId: request.chatId, text: english ? "The helper is done: the tests pass." : "Der Helfer ist fertig: Die Tests laufen durch.", thinking: "" });
+            }, 6000);
+            setTimeout(() => void emit("engine", { type: "done", chatId: request.chatId, costUsd: 0.003, turnEnd: crypto.randomUUID(), error: null }), 7500);
+            return null;
+          }
           if (/artefakt|artifact|rechner|calculator/i.test(text)) {
             streamArtifact(request.chatId, /blau|blue/i.test(text));
             return null;

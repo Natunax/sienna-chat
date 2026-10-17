@@ -1094,6 +1094,16 @@ input[type="checkbox"] {
   margin-top: 2px;
 }
 
+/* An answer nobody asked for: Claude went on by itself. */
+.msg-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--label-3);
+  font-size: 12px;
+}
+
 /* A message the user sent into the running answer, where it went in. */
 .msg-steer {
   display: grid;

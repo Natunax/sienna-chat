@@ -354,8 +354,14 @@ function titleFrom(text: string, fallback: string) {
  * Changes the chat's own last answer. A second model's answer to the same
  * question may follow it; anything else after it means there is none.
  */
+/**
+ * The answer the engine's events belong to: the earliest one of the chat's own
+ * still running (Claude Code answers turns in order; a turn it took on by
+ * itself may come before a question just sent), else the last one.
+ */
 function updateLastAssistant(chat: Chat, change: (message: Message) => Message): Chat {
-  let index = chat.messages.length - 1;
+  const running = chat.messages.findIndex((message) => message.role === "assistant" && !message.lane && message.streaming);
+  let index = running >= 0 ? running : chat.messages.length - 1;
   while (index >= 0 && chat.messages[index].lane) index--;
   const last = chat.messages[index];
   if (!last || last.role !== "assistant") return chat;
@@ -958,6 +964,18 @@ export function steerNow(chatId: string, id: string) {
   api.chatSteer(chatId, id, entry.text).catch(() => onEngineEvent({ type: "steerReturned", chatId, id }));
 }
 
+/**
+ * Where a turn nobody sent goes: at the end, unless the user's question just
+ * went out and its answer has not begun; then before that question, which
+ * Claude Code answers after this turn.
+ */
+function insertBeforeOpenQuestion(messages: Message[], answer: Message): Message[] {
+  const last = messages[messages.length - 1];
+  const question = messages[messages.length - 2];
+  const waiting = last?.role === "assistant" && last.streaming && !last.text && !last.tools?.length && question?.role === "user";
+  return waiting ? [...messages.slice(0, -2), answer, question, last] : [...messages, answer];
+}
+
 /** Changes the message that holds a steer. */
 function withSteer(chat: Chat, id: string, change: (message: Message, steer: Steer) => Message): Chat {
   const index = chat.messages.findIndex((message) => message.steers?.some((steer) => steer.id === id));
@@ -1003,6 +1021,7 @@ type EngineEvent =
       steps: number | null;
       summary: string | null;
     }
+  | { type: "autoTurn"; chatId: string }
   | { type: "steered"; chatId: string; id: string }
   | { type: "steerTurn"; chatId: string; id: string }
   | { type: "steerReturned"; chatId: string; id: string }
@@ -1275,6 +1294,17 @@ function onEngineEvent(event: EngineEvent) {
       updateChat(event.chatId, (chat) => withHelper(chat, event));
       persist(event.chatId);
       return;
+    case "autoTurn": {
+      // Claude goes on by itself; its answer must not end in the user's next one.
+      const answer: Message = { id: crypto.randomUUID(), role: "assistant", text: "", streaming: true, startedAt: Date.now(), auto: true };
+      updateChat(event.chatId, (chat) => ({
+        ...chat,
+        // An empty answer still open (a message just sent) keeps its place after this one.
+        messages: insertBeforeOpenQuestion(chat.messages, answer),
+        updatedAt: Date.now(),
+      }));
+      return;
+    }
     case "steered":
       updateChat(event.chatId, (chat) =>
         withSteer(chat, event.id, (message) => ({

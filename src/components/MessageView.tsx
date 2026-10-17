@@ -700,6 +700,13 @@ function MessageViewImpl({
           {tie && <span className="msg-tie">{t("timer.tie")}</span>}
         </div>
       )}
+      {/* Nobody asked: Claude went on by itself, as when a helper reported back. */}
+      {message.auto && (
+        <div className="msg-auto">
+          <AgentsIcon size={13} />
+          {t("message.auto")}
+        </div>
+      )}
       {/* Folded, only the sign that it is still at work shows. */}
       {(collapsed ? waiting && !message.text : message.thinking || waiting) && <Thinking text={message.thinking ?? ""} active={waiting} />}
       {collapsed || message.format ? (

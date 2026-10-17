@@ -179,6 +179,8 @@ export interface Message {
   artifacts?: Artifact[];
   /** Messages the user sent into this answer while it ran. */
   steers?: Steer[];
+  /** Claude went on by itself, without a message (a helper it left running reported back). */
+  auto?: boolean;
   costUsd?: number;
   error?: string | null;
   streaming?: boolean;

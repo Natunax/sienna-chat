@@ -259,6 +259,7 @@ Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING
 - The app is about 245 MB. The engine itself is a 1 MB file; the rest is the Claude Code binary the Agent SDK runs.
 - Not signed or notarized for distribution yet; macOS may ask you to confirm the first launch.
 - Costs are the SDK's estimates, not Anthropic's invoice.
+- Quitting or rebuilding Sienna ends answers and helpers still at work; Claude finds out on the next message and can pick up from there.
 - Sienna signs in with an API key only. A Claude subscription login is deliberately not offered: Anthropic does not allow third-party apps built on the Agent SDK to use claude.ai logins without approval.
 - The browser preview (`npm run dev`) shows the side panel's browser without pages: those need the app's native web view.
 

@@ -375,6 +375,8 @@ class ChatSession {
     this.commandIds = new Set();
     /** Helpers still at work, to report when they are done. */
     this.helperIds = new Set();
+    /** Helpers the SDK reports as running, by the call that started them; the session stays open for them. */
+    this.runningHelpers = new Set();
     /** Files changed in the running answer, those changed without asking, and check rounds run for it. */
     this.edited = false;
     this.unasked = new Set();
@@ -694,6 +696,24 @@ class ChatSession {
   }
 
   /**
+   * Closes the session after a while without answers. Closing ends the Claude
+   * Code process, and with it any helper still at work there, unseen; so while
+   * helpers run, the session stays.
+   */
+  closeWhenIdle() {
+    clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      if (this.busy || this.runningHelpers.size) this.closeWhenIdle();
+      else this.close();
+    }, IDLE_CLOSE_MS);
+  }
+
+  /** Nothing runs here: no answer, no compaction, no helper. */
+  get idle() {
+    return !this.busy && !this.compacting && this.runningHelpers.size === 0;
+  }
+
+  /**
    * A message into the running answer ("Send now"). Claude Code takes it in at
    * the answer's next step; if the answer ends first, it starts an answer of
    * its own, which the window then shows as a new question.
@@ -760,6 +780,14 @@ class ChatSession {
       this.steers.delete(id);
       emit({ type: "steerTurn", chatId: this.chatId, id });
     }
+    // A turn nobody sent: Claude Code goes on by itself, for example when a
+    // helper it left running reports back. It gets an answer of its own, so
+    // it never ends the user's next one.
+    if (!this.busy && !this.compacting && (message.type === "stream_event" || message.type === "assistant")) {
+      this.busy = true;
+      clearTimeout(this.idleTimer);
+      emit({ type: "autoTurn", chatId: this.chatId });
+    }
     // Claude Code echoes a message it took into the running answer, and names it on the answer's frames.
     if (message.type === "user" && message.isReplay && message.uuid) this.steered(message.uuid);
     for (const uuid of message.user_message_uuids ?? []) this.steered(uuid);
@@ -782,6 +810,9 @@ class ChatSession {
           // A helper's own lifecycle: started, progress, done; by the call that started it.
           const state = message.subtype === "task_updated" ? HELPER_PATCH[message.patch?.status] : HELPER_STATES[message.subtype];
           if (!state && message.subtype !== "task_progress") return;
+          const finished = message.subtype === "task_notification" || (state && state !== "running");
+          if (finished) this.runningHelpers.delete(message.tool_use_id);
+          else this.runningHelpers.add(message.tool_use_id);
           emit({
             type: "helper",
             chatId: this.chatId,
@@ -845,7 +876,7 @@ class ChatSession {
             model: this.config.model,
             error: failed ? "error.compactFailed" : null,
           });
-          this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
+          this.closeWhenIdle();
           this.reportContext();
           return;
         }
@@ -882,7 +913,7 @@ class ChatSession {
           this.close();
           return;
         }
-        this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
+        this.closeWhenIdle();
         this.reportContext();
         return;
       }
@@ -1097,7 +1128,8 @@ async function onSend(command) {
     config.rewindTo = command.rewindTo ?? null;
     if (!config.rewindTo) config.sessionId = null;
   }
-  if (session && !session.sameConfig(config)) {
+  // A changed setting needs a new session, but not while helpers work in this one.
+  if (session && !session.sameConfig(config) && session.runningHelpers.size === 0) {
     session.close();
     sessions.delete(command.chatId);
     session = undefined;
@@ -1189,7 +1221,8 @@ async function onRewindFiles(command) {
 function evictIdleSessions() {
   for (const [chatId, session] of sessions) {
     if (sessions.size < MAX_LIVE_SESSIONS) return;
-    if (session.busy) continue;
+    // A session with helpers at work stays: closing it would end them unseen.
+    if (!session.idle) continue;
     session.close();
     sessions.delete(chatId);
   }
