@@ -568,7 +568,14 @@ fn voice_cancel(state: State<AppState>) {
 
 /// Opens a page in the side panel's browser, over the given area of the window.
 #[tauri::command(async)]
-fn browser_open(app: AppHandle, url: String, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
+fn browser_open(
+    app: AppHandle,
+    url: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
     browser::open(&app, &url, x, y, width, height)
 }
 
@@ -737,7 +744,10 @@ pub fn run() {
         .register_uri_scheme_protocol("artifact", |context, request| {
             // Artifacts are for the app's own window, never for a web page.
             if context.webview_label() != "main" {
-                return tauri::http::Response::builder().status(403).body(Vec::new()).unwrap();
+                return tauri::http::Response::builder()
+                    .status(403)
+                    .body(Vec::new())
+                    .unwrap();
             }
             match context.app_handle().try_state::<AppState>() {
                 Some(state) => state.artifacts.serve(request.uri().path()),
@@ -760,7 +770,9 @@ pub fn run() {
         })
         // A reload of the window never leaves the microphone on.
         .on_page_load(|webview, payload| {
-            if webview.label() == "main" && payload.event() == tauri::webview::PageLoadEvent::Started {
+            if webview.label() == "main"
+                && payload.event() == tauri::webview::PageLoadEvent::Started
+            {
                 // The window starts over: a page left from before would float over it.
                 let _ = browser::close(webview.app_handle());
                 if let Some(state) = webview.try_state::<AppState>() {

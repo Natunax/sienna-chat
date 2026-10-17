@@ -4,3 +4,4 @@ dist/
 sidecar/dist/
 src-tauri/binaries/
 .impeccable/
+.claude/

@@ -37,7 +37,8 @@ fn is_local_host(host: &str) -> bool {
 }
 
 /// Media play on in a hidden page otherwise; pausing is all a page gets told.
-const PAUSE_MEDIA: &str = "document.querySelectorAll('video,audio').forEach(function(m){try{m.pause()}catch(e){}})";
+const PAUSE_MEDIA: &str =
+    "document.querySelectorAll('video,audio').forEach(function(m){try{m.pause()}catch(e){}})";
 
 #[derive(Clone, Serialize)]
 struct Navigation {
@@ -81,10 +82,19 @@ fn bounds(x: f64, y: f64, width: f64, height: f64) -> Rect {
 }
 
 /// Opens a page, creating the browser over the given area the first time.
-pub fn open(app: &AppHandle, url: &str, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
+pub fn open(
+    app: &AppHandle,
+    url: &str,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
     let url = web_url(url)?;
     if let Some(webview) = app.get_webview(LABEL) {
-        webview.set_bounds(bounds(x, y, width, height)).map_err(|e| e.to_string())?;
+        webview
+            .set_bounds(bounds(x, y, width, height))
+            .map_err(|e| e.to_string())?;
         webview.show().map_err(|e| e.to_string())?;
         return webview.navigate(url).map_err(|e| e.to_string());
     }
@@ -130,7 +140,9 @@ pub fn open(app: &AppHandle, url: &str, x: f64, y: f64, width: f64, height: f64)
 
 pub fn set_bounds(app: &AppHandle, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
     match app.get_webview(LABEL) {
-        Some(webview) => webview.set_bounds(bounds(x, y, width, height)).map_err(|e| e.to_string()),
+        Some(webview) => webview
+            .set_bounds(bounds(x, y, width, height))
+            .map_err(|e| e.to_string()),
         None => Ok(()),
     }
 }
