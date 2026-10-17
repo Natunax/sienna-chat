@@ -2,8 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Artifact } from "../api";
 import { errorText, t } from "../i18n";
 import { loadHighlighter } from "../markdown";
-import { ArtifactIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon } from "./icons";
+import { ArtifactIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, MinusIcon, PlusIcon } from "./icons";
 import { CopyButton, Markdown } from "./MessageView";
+
+/** Zoom steps of the preview and code, as in a browser. */
+const ZOOMS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 
 interface Props {
   /** Every version of the artifact, oldest first. */
@@ -18,7 +21,7 @@ interface Props {
  * HTML and SVG run in a frame from Rust's `artifact:` scheme with their own
  * strict policy and no access to the app (`src-tauri/src/artifact.rs`).
  */
-function SealedFrame({ artifact }: { artifact: Artifact }) {
+function SealedFrame({ artifact, zoom }: { artifact: Artifact; zoom: number }) {
   const [src, setSrc] = useState<string | null>(null);
   const kind = artifact.kind === "svg" ? "svg" : "html";
   useEffect(() => {
@@ -44,6 +47,12 @@ function SealedFrame({ artifact }: { artifact: Artifact }) {
       src={preview ? undefined : `artifact://localhost/${src}`}
       srcDoc={preview ? src.slice(5) : undefined}
       referrerPolicy="no-referrer"
+      // The page is laid out at its zoomed size and scaled back to fill the panel.
+      style={
+        zoom === 1
+          ? undefined
+          : { width: `${100 / zoom}%`, height: `${100 / zoom}%`, transform: `scale(${zoom})`, transformOrigin: "0 0" }
+      }
     />
   );
 }
@@ -82,7 +91,24 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
   const previewable = artifact.kind !== "code";
   const [view, setView] = useState<"preview" | "source">("preview");
   const [saved, setSaved] = useState<string | null>(null);
+  const [zoomAt, setZoomAt] = useState(ZOOMS.indexOf(1));
+  const zoom = ZOOMS[zoomAt];
   const showing = previewable ? view : "source";
+  const zoomBy = (step: number) => setZoomAt((at) => Math.min(ZOOMS.length - 1, Math.max(0, at + step)));
+
+  // ⌘+ / ⌘− / ⌘0 zoom while the panel is open, as in a browser.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.altKey || event.ctrlKey) return;
+      if (event.key === "+" || event.key === "=") zoomBy(1);
+      else if (event.key === "-") zoomBy(-1);
+      else if (event.key === "0") setZoomAt(ZOOMS.indexOf(1));
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     if (!saved) return;
@@ -97,16 +123,23 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
       .catch((reason) => setSaved(errorText(reason)));
 
   const body = useMemo(() => {
-    if (showing === "source") return <CodeView artifact={artifact} />;
+    // Code and documents scale like text in a browser.
+    if (showing === "source") {
+      return (
+        <div className="artifact-zoom" style={{ zoom }}>
+          <CodeView artifact={artifact} />
+        </div>
+      );
+    }
     if (artifact.kind === "markdown") {
       return (
-        <div className="artifact-document markdown">
+        <div className="artifact-document markdown" style={{ zoom }}>
           <Markdown text={artifact.content} final />
         </div>
       );
     }
-    return <SealedFrame artifact={artifact} />;
-  }, [showing, artifact]);
+    return <SealedFrame artifact={artifact} zoom={zoom} />;
+  }, [showing, artifact, zoom]);
 
   return (
     <aside className="artifact-panel" aria-label={t("artifact.label")}>
@@ -144,6 +177,17 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
           </div>
         )}
         <div className="artifact-actions">
+          <div className="artifact-zoom-control" role="group" aria-label={t("artifact.zoom")}>
+            <button type="button" className="icon-button" disabled={zoomAt === 0} onClick={() => zoomBy(-1)} aria-label={t("artifact.zoomOut")} title={`${t("artifact.zoomOut")} (⌘−)`}>
+              <MinusIcon size={14} />
+            </button>
+            <button type="button" className="artifact-zoom-value" onClick={() => setZoomAt(ZOOMS.indexOf(1))} title={`${t("artifact.zoomReset")} (⌘0)`}>
+              {Math.round(zoom * 100)} %
+            </button>
+            <button type="button" className="icon-button" disabled={zoomAt === ZOOMS.length - 1} onClick={() => zoomBy(1)} aria-label={t("artifact.zoomIn")} title={`${t("artifact.zoomIn")} (⌘+)`}>
+              <PlusIcon size={14} />
+            </button>
+          </div>
           {saved && (
             <span className="artifact-status" role="status">
               {saved}

@@ -3561,7 +3561,8 @@ button.bubble-mention:hover {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   padding: 0 10px 10px 18px;
   box-shadow: inset 0 -0.5px 0 var(--separator);
 }
@@ -3642,4 +3643,40 @@ button.bubble-mention:hover {
 .artifact-document {
   max-width: 72ch;
   padding: 22px 28px 40px;
+}
+
+/* Zoom of an artifact: − 100 % +, the figure resets. */
+.artifact-zoom-control {
+  display: flex;
+  align-items: center;
+  margin-right: 6px;
+  padding-right: 6px;
+  box-shadow: inset -0.5px 0 0 var(--separator);
+}
+
+.artifact-zoom-control .icon-button {
+  width: 26px;
+  height: 26px;
+}
+
+.artifact-zoom-control .icon-button:disabled {
+  opacity: 0.35;
+}
+
+.artifact-zoom-value {
+  min-width: 46px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--label-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.artifact-zoom-value:hover {
+  background: var(--fill-hover);
+  color: var(--label);
+}
+
+.artifact-zoom {
+  min-height: 100%;
 }
