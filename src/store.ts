@@ -318,6 +318,7 @@ async function dispatch(
     role: "assistant",
     text: "",
     streaming: true,
+    startedAt: Date.now(),
     plan: chat.projectDir && mode === "plan" ? true : undefined,
     format,
   };
@@ -326,7 +327,7 @@ async function dispatch(
     ? chat.compareModel
     : null;
   const laneReply: Message | null = rival
-    ? { id: crypto.randomUUID(), role: "assistant", text: "", streaming: true, lane: true, model: rival }
+    ? { id: crypto.randomUUID(), role: "assistant", text: "", streaming: true, lane: true, model: rival, startedAt: reply.startedAt }
     : null;
   if (laneReply) reply.model = chat.model;
   const first = kept.length === 0;
@@ -825,6 +826,7 @@ function onLaneEvent(lane: { chatId: string; messageId: string }, laneId: string
       change((message) => ({
         ...message,
         streaming: false,
+        durationMs: message.startedAt ? Date.now() - message.startedAt : undefined,
         costUsd: (message.costUsd ?? 0) + event.costUsd,
         laneTurnEnd: event.turnEnd ?? null,
         laneTotal: typeof event.total === "number" ? event.total : null,
@@ -949,6 +951,7 @@ function onEngineEvent(event: EngineEvent) {
           ...message,
           streaming: false,
           permissions: undefined,
+          durationMs: message.startedAt ? Date.now() - message.startedAt : message.durationMs,
           costUsd: (message.costUsd ?? 0) + event.costUsd,
           turnEnd: event.turnEnd ?? null,
           sessionTotal: typeof event.total === "number" ? event.total : message.sessionTotal,

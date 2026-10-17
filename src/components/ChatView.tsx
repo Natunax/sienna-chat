@@ -1,8 +1,9 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
+import { cloneElement, useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import {
   DEFAULT_MODE,
   formatUsd,
+  MODELS,
   type Artifact,
   type Chat,
   type OutgoingAttachment,
@@ -12,6 +13,7 @@ import {
 } from "../api";
 import { t, useLanguage, type TextKey } from "../i18n";
 import { ArtifactPanel } from "./ArtifactPanel";
+import { ArtifactCompare, type CompareSide } from "./ArtifactCompare";
 import { WorkcopyBar } from "./WorkcopyBar";
 import {
   answerLanePermission,
@@ -34,7 +36,7 @@ import {
   useSummaries,
 } from "../store";
 import { Composer, type ComposerSettings } from "./Composer";
-import { SidebarIcon } from "./icons";
+import { CompareIcon, SidebarIcon } from "./icons";
 import { MessageView } from "./MessageView";
 
 /** The empty chat greets by time of day. */
@@ -177,6 +179,23 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
     if (newest && streaming) setShown({ id: newest.id, lane: !newestOwn, version: null });
   }, [newest, streaming]);
   const shownVersions = shown ? versionsIn(chat.messages, shown.id, shown.lane) : [];
+
+  // Two compared answers' artifacts side by side: the last one each made.
+  const [comparing, setComparing] = useState<{ own: string; lane: string } | null>(null);
+  const sideOf = (messageId: string): CompareSide | null => {
+    const message = chat.messages.find((entry) => entry.id === messageId);
+    const artifact = message?.artifacts?.at(-1);
+    if (!message || !artifact) return null;
+    const versions = versionsIn(chat.messages, artifact.id, Boolean(message.lane));
+    return {
+      model: MODELS.find((entry) => entry.id === (message.model ?? chat.model))?.name ?? message.model ?? "",
+      durationMs: message.durationMs,
+      versions,
+      start: Math.max(0, versions.indexOf(artifact)),
+    };
+  };
+  const compareSides = comparing ? [sideOf(comparing.own), sideOf(comparing.lane)] : null;
+  const closeCompare = useCallback(() => setComparing(null), []);
 
   const send = (text: string, attachments: OutgoingAttachment[]) => {
     stuck.current = true;
@@ -327,9 +346,16 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
               if (message.lane) return null;
               const rival = chat.messages[index + 1];
               if (!rival?.lane) return view;
+              // Once both are done, the quicker one is marked.
+              const both = message.durationMs !== undefined && rival.durationMs !== undefined && !message.streaming && !rival.streaming;
+              // Only a real difference counts: half a second and five percent.
+              const gap = both ? rival.durationMs! - message.durationMs! : 0;
+              const clear = Math.abs(gap) > Math.max(500, 0.05 * Math.max(message.durationMs ?? 0, rival.durationMs ?? 0));
+              const ownFaster = clear && gap > 0;
+              const rivalFaster = clear && gap < 0;
               return (
                 <div key={`pair:${message.id}:${language}`} className="compare-row">
-                  {view}
+                  {ownFaster ? cloneElement(view, { fastest: true }) : view}
                   <div className="compare-lane">
                     <MessageView
                       key={`${rival.id}:${language}`}
@@ -339,10 +365,25 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
                       onPermission={(request, decision) => answerLanePermission(chat.id, rival.id, request, decision)}
                       onBranch={branch}
                       onArtifact={openArtifact}
+                      fastest={rivalFaster}
                       showModel
                     />
                     {chat.projectDir && <WorkcopyBar chatId={chat.id} message={rival} />}
                   </div>
+                  {/* Both made an artifact: open them next to each other. */}
+                  {message.artifacts?.length && rival.artifacts?.length && !message.streaming && !rival.streaming ? (
+                    <button
+                      type="button"
+                      className="compare-artifacts-button"
+                      onClick={() => {
+                        setShown(null);
+                        setComparing({ own: message.id, lane: rival.id });
+                      }}
+                    >
+                      <CompareIcon size={15} />
+                      {t("compareArtifacts.open")}
+                    </button>
+                  ) : null}
                 </div>
               );
             })
@@ -362,6 +403,13 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
         </div>
       )}
     </main>
+    {compareSides?.[0] && compareSides[1] && (
+      <ArtifactCompare
+        key={`${comparing!.own}:${comparing!.lane}`}
+        sides={[compareSides[0], compareSides[1]]}
+        onClose={closeCompare}
+      />
+    )}
     {shown && shownVersions.length > 0 && (
       <ArtifactPanel
         key={`${shown.lane ? "lane:" : ""}${shown.id}`}

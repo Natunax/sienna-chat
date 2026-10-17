@@ -64,6 +64,22 @@ fn find_engine(app: &AppHandle) -> Option<(PathBuf, Option<PathBuf>)> {
     (script.is_file() && binary.is_file()).then_some((script, Some(binary)))
 }
 
+/// The helper that renders an artifact for its model to look at (`snapshot/`):
+/// next to the app binary, or in `binaries/` while developing.
+fn snapshot_helper() -> Option<PathBuf> {
+    let bundled = std::env::current_exe()
+        .ok()?
+        .parent()?
+        .join("sienna-snapshot");
+    if bundled.is_file() {
+        return Some(bundled);
+    }
+    let dev = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("binaries")
+        .join(concat!("sienna-snapshot-", env!("TARGET_TRIPLE")));
+    (cfg!(debug_assertions) && dev.is_file()).then_some(dev)
+}
+
 fn spawn(app: &AppHandle, store: Arc<Store>, generation: u64) -> Result<Running, String> {
     let key = keychain::read().ok_or("error.noKey")?;
     let node = find_node().ok_or("error.nodeMissing")?;
@@ -83,6 +99,7 @@ fn spawn(app: &AppHandle, store: Arc<Store>, generation: u64) -> Result<Running,
         .env("ANTHROPIC_API_KEY", key)
         .env("CHAT_DATA_DIR", store.root())
         .env("SIENNA_CLAUDE_BIN", binary.unwrap_or_default())
+        .env("SIENNA_SNAPSHOT_BIN", snapshot_helper().unwrap_or_default())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

@@ -20,7 +20,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSyn
 import { isAbsolute, join, resolve } from "node:path";
 import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, isRisky, projectGuard, projectPrompt } from "./project.mjs";
 import { TEMPLATES } from "./templates.mjs";
-import { ARTIFACT_PROMPT, ARTIFACT_TOOL, artifactServer } from "./artifacts.mjs";
+import { ARTIFACT_PROMPT, ARTIFACT_TOOL, ARTIFACT_VIEW_TOOL, artifactServer } from "./artifacts.mjs";
 
 const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
 // The packaged app ships the engine as one bundled file plus the Claude Code
@@ -658,7 +658,7 @@ class ChatSession {
             id: block.id,
             name: block.name,
             detail: this.relative(
-              String(input.command ?? input.query ?? input.url ?? input.pattern ?? input.file_path ?? ""),
+              String(input.command ?? input.query ?? input.url ?? input.pattern ?? input.file_path ?? input.id ?? ""),
             ).slice(0, 4000),
           });
         }
@@ -828,7 +828,7 @@ function allowedFor(config) {
   return [
     ...(config.projectDir ? READ_TOOLS : []),
     ...(config.web ? WEB_TOOLS : []),
-    ...(artifactsFor(config) ? [ARTIFACT_TOOL] : []),
+    ...(artifactsFor(config) ? [ARTIFACT_TOOL, ARTIFACT_VIEW_TOOL] : []),
   ];
 }
 

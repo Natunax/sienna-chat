@@ -10,7 +10,7 @@ import {
   type ToolUse,
   type Artifact,
 } from "../api";
-import { storedErrorText, t, type TextKey } from "../i18n";
+import { locale, storedErrorText, t, type TextKey } from "../i18n";
 import { loadHighlighter, renderBlocks } from "../markdown";
 import { mentionPath, splitMentions } from "../mentions";
 import { shortTokens } from "./ContextMeter";
@@ -18,6 +18,7 @@ import { DiffView } from "./DiffView";
 import {
   AlertIcon,
   ArtifactIcon,
+  ClockIcon,
   BranchIcon,
   CheckIcon,
   ChevronRightIcon,
@@ -46,6 +47,7 @@ const TOOL_LABELS: Record<string, TextKey> = {
   Write: "tool.write",
   Bash: "tool.bash",
   Check: "tool.check",
+  mcp__sienna__artifact_view: "tool.artifactView",
 };
 
 function ToolIcon({ name }: { name: string }) {
@@ -54,12 +56,13 @@ function ToolIcon({ name }: { name: string }) {
   if (name === "Edit") return <PencilIcon size={13} />;
   if (name === "Write") return <DocumentIcon size={13} />;
   if (name === "Check") return <ShieldCheckIcon size={13} />;
+  if (name === "mcp__sienna__artifact_view") return <ArtifactIcon size={13} />;
   return <SearchIcon size={13} />;
 }
 
 const FILE_TOOLS = ["Read", "Edit", "Write"];
 /** Tools that only look around; several in a row fold into one line, as in Claude Code. */
-const QUIET_TOOLS = ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch"];
+const QUIET_TOOLS = ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch", "mcp__sienna__artifact_view"];
 
 type ToolGroup = { quiet: boolean; items: { tool: ToolUse; index: number }[] };
 
@@ -86,6 +89,7 @@ function toolSummary(tools: ToolUse[]): string {
     [count(["Read"]), "tools.read.one", "tools.read.other"],
     [count(["Grep", "Glob"]), "tools.search.one", "tools.search.other"],
     [count(["WebSearch", "WebFetch"]), "tools.web.one", "tools.web.other"],
+    [count(["mcp__sienna__artifact_view"]), "tools.view.one", "tools.view.other"],
   ];
   const text = parts
     .filter(([n]) => n > 0)
@@ -335,6 +339,34 @@ export function Markdown({ text, final }: { text: string; final: boolean }) {
   );
 }
 
+/** "4,2 s", "42 s" or "1:05 min". */
+export function formatDuration(ms: number): string {
+  const seconds = ms / 1000;
+  if (seconds < 10) return `${seconds.toLocaleString(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} s`;
+  if (seconds < 60) return `${Math.floor(seconds)} s`;
+  const whole = Math.floor(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")} min`;
+}
+
+/** How long an answer has been running, ticking, or how long it took. */
+function Elapsed({ message, className }: { message: Message; className: string }) {
+  const [now, setNow] = useState(Date.now());
+  const running = Boolean(message.streaming && message.startedAt);
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(timer);
+  }, [running]);
+  const ms = running ? now - message.startedAt! : message.durationMs;
+  if (ms === undefined) return null;
+  return (
+    <span className={`${className}${running ? " is-running" : ""}`} title={t(running ? "timer.running" : "timer.took")}>
+      <ClockIcon size={12} />
+      {formatDuration(ms)}
+    </span>
+  );
+}
+
 function Thinking({ text, active }: { text: string; active: boolean }) {
   const [open, setOpen] = useState(false);
   return (
@@ -440,6 +472,8 @@ interface Props {
   onFollowUp?: (text: string) => void;
   /** Opens an artifact of this answer next to the chat. */
   onArtifact?: (id: string, version: Artifact) => void;
+  /** Compared with another model, this answer was the quicker one. */
+  fastest?: boolean;
 }
 
 function MessageViewImpl({
@@ -453,6 +487,7 @@ function MessageViewImpl({
   showModel,
   onFollowUp,
   onArtifact,
+  fastest,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [confirmRevert, setConfirmRevert] = useState(false);
@@ -532,7 +567,14 @@ function MessageViewImpl({
   const modelName = MODELS.find((entry) => entry.id === message.model)?.name;
   return (
     <div className={`msg msg-assistant${message.lane ? " is-lane" : ""}`} aria-busy={streaming}>
-      {showModel && modelName && <div className="msg-model">{modelName}</div>}
+      {/* Compared side by side: the model and its time, so both read at a glance. */}
+      {showModel && modelName && (
+        <div className={`msg-model${fastest ? " is-fastest" : ""}`}>
+          <span>{modelName}</span>
+          <Elapsed message={message} className="msg-time" />
+          {fastest && <span className="msg-fastest">{t("timer.fastest")}</span>}
+        </div>
+      )}
       {(message.thinking || waiting) && <Thinking text={message.thinking ?? ""} active={waiting} />}
       {message.tools?.length ? <Tools tools={message.tools} active={streaming} projectDir={projectDir} reverted={message.reverted} /> : null}
       {message.artifacts?.map((artifact, index) => (
@@ -564,6 +606,12 @@ function MessageViewImpl({
         <div className="msg-error" role="alert">
           <AlertIcon size={15} />
           {storedErrorText(message.error)}
+        </div>
+      )}
+      {/* The stopwatch while the answer runs; compared answers show it in their header. */}
+      {streaming && !showModel && message.startedAt && (
+        <div className="msg-live">
+          <Elapsed message={message} className="msg-time" />
         </div>
       )}
       {!streaming && (message.text || onRedo || structured) ? (
@@ -615,6 +663,7 @@ function MessageViewImpl({
                 <UndoIcon size={15} />
               </button>
             ))}
+          {!showModel && <Elapsed message={message} className="msg-cost msg-duration" />}
           {message.costUsd ? <span className="msg-cost">{formatUsd(message.costUsd)}</span> : null}
         </div>
       ) : null}

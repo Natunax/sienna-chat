@@ -39,7 +39,8 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 - Images, PDFs and text files (code, Markdown, CSV, JSON, logs) by button, drag and drop or paste
 - Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.1 per chat, with five effort levels from low to max
 - Regenerate or edit the last question, copy any answer, and chat titles written by Haiku
-- Artifacts as in Claude: a small web app, an SVG, a document or a code file opens next to the chat, with preview and code, versions, copy and save as file
+- Artifacts as in Claude: a small web app, an SVG, a document or a code file opens next to the chat, with preview and code, versions, zoom with Fit and Fill, copy and save as file. Claude sees a screenshot of each HTML or SVG artifact it makes (rendered offscreen with the same sealed policy) and can check other sizes, so it corrects its own layout
+- A stopwatch on every answer: live while it runs, then how long it took; compared answers show their times side by side and mark the faster one
 - Dictation as in Claude Code: hold ⌥Space or click the microphone. Speech is recognized on your Mac, and the text lands in the input field for you to check before you send
 
 **Coding in a project folder**
@@ -52,7 +53,7 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 
 **Beyond Claude Code**
 - **Branches:** continue from any answer in a new chat; the original stays untouched
-- **Compare models:** each question also goes to a second model, and the answers show side by side with their costs. In a project the second model works in its own working copy (an APFS clone) with the same mode, approvals, commands and check; one click takes its changes over into the project, leaving out files the project changed meanwhile
+- **Compare models:** each question also goes to a second model, and the answers show side by side with their costs. In a project the second model works in its own working copy (an APFS clone) with the same mode, approvals, commands and check; one click takes its changes over into the project, leaving out files the project changed meanwhile. When both answers make an artifact, they open side by side, with one toolbar and at the same scale
 - **Undo an answer:** one click restores the files Claude changed from that answer on (file checkpoints)
 - **Check after changes:** a project command such as `npm test` runs when an answer changed files; if it fails, Claude fixes it
 - **Templates with structured output:** a changelog from Git, a review of uncommitted changes and a task list arrive as data. Every finding or task starts a follow-up in one click

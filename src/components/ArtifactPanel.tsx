@@ -6,13 +6,35 @@ import { ArtifactIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIco
 import { CopyButton, Markdown } from "./MessageView";
 
 /** Zoom steps of the preview and code, as in a browser. */
-const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
-const MIN_ZOOM = ZOOMS[0];
-const MAX_ZOOM = ZOOMS[ZOOMS.length - 1];
-const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+export const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+export const MIN_ZOOM = ZOOMS[0];
+export const MAX_ZOOM = ZOOMS[ZOOMS.length - 1];
+export const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+
+/** The next zoom step up or down from any zoom, also one fit or fill chose. */
+export function stepZoom(current: number, step: number): number {
+  const next = step > 0 ? ZOOMS.find((entry) => entry > current + 0.001) : [...ZOOMS].reverse().find((entry) => entry < current - 0.001);
+  return next ?? current;
+}
 
 /** The content's box in page pixels and the frame's view, as the page reports them. */
-type Size = { l: number; t: number; w: number; h: number; vw: number; vh: number; pl: number; pt: number };
+export type Size = { l: number; t: number; w: number; h: number; vw: number; vh: number; pl: number; pt: number };
+
+/**
+ * The zoom at which the content, with the page's own margin, reaches the
+ * edges of a box `width` × `height`. Centered content only needs the page
+ * margin around it; content against the left or top keeps its distance there
+ * and gets the same on the other side; the far edge never ends up outside.
+ */
+export function fitZoom(mode: "fit" | "fill", measured: Size, width: number, height: number): number {
+  const span = (start: number, length: number, view: number, margin: number) => {
+    const centered = Math.abs(start - (view - start - length)) < 8;
+    return Math.max(length + 2 * margin, centered ? 0 : 2 * start + length, start + length + margin);
+  };
+  const across = width / span(measured.l, measured.w, measured.vw, measured.pl);
+  const down = height / span(measured.t, measured.h, measured.vh, measured.pt);
+  return clampZoom(mode === "fit" ? Math.min(across, down) : across);
+}
 
 interface Props {
   /** Every version of the artifact, oldest first. */
@@ -27,7 +49,7 @@ interface Props {
  * HTML and SVG run in a frame from Rust's `artifact:` scheme with their own
  * strict policy and no access to the app (`src-tauri/src/artifact.rs`).
  */
-function SealedFrame({ artifact, zoom, onSize }: { artifact: Artifact; zoom: number; onSize: (size: Size) => void }) {
+export function SealedFrame({ artifact, zoom, onSize }: { artifact: Artifact; zoom: number; onSize: (size: Size) => void }) {
   const [src, setSrc] = useState<string | null>(null);
   const frame = useRef<HTMLIFrameElement>(null);
 
@@ -88,7 +110,7 @@ function SealedFrame({ artifact, zoom, onSize }: { artifact: Artifact; zoom: num
   );
 }
 
-function CodeView({ artifact }: { artifact: Artifact }) {
+export function CodeView({ artifact }: { artifact: Artifact }) {
   const code = useRef<HTMLElement>(null);
   const language = artifact.kind === "code" ? artifact.language : artifact.kind === "markdown" ? "markdown" : artifact.kind === "svg" ? "xml" : "html";
   useEffect(() => {
@@ -134,25 +156,13 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
   // + and − go to the next step, also from a zoom that fit or fill chose.
   const zoomBy = (step: number) => {
     fitting.current = null;
-    setZoom((current) => {
-      const next = step > 0 ? ZOOMS.find((entry) => entry > current + 0.001) : [...ZOOMS].reverse().find((entry) => entry < current - 0.001);
-      return next ?? current;
-    });
+    setZoom((current) => stepZoom(current, step));
   };
+
   /** The zoom at which the content, with the page's own margin, reaches the panel's edges. */
   const target = (mode: "fit" | "fill", measured: Size) => {
     const body = bodyRef.current;
-    if (!body) return null;
-    // Centered content only needs the page margin around it; content against
-    // the left or top keeps its distance there and gets the same on the other
-    // side; and the far edge must never end up outside.
-    const span = (start: number, length: number, view: number, margin: number) => {
-      const centered = Math.abs(start - (view - start - length)) < 8;
-      return Math.max(length + 2 * margin, centered ? 0 : 2 * start + length, start + length + margin);
-    };
-    const width = body.clientWidth / span(measured.l, measured.w, measured.vw, measured.pl);
-    const height = body.clientHeight / span(measured.t, measured.h, measured.vh, measured.pt);
-    return clampZoom(mode === "fit" ? Math.min(width, height) : width);
+    return body ? fitZoom(mode, measured, body.clientWidth, body.clientHeight) : null;
   };
   // A page that centers itself moves its content when the zoom changes the
   // view, so fit and fill check the new measurement a few times.

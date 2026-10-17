@@ -155,6 +155,9 @@ export interface Message {
   laneSession?: string | null;
   laneTurnEnd?: string | null;
   laneTotal?: number | null;
+  /** When the question went out, and how long the answer took (ms). */
+  startedAt?: number;
+  durationMs?: number;
   /** In a project, that answer's working copy of it (`workcopy.rs`). */
   laneDir?: string | null;
   /** The working copy's changes were taken over or discarded. */

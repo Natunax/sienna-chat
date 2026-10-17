@@ -277,3 +277,10 @@ export const MinusIcon = (p: IconProps) => (
     <path d="M4.5 10h11" />
   </Icon>
 );
+
+export const ClockIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="10" cy="10" r="7.25" />
+    <path d="M10 6v4.25l2.75 1.75" />
+  </Icon>
+);

@@ -3803,3 +3803,172 @@ button.bubble-mention:hover {
   background: var(--fill-hover);
   color: var(--label);
 }
+
+/* The stopwatch: live while an answer runs, then how long it took. */
+.msg-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.msg-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.msg-model .msg-time {
+  margin-left: auto;
+}
+
+.msg-time.is-running {
+  color: var(--accent-text);
+}
+
+.msg-fastest {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.msg-live {
+  margin-top: 6px;
+}
+
+.msg-duration {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ───────── Artifacts side by side ─────────
+   Over the whole chat: one toolbar for both, two equal columns with a hairline
+   between them, each headed by its model, time, title and versions. */
+
+.compare-artifacts-button {
+  display: inline-flex;
+  grid-column: 1 / -1;
+  justify-self: center;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 16px;
+  background: var(--fill);
+  box-shadow: inset 0 0 0 0.5px var(--separator-strong);
+  color: var(--label);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 120ms;
+}
+
+.compare-artifacts-button:hover {
+  background: var(--fill-hover);
+}
+
+.compare-artifacts-button svg {
+  color: var(--accent-text);
+}
+
+.artifact-compare {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  animation: pop 160ms ease-out both;
+}
+
+.artifact-compare:focus {
+  outline: none;
+}
+
+.artifact-compare-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+  height: var(--header-h);
+  padding: 0 10px 0 18px;
+  box-shadow: inset 0 -0.5px 0 var(--separator);
+}
+
+.sidebar-hidden .artifact-compare-head {
+  padding-left: 86px;
+}
+
+.artifact-compare-head .artifact-title {
+  flex: 1;
+}
+
+.artifact-compare-head .artifact-zoom-control {
+  margin-right: 0;
+  padding-right: 8px;
+}
+
+.artifact-compare-sides {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 1fr 1fr;
+  min-height: 0;
+}
+
+.compare-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.compare-side + .compare-side {
+  box-shadow: inset 0.5px 0 0 var(--separator-strong);
+}
+
+.compare-side-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px 0 16px;
+  box-shadow: inset 0 -0.5px 0 var(--separator);
+  font-size: 12.5px;
+}
+
+.compare-side-model {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.compare-side-time {
+  flex-shrink: 0;
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-side-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--label-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compare-side-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

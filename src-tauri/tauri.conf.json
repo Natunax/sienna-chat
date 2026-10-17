@@ -59,7 +59,8 @@
       "voice/en.lproj/InfoPlist.strings": "en.lproj/InfoPlist.strings"
     },
     "externalBin": [
-      "binaries/sienna-voice"
+      "binaries/sienna-voice",
+      "binaries/sienna-snapshot"
     ],
     "macOS": {
       "entitlements": "Entitlements.plist",
