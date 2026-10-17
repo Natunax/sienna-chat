@@ -839,6 +839,8 @@ input[type="checkbox"] {
 /* Messages waiting for the answer to finish, stacked just above the input. */
 .queue {
   display: grid;
+  /* One column as wide as the input: a long message shortens, never widens it. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   max-width: var(--thread-w);
   margin: 0 auto 8px;
@@ -848,6 +850,7 @@ input[type="checkbox"] {
 
 .queue-item {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 8px;
   min-height: 36px;
