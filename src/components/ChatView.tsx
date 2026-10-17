@@ -1,5 +1,5 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { cloneElement, useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
+import { cloneElement, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import {
   DEFAULT_MODE,
   formatUsd,
@@ -13,7 +13,7 @@ import {
 } from "../api";
 import { t, useLanguage, type TextKey } from "../i18n";
 import { ArtifactPanel } from "./ArtifactPanel";
-import { SidePanel, type SideTab } from "./SidePanel";
+import { helpersOf, SidePanel, type SideTab } from "./SidePanel";
 import { ArtifactCompare, type CompareSide } from "./ArtifactCompare";
 import { WorkcopyBar } from "./WorkcopyBar";
 import { QueueList } from "./QueueList";
@@ -240,6 +240,8 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
     [chat.id],
   );
   const closeCompare = useCallback(() => setComparing(null), []);
+  // Helpers at work: the side panel's button says so, also while it is closed.
+  const helpersBusy = useMemo(() => helpersOf(chat).some((entry) => entry.state === "running"), [chat.messages]);
   // The last plan can be carried out while nothing runs.
   const lastPlan = chat.messages[ownLast];
   const canImplement = Boolean(lastPlan?.plan && lastPlan.text && !lastPlan.error && !streaming);
@@ -363,11 +365,12 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
         )}
         <button
           type="button"
-          className={`icon-button chat-side-toggle${side ? " is-active" : ""}`}
-          onClick={() => showTab(side ? null : lastTab)}
+          className={`icon-button chat-side-toggle${side ? " is-active" : ""}${helpersBusy ? " is-busy" : ""}`}
+          // While helpers work, the closed panel opens on them.
+          onClick={() => showTab(side ? null : helpersBusy ? "agents" : lastTab)}
           aria-pressed={Boolean(side)}
-          aria-label={t("side.toggle")}
-          title={t("side.toggle")}
+          aria-label={helpersBusy ? `${t("side.toggle")}: ${t("helper.busy")}` : t("side.toggle")}
+          title={helpersBusy ? `${t("side.toggle")} · ${t("helper.busy")}` : t("side.toggle")}
         >
           <PanelRightIcon />
         </button>

@@ -739,6 +739,15 @@ export function placeIn(message: Message): { textAt: number; step: number } {
 }
 
 /** A message with one of its tools changed. */
+/** A step's output once it ended; a helper counts as done even with an empty report. */
+function resultOutput(tool: ToolUse, output: string): string | undefined {
+  return output || tool.output || (isHelper(tool) ? "" : undefined);
+}
+
+export function isHelper(tool: ToolUse): boolean {
+  return tool.name === "Agent" || tool.name === "Task";
+}
+
 /** A list of steps with one of them changed, wherever it sits among the helpers' steps. */
 function changeTools(tools: ToolUse[], toolId: string, change: (tool: ToolUse) => ToolUse): ToolUse[] | null {
   let found = false;
@@ -767,8 +776,8 @@ function updateTool(chat: Chat, toolId: string | null | undefined, change: (tool
 }
 
 /** A new step: Claude's own in order with the text, a helper's under the call that started it. */
-function addTool(message: Message, event: { id?: string; parent?: string; name: string; detail: string }): Message {
-  const tool: ToolUse = { id: event.id, name: event.name, detail: event.detail };
+function addTool(message: Message, event: { id?: string; parent?: string; agent?: string; name: string; detail: string }): Message {
+  const tool: ToolUse = { id: event.id, name: event.name, detail: event.detail, ...(event.agent ? { agent: event.agent } : {}) };
   if (event.parent) {
     const tools = message.tools && changeTools(message.tools, event.parent, (call) => ({ ...call, children: [...(call.children ?? []), tool] }));
     if (tools) return { ...message, tools };
@@ -949,7 +958,7 @@ export async function implementPlan(chatId: string, mode: PermissionMode) {
 type EngineEvent =
   | { type: "session"; chatId: string; sessionId: string }
   | { type: "delta"; chatId: string; text: string; thinking: string }
-  | { type: "tool"; chatId: string; id?: string; parent?: string; name: string; detail: string }
+  | { type: "tool"; chatId: string; id?: string; parent?: string; agent?: string; name: string; detail: string }
   | { type: "artifact"; chatId: string; artifact: Artifact }
   | { type: "toolResult"; chatId: string; id: string; failed: boolean; output: string }
   | ({ type: "permission"; chatId: string } & PermissionRequest)
@@ -1059,7 +1068,7 @@ function onLaneEvent(lane: { chatId: string; messageId: string }, laneId: string
       return;
     case "toolResult":
       change((message) =>
-        withTool(message, event.id, (tool) => ({ ...tool, failed: event.failed && !tool.denied, output: event.output || tool.output })),
+        withTool(message, event.id, (tool) => ({ ...tool, failed: event.failed && !tool.denied, output: resultOutput(tool, event.output) })),
       );
       return;
     case "change": {
@@ -1138,7 +1147,7 @@ function onEngineEvent(event: EngineEvent) {
         updateTool(chat, event.id, (tool) => ({
           ...tool,
           failed: event.failed && !tool.denied,
-          output: event.output || tool.output,
+          output: resultOutput(tool, event.output),
         })),
       );
       return;

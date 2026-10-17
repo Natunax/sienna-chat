@@ -1151,6 +1151,8 @@ input[type="checkbox"] {
 .tool-fold-summary {
   min-width: 0;
   overflow: hidden;
+  /* Room for descenders: the toggle's line-height of 1 would clip a cut-off summary. */
+  line-height: 1.35;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4373,6 +4375,130 @@ button.bubble-mention:hover {
 
 .change-open {
   justify-self: start;
+}
+
+/* Helpers: who is at work, with a pulsing dot as in the chat list. */
+.helper-row {
+  align-items: flex-start;
+  min-height: 46px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.helper-state {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin: 6px 2px 0;
+  border-radius: 50%;
+  background: var(--label-3);
+}
+
+.helper-state.is-running {
+  background: var(--accent);
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+.helper-state.is-done {
+  background: var(--diff-add-text);
+}
+
+.helper-state.is-failed {
+  background: var(--danger);
+}
+
+.helper-text {
+  display: grid;
+  flex: 1;
+  gap: 1px;
+  min-width: 0;
+}
+
+.helper-title {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.helper-meta {
+  overflow: hidden;
+  color: var(--label-3);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.helper-row .side-chevron {
+  margin-top: 5px;
+}
+
+.helper-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 2px 10px 12px 30px;
+}
+
+.helper-body > .tools {
+  margin: 0 0 0 -8px;
+}
+
+.helper-note {
+  margin: 0;
+  color: var(--label-3);
+  font-size: 12.5px;
+}
+
+.helper-report {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--fill);
+  font-size: 13px;
+}
+
+.helper-report-head {
+  margin-bottom: 4px;
+  color: var(--label-3);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.helper-report .markdown > :first-child {
+  margin-top: 0;
+}
+
+.helper-report .markdown > :last-child {
+  margin-bottom: 0;
+}
+
+/* While helpers work: a pulsing dot on the Helpers tab and on the panel's button. */
+.side-tab.is-busy,
+.chat-side-toggle.is-busy {
+  position: relative;
+}
+
+.side-tab.is-busy::after,
+.chat-side-toggle.is-busy::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface);
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .helper-state,
+  .side-tab.is-busy::after,
+  .chat-side-toggle.is-busy::after {
+    animation: none !important;
+  }
 }
 
 /* The plan, as the answer wrote it, with its buttons below. */

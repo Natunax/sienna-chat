@@ -98,6 +98,8 @@ export interface ToolUse {
   step?: number;
   /** A helper's (subagent's) steps, under the call that started it. */
   children?: ToolUse[];
+  /** For a helper: which one Claude started (general-purpose, Explore, …). Its report arrives as `output`. */
+  agent?: string;
 }
 
 /** Every step of an answer, helpers' steps included. */

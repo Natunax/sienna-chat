@@ -176,7 +176,8 @@ function ToolRow({ tool, projectDir, reverted }: ToolRowProps) {
           <DiffView before={tool.change.before} after={tool.change.after} numbered={tool.name === "Write"} />
         </div>
       )}
-      {open && !tool.change && tool.output !== undefined && (
+      {/* A helper's report is read in the side panel's Helpers tab. */}
+      {open && !tool.change && tool.output !== undefined && !helperSteps && tool.agent === undefined && (
         <pre className="tool-panel tool-output">
           {/* The row cuts a long command; here it shows in full. */}
           {tool.name === "Bash" && tool.detail && <code className="tool-command">$ {tool.detail}</code>}
@@ -214,7 +215,7 @@ function ToolFold({ group, active, ...row }: { group: ToolGroup; active: boolean
 }
 
 /** The tools an answer used; changes and command output open below the row, files in the editor. */
-function Tools({
+export function Tools({
   tools,
   active,
   ...row

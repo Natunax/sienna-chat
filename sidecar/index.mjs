@@ -195,6 +195,8 @@ const STEER_WAIT_MS = 2500;
 // What an approval card and a stored change show at most, per side.
 const MAX_CHANGE_CHARS = 200_000;
 const MAX_OUTPUT_CHARS = 8000;
+// A helper's report, as it came back to Claude; the start is what matters.
+const MAX_REPORT_CHARS = 8000;
 // Sienna's plan mode is its own: Claude Code runs in manual mode, the guard
 // denies changes and commands, and each message carries this instruction.
 const PLAN_NOTE = [
@@ -363,6 +365,8 @@ class ChatSession {
     this.permissions = new Map();
     /** Commands' tool use ids, to report their output. */
     this.commandIds = new Set();
+    /** Helpers still at work, to report when they are done. */
+    this.helperIds = new Set();
     /** Files changed in the running answer, those changed without asking, and check rounds run for it. */
     this.edited = false;
     this.unasked = new Set();
@@ -875,6 +879,8 @@ class ChatSession {
       if (block.type !== "tool_use" || block.name === "StructuredOutput" || block.name === ARTIFACT_TOOL) continue;
       this.flush();
       const input = block.input ?? {};
+      const helper = AGENT_TOOLS.includes(block.name);
+      if (helper) this.helperIds.add(block.id);
       if (RUN_TOOLS.includes(block.name)) {
         this.commandIds.add(block.id);
         const line = String(input.command ?? "");
@@ -887,6 +893,8 @@ class ChatSession {
         chatId: this.chatId,
         id: block.id,
         ...(parent ? { parent } : {}),
+        // Which helper Claude started (general-purpose, Explore, …).
+        ...(helper && input.subagent_type ? { agent: String(input.subagent_type).slice(0, 60) } : {}),
         name: block.name,
         detail: this.relative(
           String(input.command ?? input.query ?? input.url ?? input.pattern ?? input.file_path ?? input.id ?? input.description ?? ""),
@@ -900,13 +908,16 @@ class ChatSession {
     for (const block of Array.isArray(message.message?.content) ? message.message.content : []) {
       if (block.type !== "tool_result") continue;
       const command = this.commandIds.delete(block.tool_use_id);
-      if (!command && !block.is_error) continue;
+      // A helper is done: its report back to Claude, for the side panel.
+      const helper = this.helperIds.delete(block.tool_use_id);
+      if (!command && !helper && !block.is_error) continue;
+      const text = command || helper ? maskSecrets(resultText(block.content)) : "";
       emit({
         type: "toolResult",
         chatId: this.chatId,
         id: block.tool_use_id,
         failed: Boolean(block.is_error),
-        output: command ? maskSecrets(resultText(block.content).slice(-MAX_OUTPUT_CHARS)) : "",
+        output: helper ? text.slice(0, MAX_REPORT_CHARS) : text.slice(-MAX_OUTPUT_CHARS),
       });
     }
   }

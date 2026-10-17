@@ -38,7 +38,7 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 - Web search as a toggle, with sources as links that open in your browser
 - Images, PDFs and text files (code, Markdown, CSV, JSON, logs) by button, drag and drop or paste
 - Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.1 per chat, with five effort levels from low to max, and **Ultracode**: the highest effort, with two read-only helpers (a researcher and an adversarial verifier) Claude briefs in parallel in a project chat or with web search
-- **Subagents** as in Claude Code: Claude can hand parts of a task to helpers in any chat; their steps show indented under the call that started them
+- **Subagents** as in Claude Code: Claude can hand parts of a task to helpers in any chat; their steps show indented under the call that started them, and the side panel's **Helpers** tab shows who is at work, their steps and what they reported back. A pulsing dot on the panel's button says helpers are working, also while it is closed
 - Regenerate or edit the last question, copy any answer, and chat titles written by Haiku
 - Answers show text and steps in the order they happened, as in Claude Code
 - Keep writing while Claude works: messages wait in a queue and go out when the answer is done, or **Send now** puts one into the running answer, where Claude takes it in at its next step
@@ -46,7 +46,7 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 - Dictation as in Claude Code: hold ⌥Space or click the microphone. Speech is recognized on your Mac, and the text lands in the input field for you to check before you send
 
 **Artifacts and the side panel**
-- A side panel as in Claude Code, on the right of every chat: all its **artifacts**, its **file changes** per file as git shows them (also a compared model's working copy), its latest **plan**, and a **browser** for any web page or your local dev server
+- A side panel as in Claude Code, on the right of every chat: all its **artifacts**, its **file changes** per file as git shows them (also a compared model's working copy), its latest **plan**, its **helpers**, and a **browser** for any web page or your local dev server
 - Artifacts as in Claude: a small web app, an SVG, a document or a code file, with preview and code, versions, zoom with Fit and Fill, copy and save as file
 - Claude sees a screenshot of each HTML or SVG artifact it makes (rendered offscreen with the same sealed policy) and can check other sizes, so it corrects its own layout
 - Both sidebars resize by dragging their border and remember their width

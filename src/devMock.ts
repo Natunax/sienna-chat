@@ -192,7 +192,14 @@ async function streamCodeAnswer(chatId: string) {
     await pause(300);
   }
   // A helper looks for the tests meanwhile; its steps go under its call.
-  void emit("engine", { type: "tool", chatId, id: "ag1", name: "Agent", detail: english ? "Find the cart tests" : "Warenkorb-Tests finden" });
+  void emit("engine", { type: "tool", chatId, id: "ag1", name: "Agent", agent: "Explore", detail: english ? "Find the cart tests" : "Warenkorb-Tests finden" });
+  // It reports back a little later, while Claude goes on.
+  setTimeout(() => {
+    const report = english
+      ? "The cart tests are in `src/cart.test.ts`. `total` is covered for single items only; quantities have no test."
+      : "Die Warenkorb-Tests stehen in `src/cart.test.ts`. `total` ist nur für einzelne Artikel getestet, Mengen haben keinen Test.";
+    void emit("engine", { type: "toolResult", chatId, id: "ag1", failed: false, output: report });
+  }, 2500);
   for (const [id, name, detail] of [["ag1a", "Glob", "**/*.test.ts"], ["ag1b", "Read", "src/cart.test.ts"], ["ag1c", "Grep", "describe\\(\"cart"]]) {
     void emit("engine", { type: "tool", chatId, id, parent: "ag1", name, detail });
     await pause(150);

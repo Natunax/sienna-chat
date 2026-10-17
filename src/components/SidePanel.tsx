@@ -5,15 +5,17 @@ import { t, type TextKey } from "../i18n";
 import { BrowserView, useBrowserOpen } from "./BrowserView";
 import { ResizeHandle, useStoredWidth } from "./ResizeHandle";
 import { DiffView } from "./DiffView";
-import { ArtifactIcon, ChevronRightIcon, CloseIcon, DiffIcon, DocumentIcon, GlobeIcon, PlanIcon } from "./icons";
-import { Markdown } from "./MessageView";
+import { AgentsIcon, ArtifactIcon, ChevronRightIcon, CloseIcon, DiffIcon, DocumentIcon, GlobeIcon, PlanIcon } from "./icons";
+import { Markdown, Tools } from "./MessageView";
+import { isHelper } from "../store";
 
-export type SideTab = "artifacts" | "changes" | "plan" | "browser";
+export type SideTab = "artifacts" | "changes" | "plan" | "agents" | "browser";
 
 const TABS: { id: SideTab; label: TextKey; icon: ReactNode; project?: boolean }[] = [
   { id: "artifacts", label: "side.artifacts", icon: <ArtifactIcon size={16} /> },
   { id: "changes", label: "side.changes", icon: <DiffIcon size={16} />, project: true },
   { id: "plan", label: "side.plan", icon: <PlanIcon size={16} />, project: true },
+  { id: "agents", label: "side.agents", icon: <AgentsIcon size={16} /> },
   { id: "browser", label: "side.browser", icon: <GlobeIcon size={16} /> },
 ];
 
@@ -292,6 +294,115 @@ function Artifacts({ chat, onOpen }: { chat: Chat; onOpen: (id: string, artifact
   );
 }
 
+/** A helper Claude started, where it stands, and the answer it belongs to. */
+interface HelperEntry {
+  tool: ToolUse;
+  state: "running" | "done" | "failed" | "stopped";
+  steps: number;
+  model: string | null;
+  projectDir: string | null;
+}
+
+/** Every helper of the chat, newest first. */
+export function helpersOf(chat: Chat): HelperEntry[] {
+  const compared = chat.messages.some((message) => message.lane);
+  const entries: HelperEntry[] = [];
+  for (const message of chat.messages) {
+    if (message.role !== "assistant") continue;
+    for (const tool of allTools(message.tools)) {
+      if (!isHelper(tool)) continue;
+      const ended = tool.output !== undefined || tool.failed || tool.denied;
+      entries.push({
+        tool,
+        state: tool.failed || tool.denied ? "failed" : ended ? "done" : message.streaming ? "running" : "stopped",
+        steps: allTools(tool.children).length,
+        model: compared ? modelName(chat, message) : null,
+        projectDir: message.lane ? (message.laneDir ?? null) : (chat.projectDir ?? null),
+      });
+    }
+  }
+  return entries.reverse();
+}
+
+const HELPER_STATES: Record<HelperEntry["state"], TextKey> = {
+  running: "helper.running",
+  done: "helper.done",
+  failed: "helper.failed",
+  stopped: "helper.stopped",
+};
+
+function HelperRow({ entry, first }: { entry: HelperEntry; first: boolean }) {
+  // The newest helper shows what it does, and what it reported once done.
+  const [open, setOpen] = useState(entry.state === "running" || first);
+  const { tool } = entry;
+  const report = tool.output?.trim();
+  return (
+    <li className={`side-row-item${open ? " is-open" : ""}`}>
+      <button type="button" className="side-row helper-row" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className={`helper-state is-${entry.state}`} role="img" aria-label={t(HELPER_STATES[entry.state])} title={t(HELPER_STATES[entry.state])} />
+        <span className="helper-text">
+          <span className="helper-title">{tool.detail || t("tool.agent")}</span>
+          <span className="helper-meta">
+            {[
+              tool.agent,
+              entry.steps ? t(entry.steps === 1 ? "tool.helperSteps.one" : "tool.helperSteps.other", { n: entry.steps }) : null,
+              entry.model,
+              entry.state === "running" ? t("helper.running") : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        </span>
+        <ChevronRightIcon size={12} className="side-chevron" />
+      </button>
+      {open && (
+        <div className="helper-body">
+          {tool.children?.length ? (
+            <Tools tools={tool.children} active={entry.state === "running"} projectDir={entry.projectDir} />
+          ) : (
+            <p className="helper-note">{t(entry.state === "running" ? "helper.starting" : "helper.noSteps")}</p>
+          )}
+          {report && (
+            <div className="helper-report">
+              <div className="helper-report-head">{t("helper.report")}</div>
+              <Markdown text={report} final />
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function Helpers({ chat }: { chat: Chat }) {
+  const entries = useMemo(() => helpersOf(chat), [chat.messages]);
+  if (!entries.length) return <Empty icon={<AgentsIcon size={20} />} text={t("side.noAgents")} />;
+  const running = entries.filter((entry) => entry.state === "running");
+  const rest = entries.filter((entry) => entry.state !== "running");
+  return (
+    <div className="side-scroll">
+      {running.length > 0 && (
+        <Group title={t("helper.groupRunning")} meta={String(running.length)}>
+          <ul className="side-rows">
+            {running.map((entry) => (
+              <HelperRow key={entry.tool.id ?? entry.tool.detail} entry={entry} first={false} />
+            ))}
+          </ul>
+        </Group>
+      )}
+      {rest.length > 0 && (
+        <Group title={t("helper.groupDone")} meta={String(rest.length)}>
+          <ul className="side-rows">
+            {rest.map((entry, index) => (
+              <HelperRow key={entry.tool.id ?? entry.tool.detail} entry={entry} first={index === 0} />
+            ))}
+          </ul>
+        </Group>
+      )}
+    </div>
+  );
+}
+
 function Plan({ chat, onImplement }: { chat: Chat; onImplement?: (mode: PermissionMode) => void }) {
   const plan = [...chat.messages].reverse().find((message) => message.plan && !message.lane && message.text && !message.error);
   if (!plan) return <Empty icon={<PlanIcon size={20} />} text={t(chat.projectDir ? "side.noPlan" : "side.noProjectPlan")} />;
@@ -339,6 +450,8 @@ export function SidePanel({ chat, tab, onTab, onClose, artifact, onOpenArtifact,
   const counts: Partial<Record<SideTab, number>> = {
     artifacts: useMemo(() => artifactEntries(chat).length, [chat.messages]),
     changes: useMemo(() => changedFiles(chat), [chat.messages]),
+    // Helpers at work right now; the tab pulses while there are any.
+    agents: useMemo(() => helpersOf(chat).filter((entry) => entry.state === "running").length, [chat.messages]),
   };
   const browsing = useBrowserOpen();
   const wide = (tab === "artifacts" && Boolean(artifact)) || (tab === "browser" && browsing);
@@ -395,7 +508,7 @@ export function SidePanel({ chat, tab, onTab, onClose, artifact, onOpenArtifact,
                   role="tab"
                   aria-selected={active}
                   tabIndex={active ? 0 : -1}
-                  className={`side-tab${active ? " is-active" : ""}${entry.project && !chat.projectDir ? " is-idle" : ""}`}
+                  className={`side-tab${active ? " is-active" : ""}${entry.project && !chat.projectDir ? " is-idle" : ""}${entry.id === "agents" && counts.agents ? " is-busy" : ""}`}
                   onClick={() => onTab(entry.id)}
                   aria-label={t(entry.label)}
                   title={t(entry.label)}
@@ -415,6 +528,7 @@ export function SidePanel({ chat, tab, onTab, onClose, artifact, onOpenArtifact,
           {tab === "artifacts" && (artifact ?? <Artifacts chat={chat} onOpen={onOpenArtifact} />)}
           {tab === "changes" && <Changes chat={chat} />}
           {tab === "plan" && <Plan chat={chat} onImplement={onImplement} />}
+        {tab === "agents" && <Helpers chat={chat} />}
           {tab === "browser" && <BrowserView covered={covered} />}
         </div>
       </aside>
