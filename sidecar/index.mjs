@@ -18,7 +18,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, isRisky, projectGuard, projectPrompt } from "./project.mjs";
+import { EDIT_TOOLS, HELPER_TYPES, MODES, READ_TOOLS, RUN_TOOLS, isRisky, projectGuard, projectPrompt } from "./project.mjs";
 import { TEMPLATES } from "./templates.mjs";
 import { ARTIFACT_PROMPT, ARTIFACT_TOOL, ARTIFACT_VIEW_TOOL, artifactServer } from "./artifacts.mjs";
 
@@ -109,6 +109,61 @@ const SYSTEM_PROMPT = [
   "Be clear and direct. Use Markdown where it helps reading, and code blocks with a language tag.",
   "When you search the web, cite the most important sources as links.",
 ].join("\n");
+
+// Ultracode: the highest effort, and Claude may hand independent parts of the
+// task to helpers that run in parallel. They only look (read, search) and
+// report back; changes, commands and the answer stay with Claude itself, so
+// every approval still comes from this session.
+const AGENT_TOOLS = ["Agent", "Task"];
+const ULTRA_PROMPT = [
+  "",
+  "<sienna_ultracode>",
+  "The user chose Ultracode: be as thorough as you can, cost is secondary.",
+  "For any substantial task, split it into independent parts and hand them to helpers with the Agent tool, several calls in one message so they run at the same time:",
+  "- `researcher` for one part to investigate (code, sources, options); give it a precise brief.",
+  "- `verifier` to try to refute a finding, plan or result before you rely on it; act on what it refutes.",
+  "Helpers only look and report; you make every change, run every command and write the final answer yourself.",
+  "Do not use helpers for small questions or quick edits.",
+  "</sienna_ultracode>",
+].join("\n");
+
+/**
+ * Ultracode runs at the highest effort the API knows. Its helpers need
+ * something to look at, a project folder or web search; without either it is
+ * the highest effort alone.
+ */
+function isUltra(config) {
+  return config.effort === "ultracode" && Boolean(config.projectDir || config.web) && !config.format;
+}
+
+function sdkEffort(effort) {
+  return effort === "ultracode" ? "max" : effort;
+}
+
+/** The helpers Ultracode may start; read-only in a project, search-only on the web. */
+function ultraAgents(config) {
+  const tools = [...(config.projectDir ? READ_TOOLS : []), ...(config.web ? WEB_TOOLS : [])];
+  const common = "Report concisely with evidence (file paths and lines, or source links). Never claim more than you checked.";
+  const agents = {
+    researcher: {
+      description: "Investigates one independent part of the task in depth and reports what it found.",
+      prompt: `You investigate one part of a larger task for Claude, who briefed you. ${common}`,
+      tools,
+      model: "inherit",
+      background: false,
+    },
+    verifier: {
+      description: "Tries to refute a finding, plan or result; reports whether it holds and why.",
+      prompt: `You are an adversarial reviewer. Try hard to prove the claim you are given wrong; default to doubt when the evidence is thin. ${common}`,
+      tools,
+      model: "inherit",
+      background: false,
+    },
+  };
+  // The guard lets exactly these through (`project.mjs`).
+  if (Object.keys(agents).join() !== HELPER_TYPES.join()) throw new Error("helper types differ");
+  return agents;
+}
 
 // Search only: WebFetch would let a page the model reads tell it to fetch an
 // attacker's URL with parts of the conversation in it, unasked.
@@ -286,7 +341,7 @@ class ChatSession {
       prompt: this.inbox,
       options: {
         model: config.model,
-        effort: config.effort,
+        effort: sdkEffort(config.effort),
         thinking: { type: "adaptive", display: "summarized" },
         includePartialMessages: true,
         settingSources: [],
@@ -327,7 +382,9 @@ class ChatSession {
         outputFormat: config.format ? { type: "json_schema", schema: TEMPLATES[config.format] } : undefined,
         systemPrompt:
           (config.projectDir ? SYSTEM_PROMPT + projectPrompt(config.projectDir) : SYSTEM_PROMPT) +
-          (artifactsFor(config) ? ARTIFACT_PROMPT : ""),
+          (artifactsFor(config) ? ARTIFACT_PROMPT : "") +
+          (isUltra(config) ? ULTRA_PROMPT : ""),
+        agents: isUltra(config) ? ultraAgents(config) : undefined,
         // The artifact tool runs in this process and only reports to the window.
         mcpServers: artifactsFor(config)
           ? {
@@ -658,7 +715,9 @@ class ChatSession {
             id: block.id,
             name: block.name,
             detail: this.relative(
-              String(input.command ?? input.query ?? input.url ?? input.pattern ?? input.file_path ?? input.id ?? ""),
+              String(
+                input.command ?? input.query ?? input.url ?? input.pattern ?? input.file_path ?? input.id ?? input.description ?? "",
+              ),
             ).slice(0, 4000),
           });
         }
@@ -820,7 +879,7 @@ function toContent(text, attachments) {
 
 function toolsFor(config) {
   const project = config.projectDir ? [...READ_TOOLS, ...EDIT_TOOLS, ...RUN_TOOLS] : [];
-  return [...project, ...(config.web ? WEB_TOOLS : [])];
+  return [...project, ...(config.web ? WEB_TOOLS : []), ...(isUltra(config) ? AGENT_TOOLS : [])];
 }
 
 /** The tools that run without asking; changes and commands are not among them. */
@@ -829,6 +888,7 @@ function allowedFor(config) {
     ...(config.projectDir ? READ_TOOLS : []),
     ...(config.web ? WEB_TOOLS : []),
     ...(artifactsFor(config) ? [ARTIFACT_TOOL, ARTIFACT_VIEW_TOOL] : []),
+    ...(isUltra(config) ? AGENT_TOOLS : []),
   ];
 }
 

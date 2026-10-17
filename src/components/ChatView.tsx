@@ -13,6 +13,7 @@ import {
 } from "../api";
 import { t, useLanguage, type TextKey } from "../i18n";
 import { ArtifactPanel } from "./ArtifactPanel";
+import { SidePanel, type SideTab } from "./SidePanel";
 import { ArtifactCompare, type CompareSide } from "./ArtifactCompare";
 import { WorkcopyBar } from "./WorkcopyBar";
 import {
@@ -36,7 +37,7 @@ import {
   useSummaries,
 } from "../store";
 import { Composer, type ComposerSettings } from "./Composer";
-import { SidebarIcon } from "./icons";
+import { ChevronDownIcon, PanelRightIcon, SidebarIcon } from "./icons";
 import { MessageView } from "./MessageView";
 
 /** The empty chat greets by time of day. */
@@ -158,6 +159,15 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
   // The artifact open next to the chat: its id and version (null follows the newest).
   // The chat's own answers and a second model's keep separate versions of an id.
   const [shown, setShown] = useState<{ id: string; lane: boolean; version: number | null } | null>(null);
+  // The side panel and its tab; an artifact opens in it.
+  const [side, setSide] = useState<SideTab | null>(null);
+  const [lastTab, setLastTab] = useState<SideTab>("artifacts");
+  const sideRef = useRef(side);
+  sideRef.current = side;
+  const showTab = useCallback((tab: SideTab | null) => {
+    setSide(tab);
+    if (tab) setLastTab(tab);
+  }, []);
   const versionsIn = (messages: Chat["messages"], id: string, lane: boolean) =>
     messages.flatMap((message) =>
       Boolean(message.lane) === lane ? (message.artifacts ?? []).filter((entry) => entry.id === id) : [],
@@ -168,7 +178,8 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
     const all = versionsIn(messages, id, lane);
     const at = all.indexOf(artifact);
     setShown({ id, lane, version: at < 0 || at === all.length - 1 ? null : at });
-  }, []);
+    showTab("artifacts");
+  }, [showTab]);
   // A new artifact in the running answer opens by itself, as in Claude; the
   // chat's own answer wins over a second model's.
   const recent = chat.messages.slice(lastQuestionAt + 1);
@@ -176,12 +187,23 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
   const newestLane = recent.find((message) => message.lane)?.artifacts?.at(-1);
   const newest = newestOwn ?? newestLane;
   useEffect(() => {
-    if (newest && streaming) setShown({ id: newest.id, lane: !newestOwn, version: null });
+    if (!newest || !streaming) return;
+    setShown({ id: newest.id, lane: !newestOwn, version: null });
+    // Another tab the reader chose stays; the artifacts tab counts the new one.
+    if (!sideRef.current || sideRef.current === "artifacts") showTab("artifacts");
   }, [newest, streaming]);
   const shownVersions = shown ? versionsIn(chat.messages, shown.id, shown.lane) : [];
 
   // Two compared answers' artifacts side by side: the last one each made.
   const [comparing, setComparing] = useState<{ own: string; lane: string } | null>(null);
+  // Compared answers the reader unfolded, by the chat's own answer.
+  const [openPairs, setOpenPairs] = useState<ReadonlySet<string>>(new Set());
+  const togglePair = (id: string) =>
+    setOpenPairs((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   const sideOf = (messageId: string): CompareSide | null => {
     const message = chat.messages.find((entry) => entry.id === messageId);
     const artifact = message?.artifacts?.at(-1);
@@ -197,6 +219,9 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
   };
   const compareSides = comparing ? [sideOf(comparing.own), sideOf(comparing.lane)] : null;
   const closeCompare = useCallback(() => setComparing(null), []);
+  // The last plan can be carried out while nothing runs.
+  const lastPlan = chat.messages[ownLast];
+  const canImplement = Boolean(lastPlan?.plan && lastPlan.text && !lastPlan.error && !streaming);
 
   const send = (text: string, attachments: OutgoingAttachment[]) => {
     stuck.current = true;
@@ -285,7 +310,7 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
   );
 
   return (
-    <div className={`chat-area${shownVersions.length ? " has-artifact" : ""}`}>
+    <div className="chat-area">
     <main
       className="chat"
       onDragOver={onDragOver}
@@ -312,6 +337,16 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
             {t("chat.costLabel", { cost: formatUsd(chat.costUsd) })}
           </span>
         )}
+        <button
+          type="button"
+          className={`icon-button chat-side-toggle${side ? " is-active" : ""}`}
+          onClick={() => showTab(side ? null : lastTab)}
+          aria-pressed={Boolean(side)}
+          aria-label={t("side.toggle")}
+          title={t("side.toggle")}
+        >
+          <PanelRightIcon />
+        </button>
       </header>
 
       {/* The scroller exists from the start, so following the first answer works too. */}
@@ -362,9 +397,11 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
                     setComparing({ own: message.id, lane: rival.id });
                   }
                 : undefined;
+              // Folded until the reader opens the pair: the artifacts lead, the text waits.
+              const open = openPairs.has(message.id);
               return (
-                <div key={`pair:${message.id}:${language}`} className="compare-row">
-                  {cloneElement(view, { fastest: ownFaster, onCompareArtifacts: compareArtifacts })}
+                <div key={`pair:${message.id}:${language}`} className={`compare-row${open ? " is-open" : ""}`}>
+                  {cloneElement(view, { fastest: ownFaster, onCompareArtifacts: compareArtifacts, collapsed: !open })}
                   <div className="compare-lane">
                     <MessageView
                       key={`${rival.id}:${language}`}
@@ -377,11 +414,20 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
                       fastest={rivalFaster}
                       tie={both && !clear}
                       onCompareArtifacts={compareArtifacts}
+                      collapsed={!open}
                       showModel
                     />
                     {chat.projectDir && <WorkcopyBar chatId={chat.id} message={rival} />}
                   </div>
-
+                  <button
+                    type="button"
+                    className="compare-fold"
+                    aria-expanded={open}
+                    onClick={() => togglePair(message.id)}
+                  >
+                    <ChevronDownIcon size={14} />
+                    {t(open ? "compare.fold" : "compare.unfold")}
+                  </button>
                 </div>
               );
             })
@@ -408,13 +454,27 @@ export function ChatView({ chat, sidebarOpen, onToggleSidebar, onSettingsChange,
         onClose={closeCompare}
       />
     )}
-    {shown && shownVersions.length > 0 && (
-      <ArtifactPanel
-        key={`${shown.lane ? "lane:" : ""}${shown.id}`}
-        versions={shownVersions}
-        version={shown.version}
-        onVersion={(version) => setShown({ ...shown, version: version === shownVersions.length - 1 ? null : version })}
-        onClose={() => setShown(null)}
+    {side && (
+      <SidePanel
+        chat={chat}
+        tab={side}
+        onTab={showTab}
+        onClose={() => showTab(null)}
+        onOpenArtifact={openArtifact}
+        onImplement={canImplement ? implement : undefined}
+        covered={Boolean(compareSides?.[0] && compareSides[1])}
+        artifact={
+          shown && shownVersions.length > 0 ? (
+            <ArtifactPanel
+              key={`${shown.lane ? "lane:" : ""}${shown.id}`}
+              versions={shownVersions}
+              version={shown.version}
+              onVersion={(version) => setShown({ ...shown, version: version === shownVersions.length - 1 ? null : version })}
+              onClose={() => setShown(null)}
+              embedded
+            />
+          ) : null
+        }
       />
     )}
     </div>

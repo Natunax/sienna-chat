@@ -37,9 +37,11 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 - Streaming answers with Markdown, tables and highlighted code, and an expandable summary of the model's thinking
 - Web search as a toggle, with sources as links that open in your browser
 - Images, PDFs and text files (code, Markdown, CSV, JSON, logs) by button, drag and drop or paste
-- Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.1 per chat, with five effort levels from low to max
+- Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.1 per chat, with five effort levels from low to max, and **Ultracode**: the highest effort, with two read-only helpers (a researcher and an adversarial verifier) Claude briefs in parallel in a project chat or with web search
+- ⌥↩ or ⇧↩ for a new line in the input field
 - Regenerate or edit the last question, copy any answer, and chat titles written by Haiku
-- Artifacts as in Claude: a small web app, an SVG, a document or a code file opens next to the chat, with preview and code, versions, zoom with Fit and Fill, copy and save as file. Claude sees a screenshot of each HTML or SVG artifact it makes (rendered offscreen with the same sealed policy) and can check other sizes, so it corrects its own layout
+- A side panel as in Claude Code, on the right of every chat: all its **artifacts**, its **file changes** per file as git shows them (also a compared model's working copy), its latest **plan**, and a **browser** for any web page or your local dev server
+- Artifacts as in Claude: a small web app, an SVG, a document or a code file opens in the side panel, with preview and code, versions, zoom with Fit and Fill, copy and save as file. Claude sees a screenshot of each HTML or SVG artifact it makes (rendered offscreen with the same sealed policy) and can check other sizes, so it corrects its own layout
 - A stopwatch on every answer: live while it runs, then how long it took; compared answers show their times side by side and mark the faster one
 - Dictation as in Claude Code: hold ⌥Space or click the microphone. Speech is recognized on your Mac, and the text lands in the input field for you to check before you send
 
@@ -53,7 +55,7 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 
 **Beyond Claude Code**
 - **Branches:** continue from any answer in a new chat; the original stays untouched
-- **Compare models:** each question also goes to a second model, and the answers show side by side with their costs. In a project the second model works in its own working copy (an APFS clone) with the same mode, approvals, commands and check; one click takes its changes over into the project, leaving out files the project changed meanwhile. When both answers make an artifact, they open side by side, with one toolbar and at the same scale
+- **Compare models:** each question also goes to a second model, and the answers show side by side with their costs. In a project the second model works in its own working copy (an APFS clone) with the same mode, approvals, commands and check; one click takes its changes over into the project, leaving out files the project changed meanwhile. Compared answers start folded to their artifacts, one click shows both in full. When both answers make an artifact, they open side by side, with one toolbar and at the same scale
 - **Undo an answer:** one click restores the files Claude changed from that answer on (file checkpoints)
 - **Check after changes:** a project command such as `npm test` runs when an answer changed files; if it fails, Claude fixes it
 - **Templates with structured output:** a changelog from Git, a review of uncommitted changes and a task list arrive as data. Every finding or task starts a follow-up in one click
@@ -193,6 +195,8 @@ Sienna lets a language model change files and run commands on your Mac, so the b
   - Dictated text is never sent on its own, so a misheard word or a voice from a video cannot start work in your project.
   - The helper runs without the API key, and Rust passes on only known events with checked text.
 - **Artifacts run sealed.** HTML and SVG artifacts load in a sandboxed frame from Sienna's own `artifact:` scheme, with an opaque origin and their own Content Security Policy: inline code and cdnjs.cloudflare.com only, no network requests, storage, frames, forms or navigation out. They cannot reach Sienna's commands, your key or your chats. Saving goes through the macOS save dialog.
+- **The side panel's browser is a stranger to the app.** It is a separate native web view: in no capability, so web pages cannot call Sienna's commands or plugins, and Sienna's own pages and sealed artifacts never load in it. It opens only `http` and `https`, keeps nothing between runs, opens no windows, downloads nothing, and is refused microphone, camera and location. Hidden, its media pause.
+- **Ultracode's helpers only look.** Only Sienna's two helper types may start, in the foreground and without worktrees; their own calls pass the same guard, which refuses them any change or non-reading command. Changes and approvals stay with Claude in your chat.
 - **The window is locked down.**
   - Answers are sanitized (marked + DOMPurify) and shown under a strict Content Security Policy. Remote images are not loaded.
   - Links show their target and open only `http` and `https`, in your browser.

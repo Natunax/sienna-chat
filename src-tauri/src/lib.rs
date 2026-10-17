@@ -1,4 +1,5 @@
 mod artifact;
+mod browser;
 mod engine;
 mod keychain;
 mod mention;
@@ -28,7 +29,7 @@ pub(crate) const MODELS: [&str; 4] = [
     "claude-opus-5-5",
     "claude-fable-5-1",
 ];
-const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+const EFFORTS: [&str; 6] = ["low", "medium", "high", "xhigh", "max", "ultracode"];
 /// The permission modes of a project chat, as in Claude Code.
 /// `readonly` is internal: a second model's answer next to the chat's own.
 const MODES: [&str; 6] = [
@@ -565,6 +566,30 @@ fn voice_cancel(state: State<AppState>) {
     state.voice.cancel();
 }
 
+/// Opens a page in the side panel's browser, over the given area of the window.
+#[tauri::command(async)]
+fn browser_open(app: AppHandle, url: String, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
+    browser::open(&app, &url, x, y, width, height)
+}
+
+/// Follows the panel's placeholder when the layout moves.
+#[tauri::command(async)]
+fn browser_bounds(app: AppHandle, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
+    browser::set_bounds(&app, x, y, width, height)
+}
+
+/// Hidden while another tab, a menu or a dialog takes its place: a native view
+/// would draw over them.
+#[tauri::command(async)]
+fn browser_visible(app: AppHandle, visible: bool) -> Result<(), String> {
+    browser::set_visible(&app, visible)
+}
+
+#[tauri::command(async)]
+fn browser_go(app: AppHandle, action: String) -> Result<(), String> {
+    browser::go(&app, &action)
+}
+
 /// Keeps an HTML or SVG artifact for its sealed frame; returns its address token.
 #[tauri::command(async)]
 fn artifact_stage(kind: String, content: String, state: State<AppState>) -> Result<String, String> {
@@ -645,7 +670,11 @@ fn workcopy_discard(work: String) -> Result<(), String> {
 /// past the click handler must not turn the window into a browser.
 fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new("navigation-guard")
-        .on_navigation(|_, url| {
+        .on_navigation(|webview, url| {
+            // The side panel's browser goes to web pages, and only there.
+            if webview.label() == browser::LABEL {
+                return browser::allowed(url);
+            }
             // `artifact:` is the sealed frame next to the chat.
             matches!(url.scheme(), "tauri" | "asset" | "artifact")
                 || (url.host_str() == Some("localhost") && cfg!(debug_assertions))
@@ -706,6 +735,10 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(navigation_guard())
         .register_uri_scheme_protocol("artifact", |context, request| {
+            // Artifacts are for the app's own window, never for a web page.
+            if context.webview_label() != "main" {
+                return tauri::http::Response::builder().status(403).body(Vec::new()).unwrap();
+            }
             match context.app_handle().try_state::<AppState>() {
                 Some(state) => state.artifacts.serve(request.uri().path()),
                 None => tauri::http::Response::new(Vec::new()),
@@ -716,6 +749,7 @@ pub fn run() {
         .setup(|app| {
             let root = app.path().app_data_dir()?;
             workcopy::init(app.path().app_cache_dir()?);
+            browser::init(app.handle());
             app.manage(AppState {
                 store: Arc::new(Store::new(root)),
                 engine: Engine::default(),
@@ -726,7 +760,9 @@ pub fn run() {
         })
         // A reload of the window never leaves the microphone on.
         .on_page_load(|webview, payload| {
-            if payload.event() == tauri::webview::PageLoadEvent::Started {
+            if webview.label() == "main" && payload.event() == tauri::webview::PageLoadEvent::Started {
+                // The window starts over: a page left from before would float over it.
+                let _ = browser::close(webview.app_handle());
                 if let Some(state) = webview.try_state::<AppState>() {
                     state.voice.cancel();
                 }
@@ -766,6 +802,10 @@ pub fn run() {
             workcopy_apply,
             workcopy_discard,
             artifact_save,
+            browser_open,
+            browser_bounds,
+            browser_visible,
+            browser_go,
             voice_start,
             voice_stop,
             voice_cancel,

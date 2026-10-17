@@ -43,6 +43,8 @@ interface Props {
   version: number | null;
   onVersion: (version: number) => void;
   onClose: () => void;
+  /** In the side panel: closing goes back to its list of artifacts. */
+  embedded?: boolean;
 }
 
 /**
@@ -138,7 +140,7 @@ export function CodeView({ artifact }: { artifact: Artifact }) {
 }
 
 /** An artifact next to the chat: preview or code, its versions, copy and save. */
-export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) {
+export function ArtifactPanel({ versions, version, onVersion, onClose, embedded }: Props) {
   const index = version === null ? versions.length - 1 : Math.min(version, versions.length - 1);
   const artifact = versions[index];
   const previewable = artifact.kind !== "code";
@@ -237,17 +239,30 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
   }, [showing, artifact, zoom]);
 
   return (
-    <aside className="artifact-panel" aria-label={t("artifact.label")}>
-      <header className="artifact-head">
-        <ArtifactIcon size={16} className="artifact-head-icon" />
-        <h2 className="artifact-title" title={artifact.title}>
-          {artifact.title}
-        </h2>
-        <button type="button" className="icon-button" onClick={onClose} aria-label={t("artifact.close")} title={t("artifact.close")}>
-          <CloseIcon />
-        </button>
-      </header>
+    <aside className={`artifact-panel${embedded ? " is-embedded" : ""}`} aria-label={t("artifact.label")}>
+      {/* In the side panel its tabs are the header; the way back leads the bar. */}
+      {!embedded && (
+        <header className="artifact-head">
+          <ArtifactIcon size={16} className="artifact-head-icon" />
+          <h2 className="artifact-title" title={artifact.title}>
+            {artifact.title}
+          </h2>
+          <button type="button" className="icon-button" onClick={onClose} aria-label={t("artifact.close")} title={t("artifact.close")}>
+            <CloseIcon />
+          </button>
+        </header>
+      )}
       <div className="artifact-bar">
+        {embedded && (
+          <div className="artifact-crumb">
+            <button type="button" className="icon-button" onClick={onClose} aria-label={t("side.allArtifacts")} title={`${t("side.allArtifacts")} (Esc)`}>
+              <ChevronLeftIcon size={16} />
+            </button>
+            <h2 className="artifact-title" title={artifact.title}>
+              {artifact.title}
+            </h2>
+          </div>
+        )}
         {previewable ? (
           <div className="segmented artifact-views" role="group">
             <button type="button" aria-pressed={showing === "preview"} className={showing === "preview" ? "is-active" : undefined} onClick={() => setView("preview")}>

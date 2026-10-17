@@ -3,7 +3,8 @@ import { autoApproveOn } from "./autoApprove";
 import { locale, type TextKey } from "./i18n";
 
 export type ModelId = "claude-haiku-5-5" | "claude-sonnet-5-5" | "claude-opus-5-5" | "claude-fable-5-1";
-export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+/** The five effort levels of the API, and Ultracode: the highest with helpers in parallel. */
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max" | "ultracode";
 /** How far Claude may go without asking in a project chat, as in Claude Code. */
 export type PermissionMode = "auto" | "default" | "acceptEdits" | "plan" | "bypassPermissions";
 
@@ -109,6 +110,14 @@ export interface PermissionRequest {
 }
 
 export type PermissionDecision = "allow" | "always" | "deny";
+
+/** Where the side panel's browser sits in the window, in CSS pixels. */
+export interface BrowserArea {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 /** A file a second model's working copy added, changed or deleted. */
 export interface WorkcopyChange {
@@ -327,6 +336,11 @@ export const api = {
   workcopyApply: (work: string, projectDir: string, force: string[] = []) =>
     invoke<{ applied: string[]; conflicts: string[] }>("workcopy_apply", { work, projectDir, force }),
   workcopyDiscard: (work: string) => invoke<void>("workcopy_discard", { work }),
+  /** The side panel's browser: a native view over the given area (logical pixels). */
+  browserOpen: (url: string, area: BrowserArea) => invoke<void>("browser_open", { url, ...area }),
+  browserBounds: (area: BrowserArea) => invoke<void>("browser_bounds", { ...area }),
+  browserVisible: (visible: boolean) => invoke<void>("browser_visible", { visible }),
+  browserGo: (action: "back" | "forward" | "reload" | "stop") => invoke<void>("browser_go", { action }),
   voiceStart: (language: "de" | "en") => invoke<number>("voice_start", { language }),
   voiceStop: () => invoke<void>("voice_stop"),
   voiceCancel: () => invoke<void>("voice_cancel"),

@@ -215,3 +215,23 @@ test("reading commands run without asking, but only inside the folder", async ()
   // A folder inside a larger repository: git would show the rest of it.
   assert.equal(isReadOnly("git log", join(root, "src")), false);
 });
+
+test("Ultracode's helpers: only Sienna's two, in the foreground, and they only look", async () => {
+  const cases = [
+    [{ tool_name: "Agent", tool_input: { subagent_type: "researcher", prompt: "x" } }, "allow"],
+    [{ tool_name: "Agent", tool_input: { subagent_type: "verifier", prompt: "x" } }, "allow"],
+    [{ tool_name: "Agent", tool_input: { subagent_type: "general-purpose", prompt: "x" } }, "deny"],
+    [{ tool_name: "Agent", tool_input: { prompt: "x" } }, "deny"],
+    [{ tool_name: "Agent", tool_input: { subagent_type: "researcher", isolation: "worktree" } }, "deny"],
+    [{ tool_name: "Task", tool_input: { subagent_type: "verifier", run_in_background: true } }, "deny"],
+    [{ tool_name: "Edit", agent_id: "a1", tool_input: { file_path: join(root, "src", "main.rs") } }, "deny"],
+    [{ tool_name: "Bash", agent_id: "a1", tool_input: { command: "npm test" } }, "deny"],
+    [{ tool_name: "Bash", agent_id: "a1", tool_input: { command: "ls" } }, "allow"],
+    [{ tool_name: "Read", agent_id: "a1", tool_input: { file_path: join(root, "src", "main.rs") } }, "allow"],
+  ];
+  for (const [input, expected] of cases) {
+    for (const mode of ["default", "plan", "readonly", "bypassPermissions"]) {
+      assert.equal(decision(await guard(mode)(input)), expected, `${mode}: ${JSON.stringify(input)}`);
+    }
+  }
+});

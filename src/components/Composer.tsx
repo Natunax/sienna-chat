@@ -385,6 +385,16 @@ export function Composer(props: Props) {
       discardVoice();
       return;
     }
+    // ⌥↩ breaks the line as ⇧↩ does; the browser alone would ignore it.
+    if (event.key === "Enter" && event.altKey && !event.shiftKey && !event.metaKey && !event.ctrlKey && !composing(event)) {
+      event.preventDefault();
+      const field = event.currentTarget;
+      const { selectionStart: start, selectionEnd: end, value } = field;
+      field.setRangeText("\n", start, end, "end");
+      setText(value.slice(0, start) + "\n" + value.slice(end));
+      setCaret(start + 1);
+      return;
+    }
     if (mentionOpen && !composing(event)) {
       if ((event.key === "ArrowDown" || event.key === "ArrowUp") && ranked.length) {
         event.preventDefault();

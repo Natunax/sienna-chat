@@ -284,3 +284,48 @@ export const ClockIcon = (p: IconProps) => (
     <path d="M10 6v4.25l2.75 1.75" />
   </Icon>
 );
+
+/** Ultracode's helpers: one task fanned out to several. */
+export const AgentsIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="10" cy="4.5" r="1.75" />
+    <circle cx="4.5" cy="15.5" r="1.75" />
+    <circle cx="10" cy="15.5" r="1.75" />
+    <circle cx="15.5" cy="15.5" r="1.75" />
+    <path d="M10 6.25v7.5M10 9.5c-3.5 0-5.5 1.2-5.5 4.25M10 9.5c3.5 0 5.5 1.2 5.5 4.25" />
+  </Icon>
+);
+
+/** The chat's side panel, opening on the right. */
+export const PanelRightIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.5" />
+    <path d="M12.25 3.75v12.5" />
+  </Icon>
+);
+
+/** File changes, as a document with plus and minus. */
+export const DiffIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5.5 2.75h6l3 3v11.5h-9a1.5 1.5 0 0 1-1.5-1.5V4.25a1.5 1.5 0 0 1 1.5-1.5z" />
+    <path d="M10 6.5v4M8 8.5h4M8 13.5h4" />
+  </Icon>
+);
+
+/** A plan: a checked step and steps to come. */
+export const PlanIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3.5 5.5l1.25 1.25L7 4.5" />
+    <path d="M9.5 5.75h7M9.5 10h7M9.5 14.25h7" />
+    <circle cx="5.25" cy="10" r="0.6" fill="currentColor" />
+    <circle cx="5.25" cy="14.25" r="0.6" fill="currentColor" />
+  </Icon>
+);
+
+/** Opens elsewhere: a box with an arrow leaving it. */
+export const ExternalIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M11.5 3.5h5v5M16.5 3.5L9.5 10.5" />
+    <path d="M14.5 11.5v3.25a1.75 1.75 0 0 1-1.75 1.75h-7.5a1.75 1.75 0 0 1-1.75-1.75v-7.5A1.75 1.75 0 0 1 5.25 5.5H8.5" />
+  </Icon>
+);

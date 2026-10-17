@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { setAutoApprove, useAutoApprove } from "../autoApprove";
 import { api, formatUsd, MODELS, type Usage } from "../api";
 import { errorText, languageChoice, setLanguageChoice, t, type LanguageChoice, type TextKey } from "../i18n";
+import { coverWindow } from "../overlay";
 import { setUsage } from "../store";
 import { CloseIcon, CoinsIcon, GearIcon, KeyboardIcon, KeyIcon, ShieldCheckIcon } from "./icons";
 import { KeyForm } from "./KeyForm";
@@ -16,6 +17,7 @@ const SHORTCUTS: { keys: string; label: TextKey }[] = [
   { keys: "⌘\\", label: "shortcut.sidebar" },
   { keys: "⌘,", label: "shortcut.settings" },
   { keys: "⌘.", label: "shortcut.stop" },
+  { keys: "⌥↩", label: "shortcut.newline" },
   { keys: "/", label: "shortcut.commands" },
   { keys: "@", label: "shortcut.mention" },
   { keys: "⌥Space", label: "shortcut.dictate" },
@@ -84,7 +86,11 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
     dialog.current?.showModal();
     // Focus the dialog itself, not its first button, so no focus ring shows on open.
     dialog.current?.focus();
-    return () => opener?.focus?.();
+    const uncover = coverWindow();
+    return () => {
+      uncover();
+      opener?.focus?.();
+    };
   }, []);
 
   useEffect(() => {

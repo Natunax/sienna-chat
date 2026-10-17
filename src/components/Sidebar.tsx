@@ -118,13 +118,13 @@ function ChatRow({ chat, active, branch, status, onSelect, onDelete, onRename, o
         onDoubleClick={() => setRenaming(true)}
         onKeyDown={(event) => event.key === "F2" && setRenaming(true)}
         aria-current={active ? "page" : undefined}
-        title={`${chat.title}\n${t("sidebar.renameHint")}`}
+        title={`${chat.title}${status ? ` · ${t(STATUS_LABELS[status])}` : ""}\n${t("sidebar.renameHint")}`}
       >
+        {branch && <BranchIcon size={13} className="chat-row-branch" />}
+        <span className="chat-row-title">{chat.title}</span>
         {status && (
           <span className={`chat-status is-${status}`} role="img" aria-label={t(STATUS_LABELS[status])} title={t(STATUS_LABELS[status])} />
         )}
-        {branch && <BranchIcon size={13} className="chat-row-branch" />}
-        {chat.title}
       </button>
       {confirming ? (
         <button

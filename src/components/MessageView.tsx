@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   api,
   formatUsd,
@@ -17,6 +17,7 @@ import { shortTokens } from "./ContextMeter";
 import { DiffView } from "./DiffView";
 import {
   AlertIcon,
+  AgentsIcon,
   ArtifactIcon,
   CompareIcon,
   ClockIcon,
@@ -49,6 +50,8 @@ const TOOL_LABELS: Record<string, TextKey> = {
   Bash: "tool.bash",
   Check: "tool.check",
   mcp__sienna__artifact_view: "tool.artifactView",
+  Agent: "tool.agent",
+  Task: "tool.agent",
 };
 
 function ToolIcon({ name }: { name: string }) {
@@ -58,12 +61,13 @@ function ToolIcon({ name }: { name: string }) {
   if (name === "Write") return <DocumentIcon size={13} />;
   if (name === "Check") return <ShieldCheckIcon size={13} />;
   if (name === "mcp__sienna__artifact_view") return <ArtifactIcon size={13} />;
+  if (name === "Agent" || name === "Task") return <AgentsIcon size={13} />;
   return <SearchIcon size={13} />;
 }
 
 const FILE_TOOLS = ["Read", "Edit", "Write"];
 /** Tools that only look around; several in a row fold into one line, as in Claude Code. */
-const QUIET_TOOLS = ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch", "mcp__sienna__artifact_view"];
+const QUIET_TOOLS = ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch", "mcp__sienna__artifact_view", "Agent", "Task"];
 
 type ToolGroup = { quiet: boolean; items: { tool: ToolUse; index: number }[] };
 
@@ -91,6 +95,7 @@ function toolSummary(tools: ToolUse[]): string {
     [count(["Grep", "Glob"]), "tools.search.one", "tools.search.other"],
     [count(["WebSearch", "WebFetch"]), "tools.web.one", "tools.web.other"],
     [count(["mcp__sienna__artifact_view"]), "tools.view.one", "tools.view.other"],
+    [count(["Agent", "Task"]), "tools.agent.one", "tools.agent.other"],
   ];
   const text = parts
     .filter(([n]) => n > 0)
@@ -479,6 +484,29 @@ interface Props {
   tie?: boolean;
   /** Both compared answers made an artifact: open them side by side. */
   onCompareArtifacts?: () => void;
+  /** Compared side by side and folded: artifacts and approvals show, the text only begins. */
+  collapsed?: boolean;
+}
+
+/** The start of a folded answer; it fades out only when there is more below. */
+function Fold({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [clipped, setClipped] = useState(false);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => setClipped(element.scrollHeight > element.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    if (element.firstElementChild) observer.observe(element.firstElementChild);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className={`msg-fold${clipped ? " is-clipped" : ""}`} aria-hidden="true">
+      {children}
+    </div>
+  );
 }
 
 function MessageViewImpl({
@@ -495,6 +523,7 @@ function MessageViewImpl({
   fastest,
   tie,
   onCompareArtifacts,
+  collapsed,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [confirmRevert, setConfirmRevert] = useState(false);
@@ -583,8 +612,9 @@ function MessageViewImpl({
           {tie && <span className="msg-tie">{t("timer.tie")}</span>}
         </div>
       )}
-      {(message.thinking || waiting) && <Thinking text={message.thinking ?? ""} active={waiting} />}
-      {message.tools?.length ? <Tools tools={message.tools} active={streaming} projectDir={projectDir} reverted={message.reverted} /> : null}
+      {/* Folded, only the sign that it is still at work shows. */}
+      {(collapsed ? waiting && !message.text : message.thinking || waiting) && <Thinking text={message.thinking ?? ""} active={waiting} />}
+      {!collapsed && message.tools?.length ? <Tools tools={message.tools} active={streaming} projectDir={projectDir} reverted={message.reverted} /> : null}
       {message.artifacts?.map((artifact, index) => (
         <ArtifactCard key={index} artifact={artifact} onOpen={onArtifact ? () => onArtifact(artifact.id, artifact) : undefined} />
       ))}
@@ -595,12 +625,18 @@ function MessageViewImpl({
           {t("compareArtifacts.open")}
         </button>
       ) : null}
-      {structured && message.format ? (
+      {collapsed ? (
+        message.text && !message.format && (
+          <Fold>
+            <Markdown text={message.text} final={!streaming} />
+          </Fold>
+        )
+      ) : structured && message.format ? (
         <StructuredView format={message.format} data={structured} onFollowUp={onFollowUp} />
       ) : (
         message.text && !(message.format && streaming) && <Markdown text={message.text} final={!streaming} />
       )}
-      {streaming && message.text && !message.format && !message.permissions?.length && (
+      {!collapsed && streaming && message.text && !message.format && !message.permissions?.length && (
         <span className="caret" aria-hidden="true" />
       )}
       {onPermission &&
@@ -629,7 +665,7 @@ function MessageViewImpl({
           <Elapsed message={message} className="msg-time" />
         </div>
       )}
-      {!streaming && (message.text || onRedo || structured) ? (
+      {!collapsed && !streaming && (message.text || onRedo || structured) ? (
         <div className="msg-actions">
           {message.text && !structured && <CopyButton text={message.text} />}
           {onRedo && (

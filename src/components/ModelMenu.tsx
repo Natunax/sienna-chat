@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { EFFORTS, MODELS, type Effort, type ModelId } from "../api";
 import { t } from "../i18n";
 import { useMenuFocus } from "./useMenuFocus";
-import { CheckIcon, ChevronDownIcon } from "./icons";
+import { AgentsIcon, CheckIcon, ChevronDownIcon } from "./icons";
 
 interface Props {
   model: ModelId;
@@ -11,13 +11,15 @@ interface Props {
 }
 
 function EffortSlider({ effort, onChange }: { effort: Effort; onChange: (effort: Effort) => void }) {
-  const level = Math.max(0, EFFORTS.findIndex((entry) => entry.id === effort));
-  const name = t(EFFORTS[level].name);
+  const ultra = effort === "ultracode";
+  // Ultracode works at the highest level; the slider shows it there.
+  const level = ultra ? EFFORTS.length - 1 : Math.max(0, EFFORTS.findIndex((entry) => entry.id === effort));
+  const name = ultra ? t("effort.ultracode") : t(EFFORTS[level].name);
   // The filled part of the track ends under the thumb's center (see styles.css).
   const ratio = { "--ratio": level / (EFFORTS.length - 1) } as CSSProperties;
 
   return (
-    <div className="effort">
+    <div className={`effort${ultra ? " is-ultra" : ""}`}>
       <div className="effort-head">
         <span>{t("composer.effort")}</span>
         <span className="effort-value">{name}</span>
@@ -31,6 +33,9 @@ function EffortSlider({ effort, onChange }: { effort: Effort; onChange: (effort:
           step={1}
           value={level}
           onChange={(event) => onChange(EFFORTS[Number(event.target.value)].id)}
+          // Under Ultracode the thumb already rests on Max: touching it there picks Max.
+          onPointerUp={() => ultra && onChange("max")}
+          onKeyUp={(event) => ultra && ["ArrowRight", "ArrowUp", "End"].includes(event.key) && onChange("max")}
           aria-label={t("composer.effort")}
           aria-valuetext={name}
         />
@@ -50,7 +55,8 @@ export function ModelMenu({ model, effort, onChange }: Props) {
   const menu = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const current = MODELS.find((entry) => entry.id === model) ?? MODELS[1];
-  const effortName = t((EFFORTS.find((entry) => entry.id === effort) ?? EFFORTS[1]).name);
+  const ultra = effort === "ultracode";
+  const effortName = ultra ? t("effort.ultracode") : t((EFFORTS.find((entry) => entry.id === effort) ?? EFFORTS[1]).name);
 
   useMenuFocus(open, menu, trigger);
 
@@ -80,7 +86,7 @@ export function ModelMenu({ model, effort, onChange }: Props) {
         title={t("composer.modelHint")}
       >
         {current.name}
-        <span className="pill-detail">· {effortName}</span>
+        <span className={`pill-detail${ultra ? " is-ultra" : ""}`}>· {effortName}</span>
         <ChevronDownIcon size={13} />
       </button>
       {open && (
@@ -102,6 +108,17 @@ export function ModelMenu({ model, effort, onChange }: Props) {
             </button>
           ))}
           <EffortSlider effort={effort} onChange={(next) => onChange({ effort: next })} />
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={ultra}
+            className="ultracode-item"
+            onClick={() => onChange({ effort: ultra ? "max" : "ultracode" })}
+          >
+            <AgentsIcon size={16} />
+            <span className="ultracode-name">{t("effort.ultracode")}</span>
+            <span className="ultracode-hint">{t("effort.ultracodeHint")}</span>
+          </button>
         </div>
       )}
     </div>
