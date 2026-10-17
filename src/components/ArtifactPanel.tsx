@@ -12,7 +12,7 @@ const MAX_ZOOM = ZOOMS[ZOOMS.length - 1];
 const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 
 /** The content's box in page pixels and the frame's view, as the page reports them. */
-type Size = { l: number; t: number; w: number; h: number; vw: number; vh: number };
+type Size = { l: number; t: number; w: number; h: number; vw: number; vh: number; pl: number; pt: number };
 
 interface Props {
   /** Every version of the artifact, oldest first. */
@@ -40,11 +40,11 @@ function SealedFrame({ artifact, zoom, onSize }: { artifact: Artifact; zoom: num
       if (event.source !== frame.current?.contentWindow) return;
       const data = event.data as Record<string, unknown> | null;
       if (data?.sienna !== "size") return;
-      const keys = ["l", "t", "w", "h", "vw", "vh"] as const;
+      const keys = ["l", "t", "w", "h", "vw", "vh", "pl", "pt"] as const;
       const values = keys.map((key) => data[key]);
       if (!values.every((value) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) < 100_000)) return;
-      const [l, t, w, h, vw, vh] = values as number[];
-      if (w > 0 && h > 0 && vw > 0 && vh > 0) report.current({ l, t, w, h, vw, vh });
+      const [l, t, w, h, vw, vh, pl, pt] = values as number[];
+      if (w > 0 && h > 0 && vw > 0 && vh > 0) report.current({ l, t, w, h, vw, vh, pl: Math.max(0, pl), pt: Math.max(0, pt) });
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -126,25 +126,55 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
   const [size, setSize] = useState<Size | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const showing = previewable ? view : "source";
+  // A zoom by hand ends a fit still settling.
+  const resetZoom = () => {
+    fitting.current = null;
+    setZoom(1);
+  };
   // + and − go to the next step, also from a zoom that fit or fill chose.
-  const zoomBy = (step: number) =>
+  const zoomBy = (step: number) => {
+    fitting.current = null;
     setZoom((current) => {
       const next = step > 0 ? ZOOMS.find((entry) => entry > current + 0.001) : [...ZOOMS].reverse().find((entry) => entry < current - 0.001);
       return next ?? current;
     });
-  /** Fit: the whole content in view. Fill: its width across the panel. */
-  const fitTo = (mode: "fit" | "fill") => {
-    const body = bodyRef.current;
-    if (!body || !size) return;
-    // Centered content stays centered at any zoom, so only its own size
-    // counts; content against the left or top keeps its margin there, and
-    // gets the same margin on the other side.
-    const span = (start: number, length: number, view: number) =>
-      Math.abs(start - (view - start - length)) < 8 ? length / 0.94 : length + 2 * Math.max(0, start);
-    const width = body.clientWidth / span(size.l, size.w, size.vw);
-    const height = body.clientHeight / span(size.t, size.h, size.vh);
-    setZoom(clampZoom(mode === "fit" ? Math.min(width, height) : width));
   };
+  /** The zoom at which the content, with the page's own margin, reaches the panel's edges. */
+  const target = (mode: "fit" | "fill", measured: Size) => {
+    const body = bodyRef.current;
+    if (!body) return null;
+    // Centered content only needs the page margin around it; content against
+    // the left or top keeps its distance there and gets the same on the other
+    // side; and the far edge must never end up outside.
+    const span = (start: number, length: number, view: number, margin: number) => {
+      const centered = Math.abs(start - (view - start - length)) < 8;
+      return Math.max(length + 2 * margin, centered ? 0 : 2 * start + length, start + length + margin);
+    };
+    const width = body.clientWidth / span(measured.l, measured.w, measured.vw, measured.pl);
+    const height = body.clientHeight / span(measured.t, measured.h, measured.vh, measured.pt);
+    return clampZoom(mode === "fit" ? Math.min(width, height) : width);
+  };
+  // A page that centers itself moves its content when the zoom changes the
+  // view, so fit and fill check the new measurement a few times.
+  const fitting = useRef<{ mode: "fit" | "fill"; left: number } | null>(null);
+  const fitTo = (mode: "fit" | "fill") => {
+    if (!size) return;
+    const next = target(mode, size);
+    if (next === null) return;
+    fitting.current = { mode, left: 4 };
+    setZoom(next);
+  };
+  useEffect(() => {
+    const run = fitting.current;
+    if (!run || !size) return;
+    const next = target(run.mode, size);
+    run.left -= 1;
+    if (next === null || run.left <= 0 || Math.abs(next - zoom) / zoom < 0.01) {
+      fitting.current = null;
+      return;
+    }
+    setZoom(next);
+  }, [size]);
 
   // ⌘+ / ⌘− / ⌘0 zoom the preview, as in a browser.
   const zoomable = showing === "preview";
@@ -154,7 +184,7 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
       if (!event.metaKey || event.altKey || event.ctrlKey) return;
       if (event.key === "+" || event.key === "=") zoomBy(1);
       else if (event.key === "-") zoomBy(-1);
-      else if (event.key === "0") setZoom(1);
+      else if (event.key === "0") resetZoom();
       else return;
       event.preventDefault();
     };
@@ -238,7 +268,7 @@ export function ArtifactPanel({ versions, version, onVersion, onClose }: Props) 
             <button type="button" className="icon-button" disabled={zoom <= MIN_ZOOM} onClick={() => zoomBy(-1)} aria-label={t("artifact.zoomOut")} title={`${t("artifact.zoomOut")} (⌘−)`}>
               <MinusIcon size={14} />
             </button>
-            <button type="button" className="artifact-zoom-value" onClick={() => setZoom(1)} title={`${t("artifact.zoomReset")} (⌘0)`}>
+            <button type="button" className="artifact-zoom-value" onClick={resetZoom} title={`${t("artifact.zoomReset")} (⌘0)`}>
               {Math.round(zoom * 100)} %
             </button>
             <button type="button" className="icon-button" disabled={zoom >= MAX_ZOOM} onClick={() => zoomBy(1)} aria-label={t("artifact.zoomIn")} title={`${t("artifact.zoomIn")} (⌘+)`}>
