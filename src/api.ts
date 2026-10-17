@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { autoApproveOn } from "./autoApprove";
 import { locale, type TextKey } from "./i18n";
 
 export type ModelId = "claude-haiku-5-5" | "claude-sonnet-5-5" | "claude-opus-5-5" | "claude-fable-5-1";
@@ -270,7 +271,7 @@ export const api = {
     format?: TemplateId | null;
     userUuid?: string;
     reverted?: boolean;
-  }) => invoke<number>("chat_send", { request }),
+  }) => invoke<number>("chat_send", { request: { ...request, autoApprove: autoApproveOn() } }),
   chatRevertFiles: (request: {
     chatId: string;
     sessionId: string;

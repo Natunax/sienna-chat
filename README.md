@@ -120,6 +120,8 @@ Move `src-tauri/target/release/bundle/macos/Sienna.app` to `/Applications` and o
 
 Destructive commands (`sudo`, recursive `rm`, `git push`, `git reset --hard` and the like) ask in every mode.
 
+**Approve automatically** (Settings, off by default) sits on top of every mode: whenever Claude would ask, Sienna clicks Allow for you, and approvals already waiting go through when you switch it on. Destructive commands still ask. While it is on, an "Auto-approve" pill next to the mode says so and turns it off with one click.
+
 **Keyboard**
 
 | Keys | Action |
@@ -171,6 +173,7 @@ Sienna lets a language model change files and run commands on your Mac, so the b
 - **Your key stays in the Keychain.** It is never written to a file, a log or the UI, and commands Claude runs never see it.
 - **No subscription fallback.** The engine refuses to start without an API key. It runs with its own config directory and no setting sources, so your Claude Code login, settings, hooks, plugins and memory are never loaded. It also stops a turn if the SDK reports any credential other than the API key.
 - **Reading is limited to the project folder.** A hook checks every path, search pattern and glob, resolves symbolic links, and refuses `~` and variables. `Edit` and `Write` are limited the same way and never touch a `.git` folder.
+- **Approve automatically is your call.** Switched on in Settings, it allows every change and command that would ask, in Manual mode too; only destructive commands still ask. Commands then run outside the sandbox in Manual and Accept edits mode, as if you had approved them.
 - **Commands are the one wide door.** `Bash` runs with your user's rights in the project folder.
   - In Auto and Bypass permissions it runs in macOS's sandbox: writes stay in the folder, and credentials (`~/.ssh`, `~/.aws`, keychains, shell history and the like) and Sienna's own data cannot be read.
   - In Manual and Accept edits mode every command asks first, except plain reading ones in every mode, Plan included: `ls`, `cat`, `head`, `grep`, `rg`, `find`, `sed -n 1,20p`, read-only `git` and a few more, each with a fixed list of options. Anything the check does not fully understand asks: globs, braces, comments, quotes with escapes, variables, redirects, `..`, links leading out, options that write or run programs. `git` runs without asking only when the project folder is the top of its repository.

@@ -102,6 +102,9 @@ struct SendRequest {
     /// The user reverted file changes since the last message.
     #[serde(default)]
     reverted: bool,
+    /// The setting "approve automatically" (`auto_approve`).
+    #[serde(default)]
+    auto_approve: bool,
 }
 
 fn default_mode() -> String {
@@ -268,6 +271,7 @@ fn chat_send(request: SendRequest, app: AppHandle, state: State<AppState>) -> Re
         "mode": request.mode,
         "fork": request.fork,
         "lane": request.lane,
+        "autoApprove": request.auto_approve,
         "check": request.check.as_deref().map(|check| check.chars().take(500).collect::<String>()),
         "format": request.format,
         "userUuid": request.user_uuid,
@@ -521,6 +525,15 @@ fn project_guess_check(path: String) -> Result<String, String> {
     Ok(guess.into())
 }
 
+/// The setting "approve automatically", on top of every mode; waiting
+/// approvals it covers are answered at once.
+#[tauri::command(async)]
+fn auto_approve(on: bool, state: State<AppState>) {
+    state
+        .engine
+        .notify(&json!({ "type": "autoApprove", "on": on }).to_string());
+}
+
 /// Switches a project chat's mode, also while an answer runs.
 #[tauri::command(async)]
 fn chat_mode(chat_id: String, mode: String, state: State<AppState>) {
@@ -610,6 +623,7 @@ pub fn run() {
             project_set_check,
             project_guess_check,
             project_files,
+            auto_approve,
             voice_start,
             voice_stop,
             voice_cancel,

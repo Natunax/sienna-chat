@@ -3282,3 +3282,80 @@ button.bubble-mention:hover {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* ───────── Approve automatically ───────── */
+
+.setting-switch-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.setting-switch-row .setting-hint {
+  margin-bottom: 0;
+}
+
+/* A macOS-style switch: the track fills with the accent when on. */
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 38px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 11px;
+  background: var(--fill-active);
+  transition: background-color 160ms ease-out;
+}
+
+.switch[aria-checked="true"] {
+  background: var(--accent);
+}
+
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 160ms ease-out;
+}
+
+.switch[aria-checked="true"] .switch-knob {
+  transform: translateX(16px);
+}
+
+.composer-footer-start {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* While on, the composer says so next to the mode: Sienna answers for you. */
+.composer-footer .auto-approve-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px 0 8px;
+  border-radius: 13px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 500;
+}
+
+.auto-approve-pill .chip-remove {
+  width: 20px;
+  height: 20px;
+  color: var(--accent-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch,
+  .switch-knob {
+    transition: none;
+  }
+}

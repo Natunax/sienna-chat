@@ -18,7 +18,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, projectGuard, projectPrompt } from "./project.mjs";
+import { EDIT_TOOLS, MODES, READ_TOOLS, RUN_TOOLS, isRisky, projectGuard, projectPrompt } from "./project.mjs";
 import { TEMPLATES } from "./templates.mjs";
 
 const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
@@ -132,6 +132,13 @@ const PLAN_NOTE = [
 // Auto mode's model checks and bypassing run commands in macOS's sandbox,
 // which keeps their writes in the project folder.
 const SANDBOXED_MODES = ["auto", "bypassPermissions"];
+/**
+ * The setting "approve automatically": on top of every mode, Sienna answers
+ * each approval as if the user clicked Allow. Destructive commands still ask.
+ */
+let autoApprove = false;
+const autoApproves = (tool, input) => autoApprove && !(RUN_TOOLS.includes(tool) && isRisky(input?.command));
+
 /** Models known to lack auto mode, learned from the SDK. */
 const noAutoMode = new Set();
 
@@ -402,6 +409,10 @@ class ChatSession {
     if (signal?.aborted) return Promise.resolve(denied("The answer was stopped."));
     // A second model's answer only reads; nobody is there to approve anything.
     if (this.config.lane) return Promise.resolve(denied("This answer cannot change anything."));
+    if (autoApproves(tool, input)) {
+      if (EDIT_TOOLS.includes(tool)) this.edited = true;
+      return Promise.resolve({ behavior: "allow", updatedInput: input });
+    }
     // Anything else that asks (the sandbox wanting network access, say) shows as it is.
     const id = randomUUID();
     this.flush();
@@ -421,6 +432,8 @@ class ChatSession {
           done(denied("The user declined this. Do not try it another way; ask how they want to go on."));
         }
       };
+      // Switching the setting on answers waiting cards that it covers.
+      finish.automatic = autoApproves.bind(null, tool, input);
       this.permissions.set(id, finish);
       signal?.addEventListener("abort", () => finish("deny"), { once: true });
     });
@@ -787,6 +800,7 @@ function resultText(content) {
 }
 
 async function onSend(command) {
+  autoApprove = Boolean(command.autoApprove);
   const config = {
     model: command.model,
     effort: command.effort,
@@ -988,6 +1002,12 @@ function onCommand(line) {
       return;
     case "mode":
       sessions.get(command.chatId)?.setMode(validMode(command.mode));
+      return;
+    case "autoApprove":
+      autoApprove = Boolean(command.on);
+      for (const session of sessions.values()) {
+        for (const finish of [...session.permissions.values()]) if (finish.automatic?.()) finish("allow");
+      }
       return;
     case "title":
       onTitle(command).catch(() => {});

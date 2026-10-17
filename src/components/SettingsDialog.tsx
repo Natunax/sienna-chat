@@ -1,3 +1,4 @@
+import { setAutoApprove, useAutoApprove } from "../autoApprove";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
 import { api, formatUsd, MODELS, type Usage } from "../api";
@@ -38,6 +39,7 @@ interface Props {
 }
 
 export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
+  const autoApprove = useAutoApprove();
   const dialog = useRef<HTMLDialogElement>(null);
   const [replacing, setReplacing] = useState(false);
   const [budget, setBudget] = useState(String(usage?.budget ?? 100));
@@ -113,6 +115,28 @@ export function SettingsDialog({ usage, onClose, onKeyRemoved }: Props) {
               {option.id === "system" ? t("settings.languageSystem") : option.name}
             </button>
           ))}
+        </div>
+      </section>
+
+      <section className="setting">
+        <div className="setting-switch-row">
+          <div>
+            <h3 id="auto-approve-label">{t("settings.autoApprove")}</h3>
+            <p className="setting-hint" id="auto-approve-hint">
+              {t("settings.autoApproveHint")}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            className="switch"
+            aria-checked={autoApprove}
+            aria-labelledby="auto-approve-label"
+            aria-describedby="auto-approve-hint"
+            onClick={() => setAutoApprove(!autoApprove)}
+          >
+            <span className="switch-knob" />
+          </button>
         </div>
       </section>
 

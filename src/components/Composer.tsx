@@ -18,6 +18,7 @@ import { PICKER_ACCEPT, readAttachment, TEXT_MEDIA_TYPE } from "../attachments";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { errorText, t } from "../i18n";
 import { useVoice } from "../voice";
+import { setAutoApprove, useAutoApprove } from "../autoApprove";
 import { CompareChip } from "./CompareChip";
 import { ContextMeter } from "./ContextMeter";
 import { ModeMenu } from "./ModeMenu";
@@ -127,6 +128,7 @@ export function Composer(props: Props) {
   const { settings, onSettings, streaming, onSend, onStop, autoFocusKey, pendingFiles, onFilesTaken } = props;
   const { project, projectLocked, onProject, context, onCompact, compacting, mode, onMode } = props;
   const { compareModel, onCompare, check, onCheck, onTemplate, conversation } = props;
+  const autoApprove = useAutoApprove();
   const [slashActive, setSlashActive] = useState(0);
   const [slashClosed, setSlashClosed] = useState(false);
   const [checkDraft, setCheckDraft] = useState<string | null>(null);
@@ -752,7 +754,23 @@ export function Composer(props: Props) {
       </div>
       {/* As in Claude Code: the mode on the left, model and context on the right. */}
       <div className="composer-footer">
-        <ModeMenu mode={mode} onChange={onMode} active={Boolean(project)} />
+        <span className="composer-footer-start">
+          <ModeMenu mode={mode} onChange={onMode} active={Boolean(project)} />
+          {autoApprove && project && (
+            <span className="pill auto-approve-pill" title={t("autoApprove.title")}>
+              {t("autoApprove.pill")}
+              <button
+                type="button"
+                className="chip-remove"
+                onClick={() => setAutoApprove(false)}
+                aria-label={t("autoApprove.off")}
+                title={t("autoApprove.off")}
+              >
+                <CloseIcon size={11} />
+              </button>
+            </span>
+          )}
+        </span>
         <div className="composer-footer-end">
           <ModelMenu model={settings.model} effort={settings.effort} onChange={onSettings} />
           {context && context.window > 0 && (
