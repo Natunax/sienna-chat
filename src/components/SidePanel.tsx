@@ -3,6 +3,7 @@ import { api, MODELS, type Artifact, type Chat, type Message, type PermissionMod
 import { diffLines, diffStats } from "../diff";
 import { t, type TextKey } from "../i18n";
 import { BrowserView, useBrowserOpen } from "./BrowserView";
+import { ResizeHandle, useStoredWidth } from "./ResizeHandle";
 import { DiffView } from "./DiffView";
 import { ArtifactIcon, ChevronRightIcon, CloseIcon, DiffIcon, DocumentIcon, GlobeIcon, PlanIcon } from "./icons";
 import { Markdown } from "./MessageView";
@@ -319,6 +320,12 @@ export function SidePanel({ chat, tab, onTab, onClose, artifact, onOpenArtifact,
   const browsing = useBrowserOpen();
   const wide = (tab === "artifacts" && Boolean(artifact)) || (tab === "browser" && browsing);
   const tabs = useRef<HTMLDivElement>(null);
+  // Dragged widths, one for lists and one for an artifact or a page.
+  const panel = useRef<HTMLElement>(null);
+  const [narrowWidth, setNarrowWidth] = useStoredWidth("side");
+  const [wideWidth, setWideWidth] = useStoredWidth("side.wide");
+  const width = wide ? wideWidth : narrowWidth;
+  const setWidth = wide ? setWideWidth : setNarrowWidth;
 
   // Arrow keys move between the tabs, as in any tab list.
   const onTabKey = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -332,7 +339,22 @@ export function SidePanel({ chat, tab, onTab, onClose, artifact, onOpenArtifact,
   };
 
   return (
-    <aside className={`side-panel${wide ? " is-wide" : ""}`} aria-label={t("side.label")}>
+    <aside
+      ref={panel}
+      className={`side-panel${wide ? " is-wide" : ""}`}
+      style={width ? { flexBasis: width } : undefined}
+      aria-label={t("side.label")}
+    >
+      <ResizeHandle
+        edge="left"
+        label={t("resize.side")}
+        measure={() => panel.current?.getBoundingClientRect().width ?? 380}
+        min={wide ? 340 : 260}
+        // The chat keeps room for its column.
+        max={() => (panel.current?.parentElement?.clientWidth ?? 1200) - 380}
+        onWidth={setWidth}
+        onReset={() => setWidth(null)}
+      />
       <header className="side-head" data-tauri-drag-region>
         <div className="side-tabs" role="tablist" aria-label={t("side.label")} ref={tabs} onKeyDown={onTabKey}>
           {TABS.map((entry) => {

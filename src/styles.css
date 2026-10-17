@@ -159,9 +159,74 @@ input[type="checkbox"] {
 /* ───────── Layout ───────── */
 
 .app {
+  position: relative;
   display: grid;
-  grid-template-columns: 252px 1fr;
+  grid-template-columns: var(--sidebar-w, 252px) 1fr;
   height: 100%;
+}
+
+/* ───────── Dragging a border ─────────
+   A few pixels either side of the hairline take the pointer; the line itself
+   lights up in the accent while hovered or dragged. */
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 35;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 120ms ease-out 80ms;
+}
+
+.resize-handle:hover::after,
+.resize-handle.is-active::after,
+.resize-handle:focus-visible::after {
+  opacity: 0.8;
+}
+
+.resize-handle:focus-visible {
+  outline: none;
+}
+
+/* The sidebar's: on its right border. */
+.app > .resize-handle {
+  left: calc(var(--sidebar-w, 252px) - 5px);
+}
+
+/* The side panel's: on its left border. */
+.side-panel > .resize-handle {
+  left: -5px;
+}
+
+/* While dragging, the pointer stays a resize arrow and frames do not catch it. */
+.is-resizing,
+.is-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.is-resizing iframe {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resize-handle::after {
+    transition: none;
+  }
 }
 
 .app.sidebar-hidden {
@@ -3759,8 +3824,10 @@ button.bubble-mention:hover {
    chat. */
 
 .side-panel {
+  position: relative;
   display: flex;
-  flex: 0 0 clamp(300px, 32%, 380px);
+  /* Gives way before the chat does when the window narrows. */
+  flex: 0 1 clamp(300px, 32%, 380px);
   flex-direction: column;
   min-width: 0;
   min-height: 0;
@@ -3787,6 +3854,11 @@ button.bubble-mention:hover {
 
   .side-panel.is-wide {
     width: 100%;
+  }
+
+  /* Covering the chat, the panel takes its width from the window. */
+  .side-panel > .resize-handle {
+    display: none;
   }
 
   /* Covering the chat without the sidebar, it keeps clear of the window buttons. */

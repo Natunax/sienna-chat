@@ -65,6 +65,7 @@ Some Anthropic accounts get a monthly **API credit** for the Claude API, the Age
 - Costs per answer, per chat, per month and per model, plus a monthly budget cap
 - A context meter with a breakdown and "compact now"; automatic compaction is noted in the chat
 - Chat history with search (⌘K), pinning, renaming and branches nested under their chat
+- Both sidebars resize by dragging their border (double-click resets), and remember their width
 - Native Mac look: the system sidebar material, light and dark mode, and respect for reduced motion and transparency
 - English and German, following your Mac or the language you pick in Settings
 

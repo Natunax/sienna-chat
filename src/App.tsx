@@ -1,10 +1,11 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api, type Chat } from "./api";
 import { ChatView } from "./components/ChatView";
 import type { ComposerSettings } from "./components/Composer";
 import { Onboarding } from "./components/KeyForm";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { ResizeHandle, useStoredWidth } from "./components/ResizeHandle";
 import { Sidebar } from "./components/Sidebar";
 import { errorText, t, useLanguage } from "./i18n";
 import {
@@ -57,6 +58,8 @@ export function App() {
   // The first chat exists from the first render on, so the window never shows an empty pane.
   const [activeId, setActiveId] = useState<string | null>(() => createChat(readDefaults()).id);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // The sidebar's width, dragged at its border.
+  const [sidebarWidth, setSidebarWidth] = useStoredWidth("sidebar");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const summaries = useSummaries();
   const projects = useProjects();
@@ -164,7 +167,22 @@ export function App() {
   if (!hasKey) return <Onboarding onSaved={() => setHasKey(true)} />;
 
   return (
-    <div className={`app${sidebarOpen ? "" : " sidebar-hidden"}`}>
+    <div
+      className={`app${sidebarOpen ? "" : " sidebar-hidden"}`}
+      style={sidebarWidth ? ({ "--sidebar-w": `${sidebarWidth}px` } as CSSProperties) : undefined}
+    >
+      {sidebarOpen && (
+        <ResizeHandle
+          edge="right"
+          label={t("resize.sidebar")}
+          measure={() => document.querySelector(".sidebar")?.getBoundingClientRect().width ?? 252}
+          min={200}
+          // The chat keeps room for its column.
+          max={() => Math.min(440, window.innerWidth - 520)}
+          onWidth={setSidebarWidth}
+          onReset={() => setSidebarWidth(null)}
+        />
+      )}
       {sidebarOpen && (
         <Sidebar
           summaries={summaries}
